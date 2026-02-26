@@ -1,0 +1,22 @@
+{"timestamp": "2026-02-22T11:10:39.465009+00:00", "route": "/upload", "input": {"bytes": 32044}, "result": "ok", "error": null}
+{"timestamp": "2026-02-22T11:11:08.634888+00:00", "route": "/analyze", "input": {"recording_id": "bf207e20-b49c-4ede-bd0e-5ecf9d6100e8"}, "result": "ok", "error": null}
+{"timestamp": "2026-02-22T11:11:08.646762+00:00", "route": "/outcome", "input": {"recording_id": "bf207e20-b49c-4ede-bd0e-5ecf9d6100e8", "happened": true}, "result": "ok", "error": null}
+{"timestamp": "2026-02-22T11:56:34.594486+00:00", "route": "/analyze", "input": {"recording_id": "string"}, "result": "error", "error": "recording not found"}
+{"timestamp": "2026-02-22T11:56:36.758243+00:00", "route": "/analyze", "input": {"recording_id": "string"}, "result": "error", "error": "recording not found"}
+{"timestamp": "2026-02-22T11:57:25.140070+00:00", "route": "/analyze", "input": {"recording_id": "string"}, "result": "error", "error": "recording not found"}
+{"timestamp": "2026-02-22T12:31:41.175805+00:00", "route": "/upload", "input": {"bytes": 51494}, "result": "ok", "error": null}
+{"timestamp": "2026-02-22T12:35:58.721288+00:00", "route": "/upload", "input": {"bytes": 70814}, "result": "ok", "error": null}
+{"timestamp": "2026-02-22T12:36:03.465364+00:00", "route": "/analyze", "input": {"recording_id": null}, "result": "error", "error": "audio decode failed: "}
+{"timestamp": "2026-02-22T12:36:54.576562+00:00", "route": "/upload", "input": {"bytes": 32044}, "result": "ok", "error": null}
+{"timestamp": "2026-02-22T12:36:55.385818+00:00", "route": "/analyze", "input": {"recording_id": null}, "result": "ok", "error": null}
+{"timestamp": "2026-02-22T12:37:14.192725+00:00", "route": "/upload", "input": {"bytes": 32044}, "result": "ok", "error": null}
+{"timestamp": "2026-02-22T12:37:14.999302+00:00", "route": "/analyze", "input": {"recording_id": null}, "result": "ok", "error": null}
+{"timestamp": "2026-02-22T13:38:19.069438+00:00", "route": "/upload", "user_id": "demo_user", "input_summary": {"recording_id": "4f2e7fbc-4d44-4bfe-9702-5ecae54058d7", "bytes": 32044}, "result_summary": {"ok": true}, "error": null}
+{"timestamp": "2026-02-22T13:38:20.116126+00:00", "route": "/analyze", "user_id": "demo_user", "input_summary": {"recording_id": "4f2e7fbc-4d44-4bfe-9702-5ecae54058d7"}, "result_summary": {"ok": true, "png_url": "/generated/4f2e7fbc-4d44-4bfe-9702-5ecae54058d7.png"}, "error": null}
+{"timestamp": "2026-02-22T13:38:20.123428+00:00", "route": "/outcome", "user_id": "demo_user", "input_summary": {"recording_id": "4f2e7fbc-4d44-4bfe-9702-5ecae54058d7", "happened": true}, "result_summary": {"ok": true}, "error": null}
+{"timestamp": "2026-02-22T13:38:20.128600+00:00", "route": "/neighbors", "user_id": "demo_user", "input_summary": {"recording_id": "4f2e7fbc-4d44-4bfe-9702-5ecae54058d7", "k": 5}, "result_summary": {"ok": true, "count": 0}, "error": null}
+{"timestamp": "2026-02-22T13:45:18.930122+00:00", "route": "/upload", "user_id": "demo_user", "input_summary": {"recording_id": "0a17d52f-eaba-4693-9f71-e2c1d2450b9f", "bytes": 455084}, "result_summary": {"ok": true}, "error": null}
+{"timestamp": "2026-02-22T13:45:21.342954+00:00", "route": "/analyze", "user_id": "demo_user", "input_summary": {"recording_id": "0a17d52f-eaba-4693-9f71-e2c1d2450b9f"}, "result_summary": {"ok": true, "png_url": "/generated/0a17d52f-eaba-4693-9f71-e2c1d2450b9f.png"}, "error": null}
+{"timestamp": "2026-02-22T13:45:58.300597+00:00", "route": "/neighbors", "user_id": "demo_user", "input_summary": {"recording_id": "0a17d52f-eaba-4693-9f71-e2c1d2450b9f", "k": 5}, "result_summary": {"ok": true, "count": 1}, "error": null}
+{"timestamp": "2026-02-22T13:46:02.035507+00:00", "route": "/outcome", "user_id": "demo_user", "input_summary": {"recording_id": "0a17d52f-eaba-4693-9f71-e2c1d2450b9f", "happened": true}, "result_summary": {"ok": true}, "error": null}
+{"timestamp": "2026-02-22T13:46:05.170596+00:00", "route": "/outcome", "user_id": "demo_user", "input_summary": {"recording_id": "0a17d52f-eaba-4693-9f71-e2c1d2450b9f", "happened": false}, "result_summary": {"ok": true}, "error": null}

@@ -1,0 +1,347 @@
+version: 1
+# impact_map.yml
+# Purpose:
+# - Map event_type -> impact direction/targets + trigger templates + chain templates
+# - Output must be rendered in human language (no metrics/nerd terms) in UI.
+# - UI uses: (What happened) (Impact) (Why you) (What to watch)
+
+event_types:
+
+  rates_hawkish:
+    label_zh: "利率/央行偏鹰"
+    label_en: "Rates / Hawkish"
+    default_direction: "bear"
+    targets:
+      - zh: "科技/成长股"
+        en: "Growth / Tech"
+      - zh: "债券"
+        en: "Bonds"
+      - zh: "黄金（不确定）"
+        en: "Gold (uncertain)"
+    why_it_matters_zh: "利率预期走高通常会压制高估值资产，并影响债券与黄金。"
+    why_it_matters_en: "Higher rate expectations often pressure high-valuation assets and shift bond/gold behavior."
+    triggers_zh:
+      - "如果10年期国债收益率继续上行 → 成长股压力更大。"
+      - "如果FOMC表态更强硬/更偏鹰 → 风险偏好更弱。"
+      - "如果市场开始押注更晚降息 → 债券波动可能加大。"
+    triggers_en:
+      - "If 10Y yields keep rising → more pressure on growth/tech."
+      - "If Fed messaging turns more hawkish → risk appetite may weaken."
+      - "If cuts get priced later → bond volatility may increase."
+    chain_zh: ["宏观数据偏热/通胀担忧", "利率预期走高", "成长股承压/债券波动"]
+    chain_en: ["Hotter data / inflation worry", "Higher rate expectations", "Pressure on growth / bond swings"]
+
+  rates_dovish:
+    label_zh: "利率/央行偏鸽"
+    label_en: "Rates / Dovish"
+    default_direction: "bull"
+    targets:
+      - zh: "科技/成长股"
+        en: "Growth / Tech"
+      - zh: "债券"
+        en: "Bonds"
+    why_it_matters_zh: "利率预期走低通常会缓解高估值资产压力，也可能利好债券。"
+    why_it_matters_en: "Lower rate expectations often relieve pressure on high-valuation assets and can benefit bonds."
+    triggers_zh:
+      - "如果通胀数据继续降温 → 这条逻辑更强。"
+      - "如果市场开始提前押注降息 → 成长股更容易走强。"
+    triggers_en:
+      - "If inflation keeps cooling → this thesis strengthens."
+      - "If cuts get priced sooner → growth may catch a bid."
+    chain_zh: ["通胀降温/增长放缓", "降息预期升温", "成长股与债券更受益"]
+    chain_en: ["Cooling inflation / slower growth", "Cuts priced sooner", "Growth & bonds benefit"]
+
+  geopolitics_escalation:
+    label_zh: "战争/地缘冲突升级"
+    label_en: "Geopolitics escalation"
+    default_direction: "uncertain"
+    targets:
+      - zh: "油价"
+        en: "Oil"
+      - zh: "黄金"
+        en: "Gold"
+      - zh: "国防"
+        en: "Defense"
+    why_it_matters_zh: "地缘风险常抬升避险需求，也可能推高能源价格并压制风险偏好。"
+    why_it_matters_en: "Geopolitics can lift safe-haven demand, push energy higher, and hurt risk appetite."
+    triggers_zh:
+      - "如果冲突扩大/制裁升级 → 油与黄金更容易走强。"
+      - "如果出现停火/降温迹象 → 避险交易可能回吐。"
+    triggers_en:
+      - "If conflict widens / sanctions escalate → oil & gold may strengthen."
+      - "If de-escalation emerges → safe-haven trades may retrace."
+    chain_zh: ["冲突升级", "避险情绪上升", "油/金走强、风险偏好走弱"]
+    chain_en: ["Escalation", "Risk-off / safe-haven bid", "Oil/gold up, risk appetite down"]
+
+  tariffs_trade:
+    label_zh: "关税/贸易摩擦"
+    label_en: "Tariffs / trade tensions"
+    default_direction: "uncertain"
+    targets:
+      - zh: "受影响供应链公司"
+        en: "Supply-chain exposed names"
+      - zh: "本土替代链"
+        en: "Domestic substitutes"
+      - zh: "通胀预期"
+        en: "Inflation expectations"
+    why_it_matters_zh: "关税会改变成本结构与供应链预期，也可能影响通胀与政策路径。"
+    why_it_matters_en: "Tariffs shift cost structure and supply-chain expectations, and can affect inflation/policy."
+    triggers_zh:
+      - "如果具体清单/税率正式落地 → 影响更明确。"
+      - "如果出现豁免/谈判缓和 → 压力可能减轻。"
+    triggers_en:
+      - "If the final list/rates are confirmed → impact becomes clearer."
+      - "If exemptions / easing signals appear → pressure may ease."
+    chain_zh: ["政策摩擦", "成本/预期变化", "相关行业分化"]
+    chain_en: ["Policy friction", "Cost/expectation shift", "Sector divergence"]
+
+  macro_hot:
+    label_zh: "宏观数据偏热"
+    label_en: "Macro data hotter"
+    default_direction: "uncertain"
+    targets:
+      - zh: "利率预期"
+        en: "Rate expectations"
+      - zh: "成长股"
+        en: "Growth"
+    why_it_matters_zh: "数据偏热可能推升利率预期，进而影响股债定价。"
+    why_it_matters_en: "Hotter data can lift rate expectations and shift equity/bond pricing."
+    triggers_zh:
+      - "如果下一次数据继续偏热 → 鹰派预期更强。"
+    triggers_en:
+      - "If the next print is also hot → hawkish expectations strengthen."
+    chain_zh: ["数据偏热", "利率预期上行", "成长股承压"]
+    chain_en: ["Hot data", "Higher rate expectations", "Growth pressure"]
+
+  macro_cool:
+    label_zh: "宏观数据降温"
+    label_en: "Macro data cooling"
+    default_direction: "bull"
+    targets:
+      - zh: "成长股"
+        en: "Growth"
+      - zh: "债券"
+        en: "Bonds"
+    why_it_matters_zh: "数据降温通常降低进一步收紧预期，缓解估值压力。"
+    why_it_matters_en: "Cooling data can reduce tightening expectations and ease valuation pressure."
+    triggers_zh:
+      - "如果通胀/就业继续降温 → 降息预期更容易升温。"
+    triggers_en:
+      - "If inflation/jobs keep cooling → cuts may get priced sooner."
+    chain_zh: ["数据降温", "政策压力减轻", "成长股/债券受益"]
+    chain_en: ["Cooling data", "Less policy pressure", "Growth/bonds benefit"]
+
+  commodities_oil_spike:
+    label_zh: "油价大波动"
+    label_en: "Oil spike"
+    default_direction: "uncertain"
+    targets:
+      - zh: "能源"
+        en: "Energy"
+      - zh: "航空/运输"
+        en: "Airlines / Transport"
+      - zh: "通胀预期"
+        en: "Inflation expectations"
+    why_it_matters_zh: "油价上行利好能源但可能压制航空运输，并影响通胀与政策。"
+    why_it_matters_en: "Higher oil helps energy but can hurt transport and shift inflation/policy expectations."
+    triggers_zh:
+      - "如果油价持续上行 → 能源更受益，运输更受压。"
+      - "如果迅速回落 → 影响可能减弱。"
+    triggers_en:
+      - "If oil stays elevated → energy benefits, transport faces pressure."
+      - "If it quickly reverses → impact may fade."
+    chain_zh: ["油价上行", "成本与通胀预期变化", "行业分化"]
+    chain_en: ["Oil up", "Cost/inflation shift", "Sector divergence"]
+
+  commodities_gold_move:
+    label_zh: "黄金/避险波动"
+    label_en: "Gold / safe-haven move"
+    default_direction: "uncertain"
+    targets:
+      - zh: "黄金"
+        en: "Gold"
+      - zh: "美元"
+        en: "USD"
+      - zh: "风险偏好"
+        en: "Risk appetite"
+    why_it_matters_zh: "黄金通常反映避险与利率/美元预期的综合作用。"
+    why_it_matters_en: "Gold reflects a mix of safe-haven demand and rates/USD expectations."
+    triggers_zh:
+      - "如果美元走强且利率上行 → 黄金可能承压。"
+      - "如果风险事件升温 → 黄金可能走强。"
+    triggers_en:
+      - "If USD strengthens and yields rise → gold may face headwinds."
+      - "If risk events intensify → gold may gain."
+    chain_zh: ["避险/利率预期变化", "黄金波动", "风险偏好调整"]
+    chain_en: ["Risk/rates shift", "Gold moves", "Risk appetite adjusts"]
+
+  earnings_beat_raise:
+    label_zh: "财报超预期/上修指引"
+    label_en: "Earnings beat / guidance raised"
+    default_direction: "bull"
+    targets:
+      - zh: "该公司"
+        en: "The company"
+      - zh: "供应链/同板块"
+        en: "Supply chain / peers"
+    why_it_matters_zh: "超预期与上修通常强化增长/盈利预期。"
+    why_it_matters_en: "Beats and raised guidance often strengthen growth/earnings expectations."
+    triggers_zh:
+      - "如果管理层强调需求强/订单强 → 逻辑更强。"
+      - "如果盘后反应强且延续 → 情绪可能继续。"
+    triggers_en:
+      - "If management emphasizes strong demand/orders → thesis strengthens."
+      - "If after-hours reaction holds → sentiment may persist."
+    chain_zh: ["财报/指引改善", "预期上修", "股价/同板块受益"]
+    chain_en: ["Better results/guidance", "Expectations up", "Stock/peers benefit"]
+
+  earnings_miss_cut:
+    label_zh: "财报不及预期/下修指引"
+    label_en: "Earnings miss / guidance cut"
+    default_direction: "bear"
+    targets:
+      - zh: "该公司"
+        en: "The company"
+      - zh: "同板块情绪"
+        en: "Sector sentiment"
+    why_it_matters_zh: "不及预期与下修会削弱增长/盈利预期。"
+    why_it_matters_en: "Misses and cuts weaken growth/earnings expectations."
+    triggers_zh:
+      - "如果下修原因是需求转弱 → 压力可能扩散到同板块。"
+    triggers_en:
+      - "If the cut is demand-driven → pressure may spill to peers."
+    chain_zh: ["财报走弱", "预期下修", "股价/同板块承压"]
+    chain_en: ["Weaker results", "Expectations down", "Stock/peers pressured"]
+
+  product_launch_major:
+    label_zh: "重要新产品发布"
+    label_en: "Major product launch"
+    default_direction: "uncertain"
+    targets:
+      - zh: "该公司"
+        en: "The company"
+      - zh: "竞争对手"
+        en: "Competitors"
+    why_it_matters_zh: "新产品可能改变竞争格局与需求预期。"
+    why_it_matters_en: "Launches can shift competitive dynamics and demand expectations."
+    triggers_zh:
+      - "如果订单/预售数据强 → 更偏利好。"
+      - "如果市场反应冷淡 → 影响可能有限。"
+    triggers_en:
+      - "If early demand looks strong → more bullish."
+      - "If reception is weak → impact may be limited."
+    chain_zh: ["产品发布", "需求/竞争预期变化", "公司与竞品分化"]
+    chain_en: ["Launch", "Demand/competition shift", "Company vs peers diverge"]
+
+  ipo_secondary:
+    label_zh: "IPO/再融资/增发"
+    label_en: "IPO / secondary offering"
+    default_direction: "uncertain"
+    targets:
+      - zh: "该公司"
+        en: "The company"
+      - zh: "同板块资金面"
+        en: "Sector liquidity"
+    why_it_matters_zh: "融资事件会影响供给、资金面与估值预期。"
+    why_it_matters_en: "Offerings affect supply, liquidity, and valuation expectations."
+    triggers_zh:
+      - "如果定价折价很大 → 短期可能承压。"
+      - "如果需求旺盛 → 影响可能较小。"
+    triggers_en:
+      - "If pricing is heavily discounted → short-term pressure."
+      - "If demand is strong → impact may be smaller."
+    chain_zh: ["融资供给增加", "资金面调整", "短期波动"]
+    chain_en: ["More supply", "Liquidity adjusts", "Short-term volatility"]
+
+  fda_positive:
+    label_zh: "FDA利好（批准/积极结论）"
+    label_en: "FDA positive"
+    default_direction: "bull"
+    targets:
+      - zh: "相关生物医药公司"
+        en: "Biotech name"
+      - zh: "竞品"
+        en: "Competitors"
+    why_it_matters_zh: "FDA结果直接影响产品商业化与估值预期。"
+    why_it_matters_en: "FDA outcomes directly impact commercialization and valuation expectations."
+    triggers_zh:
+      - "如果后续给出更明确的标签/适应症范围 → 影响更清晰。"
+    triggers_en:
+      - "If labeling/indication details are favorable → impact becomes clearer."
+    chain_zh: ["监管结论利好", "商业化预期提升", "股价受益"]
+    chain_en: ["Positive decision", "Commercial expectations up", "Stock benefits"]
+
+  fda_negative:
+    label_zh: "FDA利空（拒绝/负面结论）"
+    label_en: "FDA negative"
+    default_direction: "bear"
+    targets:
+      - zh: "相关生物医药公司"
+        en: "Biotech name"
+    why_it_matters_zh: "FDA负面结果会打击商业化与估值预期。"
+    why_it_matters_en: "Negative decisions hurt commercialization and valuation expectations."
+    triggers_zh:
+      - "如果公司宣布补充试验/重新申报计划 → 影响可能缓和。"
+    triggers_en:
+      - "If the company provides a clear resubmission path → impact may moderate."
+    chain_zh: ["监管结论不利", "商业化预期下调", "股价承压"]
+    chain_en: ["Negative decision", "Expectations down", "Stock pressured"]
+
+  crypto_regulation:
+    label_zh: "加密监管变化"
+    label_en: "Crypto regulation"
+    default_direction: "uncertain"
+    targets:
+      - zh: "BTC/ETH情绪"
+        en: "BTC/ETH sentiment"
+      - zh: "交易所/相关板块"
+        en: "Exchanges / crypto-related"
+    why_it_matters_zh: "监管变化会直接影响风险偏好与交易所运营预期。"
+    why_it_matters_en: "Regulation shifts can directly affect risk appetite and exchange expectations."
+    triggers_zh:
+      - "如果政策更明确、更偏宽松 → 更偏利好。"
+      - "如果执法升级/限制更严 → 更偏利空。"
+    triggers_en:
+      - "If clarity improves and is more permissive → more bullish."
+      - "If enforcement tightens → more bearish."
+    chain_zh: ["监管变化", "风险偏好调整", "BTC/ETH与相关板块波动"]
+    chain_en: ["Reg change", "Risk appetite shifts", "BTC/ETH & related move"]
+
+  crypto_exchange_incident:
+    label_zh: "交易所事故/限制提币"
+    label_en: "Exchange incident / withdrawals"
+    default_direction: "bear"
+    targets:
+      - zh: "短期风险偏好"
+        en: "Short-term risk appetite"
+      - zh: "BTC/ETH波动"
+        en: "BTC/ETH volatility"
+    why_it_matters_zh: "交易所异常会放大风险情绪并提高波动。"
+    why_it_matters_en: "Exchange incidents can amplify risk sentiment and volatility."
+    triggers_zh:
+      - "如果官方确认原因并快速恢复 → 压力可能缓解。"
+      - "如果出现连锁反应/更多平台受影响 → 风险上升。"
+    triggers_en:
+      - "If the issue is explained and resolved quickly → pressure may ease."
+      - "If contagion spreads → risk rises."
+    chain_zh: ["平台异常", "情绪转弱/波动增大", "短期风险事件驱动"]
+    chain_en: ["Incident", "Risk-off / volatility up", "Event-driven swings"]
+
+  crypto_security_hack:
+    label_zh: "加密安全事件（被盗/黑客）"
+    label_en: "Crypto security hack"
+    default_direction: "bear"
+    targets:
+      - zh: "风险偏好"
+        en: "Risk appetite"
+      - zh: "相关协议/平台"
+        en: "Affected protocol/platform"
+    why_it_matters_zh: "安全事件会损害信心并触发风险控制。"
+    why_it_matters_en: "Security incidents damage trust and trigger risk controls."
+    triggers_zh:
+      - "如果资金追回/赔付方案明确 → 压力可能缓解。"
+    triggers_en:
+      - "If recovery/compensation becomes clear → pressure may ease."
+    chain_zh: ["安全事件", "信心受损", "风险控制加强"]
+    chain_en: ["Hack", "Trust hit", "Risk controls tighten"]
+    

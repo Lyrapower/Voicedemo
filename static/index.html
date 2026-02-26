@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Voice MVP Phase 2</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; max-width: 860px; }
+    button { margin-right: 8px; margin-top: 8px; }
+    #plot { margin-top: 12px; max-width: 100%; border: 1px solid #ddd; display: none; }
+    .row { margin-top: 12px; }
+    .box { border: 1px solid #ddd; padding: 10px; margin-top: 10px; border-radius: 6px; }
+    code { background: #f4f4f4; padding: 2px 4px; }
+    .muted { color: #666; }
+    .error { color: #b00020; font-weight: 600; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; margin-right: 6px; }
+    .badge-ok { background: #e9f8ef; color: #0a7f2e; }
+    .badge-warn { background: #fff3e0; color: #8a5200; }
+    .kv { display: grid; grid-template-columns: 180px 1fr; gap: 4px 8px; font-size: 14px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { border: 1px solid #eee; padding: 6px; text-align: left; }
+    th { background: #fafafa; }
+  </style>
+</head>
+<body>
+  <h1>Behavior Optimization Voice MVP</h1>
+  <div class="row">intent_tag: <input id="intentTag" placeholder="optional intent tag" /></div>
+  <button id="start">Start</button>
+  <button id="stop" disabled>Stop</button>
+  <button id="analyze" disabled>Analyze</button>
+  <button id="neighbors" disabled>Find Similar Sessions</button>
+  <button id="predict" disabled>Predict</button>
+  <button id="happened" disabled>Happened</button>
+  <button id="notHappened" disabled>Not Happened</button>
+  <button id="refreshBaseline">Refresh Baseline</button>
+  <div class="row">recording_id: <code id="recordingId">-</code></div>
+  <p id="status" class="muted">Idle</p>
+  <img id="plot" alt="spectrogram" />
+  <div class="box"><strong>Baseline</strong><div id="baselineBox" class="muted">No data yet</div></div>
+  <div class="box"><strong>Feature Schema</strong><div id="schemaBox" class="muted">Loading...</div></div>
+  <div class="box"><strong>Analyze Features</strong><div id="featuresBox" class="muted">No data yet</div></div>
+  <div class="box"><strong>Neighbors</strong><div id="neighborsBox" class="muted">No data yet</div></div>
+  <div class="box"><strong>Predict</strong><div id="predictBox" class="muted">No data yet</div></div>
+  <div class="box"><strong>History</strong><div id="historyBox" class="muted">No data yet</div></div>
+
+  <script>
+    let mediaRecorder = null;
+    let chunks = [];
+    let recordingId = null;
+
+    const startBtn = document.getElementById("start");
+    const stopBtn = document.getElementById("stop");
+    const analyzeBtn = document.getElementById("analyze");
+    const neighborsBtn = document.getElementById("neighbors");
+    const predictBtn = document.getElementById("predict");
+    const happenedBtn = document.getElementById("happened");
+    const notHappenedBtn = document.getElementById("notHappened");
+    const refreshBaselineBtn = document.getElementById("refreshBaseline");
+    const intentTagInput = document.getElementById("intentTag");
+    const recordingIdEl = document.getElementById("recordingId");
+    const status = document.getElementById("status");
+    const plot = document.getElementById("plot");
+    const baselineBox = document.getElementById("baselineBox");
+    const schemaBox = document.getElementById("schemaBox");
+    const featuresBox = document.getElementById("featuresBox");
+    const neighborsBox = document.getElementById("neighborsBox");
+    const predictBox = document.getElementById("predictBox");
+    const historyBox = document.getElementById("historyBox");
+
+    function setStatus(msg, isError = false) {
+      status.textContent = msg;
+      status.className = isError ? "error" : "muted";
+    }
+
+    function renderError(el, msg) {
+      el.innerHTML = `<span class="error">${msg}</span>`;
+    }
+
+    function renderBaseline(data) {
+      baselineBox.innerHTML = `
+        <div class="kv">
+          <div>All-time baseline</div><div>${(data.all_time_baseline * 100).toFixed(1)}%</div>
+          <div>Last 7d baseline</div><div>${(data.last_7d_baseline * 100).toFixed(1)}%</div>
+          <div>Labeled samples</div><div>${data.labeled_count}</div>
+        </div>
+      `;
+    }
+
+    function renderFeatures(data) {
+      const f = data.features;
+      featuresBox.innerHTML = `
+        <div><span class="badge badge-ok">feature_version ${f.feature_version || "legacy"}</span></div>
+        <div class="kv">
+          <div>Duration</div><div>${f.duration_sec.toFixed(2)} s</div>
+          <div>Sample rate</div><div>${f.sample_rate} Hz</div>
+          <div>RMS</div><div>${f.rms.toFixed(4)}</div>
+          <div>Spectral centroid</div><div>${f.spectral_centroid.toFixed(2)}</div>
+          <div>Bandwidth</div><div>${f.spectral_bandwidth.toFixed(2)}</div>
+          <div>Rolloff</div><div>${f.spectral_rolloff.toFixed(2)}</div>
+          <div>ZCR</div><div>${f.zero_crossing_rate.toFixed(4)}</div>
+        </div>
+      `;
+    }
+
+    function renderSchema(data) {
+      const s = data.feature_schema;
+      schemaBox.innerHTML = `
+        <div><span class="badge badge-ok">${s.version}</span></div>
+        <div class="muted">${s.compatibility}</div>
+        <div class="muted">Fields: ${s.fields.join(", ")}</div>
+      `;
+    }
+
+    function renderNeighbors(data) {
+      if (!data.neighbors || data.neighbors.length === 0) {
+        neighborsBox.innerHTML = `<span class="badge badge-warn">Need more labeled data</span> ${data.message || ""}`;
+        return;
+      }
+      const rows = data.neighbors.map(n => `
+        <tr>
+          <td>${n.recording_id}</td>
+          <td>${n.similarity.toFixed(3)}</td>
+          <td>${n.outcome}</td>
+          <td>${n.intent_tag || "-"}</td>
+        </tr>
+      `).join("");
+      neighborsBox.innerHTML = `
+        <span class="badge badge-ok">Top ${data.neighbors.length} Similar Sessions</span>
+        <table><thead><tr><th>ID</th><th>Similarity</th><th>Outcome</th><th>Intent</th></tr></thead><tbody>${rows}</tbody></table>
+      `;
+    }
+
+    function renderPredict(data) {
+      if (data.status === "insufficient data") {
+        predictBox.innerHTML = `
+          <span class="badge badge-warn">Need more data</span>
+          <div>available ${data.available_samples}/${data.required_samples}</div>
+          <div class="muted">Prediction is intentionally disabled until minimum labeled samples are reached.</div>
+        `;
+        return;
+      }
+      const loo = data.guardrails && data.guardrails.loo_validation && data.guardrails.loo_validation.available
+        ? `${(data.guardrails.loo_validation.loo_accuracy * 100).toFixed(1)}%`
+        : "n/a";
+      const ci = data.guardrails && data.guardrails.bootstrap && data.guardrails.bootstrap.available
+        ? `${(data.guardrails.bootstrap.p_success_ci_90[0] * 100).toFixed(1)}% - ${(data.guardrails.bootstrap.p_success_ci_90[1] * 100).toFixed(1)}%`
+        : "n/a";
+      predictBox.innerHTML = `
+        <span class="badge badge-ok">Experimental</span>
+        <div class="kv">
+          <div>Success probability</div><div>${(data.p_success * 100).toFixed(1)}%</div>
+          <div>Neighbors used</div><div>${data.neighbors_used}</div>
+          <div>Method</div><div>${data.method}</div>
+          <div>LOO validation</div><div>${loo}</div>
+          <div>Bootstrap CI(90%)</div><div>${ci}</div>
+        </div>
+      `;
+    }
+
+    function renderHistory(data) {
+      if (!data.history || data.history.length === 0) {
+        historyBox.innerHTML = '<span class="muted">No analyzed history yet</span>';
+        return;
+      }
+      const rows = data.history.map(r => `
+        <tr>
+          <td>${r.recording_id}</td>
+          <td>${r.intent_tag || "-"}</td>
+          <td>${r.outcome || "-"}</td>
+          <td>${new Date(r.timestamp).toLocaleString()}</td>
+        </tr>
+      `).join("");
+      historyBox.innerHTML = `
+        <span class="badge badge-ok">Hit Rate ${(data.hit_rate * 100).toFixed(1)}%</span>
+        <table><thead><tr><th>ID</th><th>Intent</th><th>Outcome</th><th>Time</th></tr></thead><tbody>${rows}</tbody></table>
+      `;
+    }
+
+    function setOutcomeEnabled(enabled) {
+      happenedBtn.disabled = !enabled;
+      notHappenedBtn.disabled = !enabled;
+    }
+
+    function audioBufferToWavBlob(audioBuffer) {
+      const channelData = audioBuffer.getChannelData(0);
+      const sampleRate = audioBuffer.sampleRate;
+      const bytesPerSample = 2;
+      const blockAlign = bytesPerSample;
+      const byteRate = sampleRate * blockAlign;
+      const dataSize = channelData.length * bytesPerSample;
+      const buffer = new ArrayBuffer(44 + dataSize);
+      const view = new DataView(buffer);
+
+      function writeString(offset, str) {
+        for (let i = 0; i < str.length; i += 1) {
+          view.setUint8(offset + i, str.charCodeAt(i));
+        }
+      }
+
+      writeString(0, "RIFF");
+      view.setUint32(4, 36 + dataSize, true);
+      writeString(8, "WAVE");
+      writeString(12, "fmt ");
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, byteRate, true);
+      view.setUint16(32, blockAlign, true);
+      view.setUint16(34, 16, true);
+      writeString(36, "data");
+      view.setUint32(40, dataSize, true);
+
+      let offset = 44;
+      for (let i = 0; i < channelData.length; i += 1) {
+        const s = Math.max(-1, Math.min(1, channelData[i]));
+        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        offset += 2;
+      }
+      return new Blob([view], { type: "audio/wav" });
+    }
+
+    async function blobToWavBlob(blob) {
+      const context = new (window.AudioContext || window.webkitAudioContext)();
+      const arrayBuffer = await blob.arrayBuffer();
+      const decoded = await context.decodeAudioData(arrayBuffer);
+      const wavBlob = audioBufferToWavBlob(decoded);
+      await context.close();
+      return wavBlob;
+    }
+
+    startBtn.onclick = async () => {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      chunks = [];
+      mediaRecorder.ondataavailable = (event) => chunks.push(event.data);
+      mediaRecorder.onstop = async () => {
+        setStatus("Processing audio...");
+        const blob = new Blob(chunks, { type: "audio/webm" });
+        let uploadBlob = blob;
+        try {
+          uploadBlob = await blobToWavBlob(blob);
+        } catch (e) {
+          // If WAV conversion fails, keep original blob as fallback.
+        }
+        const res = await fetch("/upload", {
+          method: "POST",
+          headers: {
+            "Content-Type": uploadBlob.type || "audio/webm",
+            "x-intent-tag": intentTagInput.value || ""
+          },
+          body: uploadBlob
+        });
+        const data = await res.json();
+        if (data.ok) {
+          recordingId = data.recording_id;
+          recordingIdEl.textContent = recordingId;
+          analyzeBtn.disabled = false;
+          neighborsBtn.disabled = true;
+          predictBtn.disabled = true;
+          setOutcomeEnabled(false);
+          featuresBox.innerHTML = '<span class="muted">Waiting for analyze...</span>';
+          neighborsBox.innerHTML = '<span class="muted">Waiting for analyze...</span>';
+          predictBox.innerHTML = '<span class="muted">Waiting for analyze...</span>';
+          setStatus("Upload ok");
+          await refreshHistory();
+        } else {
+          setStatus(data.detail || "Upload failed", true);
+        }
+      };
+      mediaRecorder.start();
+      setStatus("Recording...");
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      setTimeout(() => {
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+          mediaRecorder.stop();
+          setStatus("Stopped at 30s");
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+        }
+      }, 30000);
+    };
+
+    stopBtn.onclick = () => {
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+      }
+      setStatus("Stopped");
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    };
+
+    analyzeBtn.onclick = async () => {
+      if (!recordingId) return;
+      const res = await fetch("/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recording_id: recordingId })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        plot.src = data.png_url + "?t=" + Date.now();
+        plot.style.display = "block";
+        renderFeatures(data);
+        neighborsBtn.disabled = false;
+        predictBtn.disabled = false;
+        setOutcomeEnabled(true);
+        setStatus("Analyze ok");
+        await refreshHistory();
+        await refreshBaseline();
+      } else {
+        renderError(featuresBox, data.detail || "Analyze failed");
+        setStatus(data.detail || "Analyze failed", true);
+      }
+    };
+
+    async function sendOutcome(happened) {
+      if (!recordingId) return;
+      const res = await fetch("/outcome", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recording_id: recordingId, happened })
+      });
+      const data = await res.json();
+      setStatus(data.ok ? "Outcome saved" : (data.detail || "Outcome failed"), !data.ok);
+      await refreshHistory();
+      await refreshBaseline();
+    }
+
+    async function refreshBaseline() {
+      const res = await fetch("/baseline");
+      const data = await res.json();
+      if (!res.ok || !data.ok) return renderError(baselineBox, data.detail || "Baseline failed");
+      renderBaseline(data);
+    }
+
+    async function refreshHistory() {
+      const res = await fetch("/history?limit=5");
+      const data = await res.json();
+      if (!res.ok || !data.ok) return renderError(historyBox, data.detail || "History failed");
+      renderHistory(data);
+    }
+
+    async function refreshSchema() {
+      const res = await fetch("/features/schema");
+      const data = await res.json();
+      if (!res.ok || !data.ok) return renderError(schemaBox, data.detail || "Schema failed");
+      renderSchema(data);
+    }
+
+    neighborsBtn.onclick = async () => {
+      if (!recordingId) return;
+      const res = await fetch("/neighbors?recording_id=" + encodeURIComponent(recordingId) + "&k=5");
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        renderError(neighborsBox, data.detail || "Neighbors failed");
+        return setStatus(data.detail || "Neighbors failed", true);
+      }
+      renderNeighbors(data);
+      setStatus("Neighbors ready");
+    };
+
+    predictBtn.onclick = async () => {
+      if (!recordingId) return;
+      const res = await fetch("/predict?recording_id=" + encodeURIComponent(recordingId));
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        renderError(predictBox, data.detail || "Predict failed");
+        return setStatus(data.detail || "Predict failed", true);
+      }
+      renderPredict(data);
+      setStatus("Predict ready");
+    };
+
+    refreshBaselineBtn.onclick = refreshBaseline;
+    happenedBtn.onclick = () => sendOutcome(true);
+    notHappenedBtn.onclick = () => sendOutcome(false);
+    refreshSchema();
+    refreshBaseline();
+    refreshHistory();
+  </script>
+</body>
+</html>

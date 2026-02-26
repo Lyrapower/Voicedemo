@@ -1,0 +1,111 @@
+version: 1
+# scoring_config.yml
+# Purpose:
+# - Deterministic scoring to rank events and decide: Top3, alerting, trust level
+# - UI NEVER shows raw numbers; UI shows High/Med/Low only.
+
+dedupe:
+  # fast pre-dedupe using normalized title + entity hash in window
+  time_bucket_hours: 12
+  # semantic dedupe using embeddings cosine similarity
+  embedding_similarity_threshold: 0.88
+  # max items to compare per new item (performance guard)
+  max_candidates_compare: 50
+
+ranking:
+  # overall score used for ordering: higher is more important
+  weights:
+    impact: 0.55
+    relevance: 0.35
+    trust: 0.10
+  # Top3 selection must be stable and not spammy
+  top3_max: 3
+  radar_cards_max_default: 8
+
+impact:
+  # event breadth boosts macro / policy above single-company minor news
+  breadth_scores:
+    macro: 1.0
+    policy: 0.9
+    sector: 0.7
+    single_stock: 0.5
+    crypto_market: 0.7
+  # default intensity by event_type (can be tuned)
+  base_intensity:
+    rates_hawkish: 0.9
+    rates_dovish: 0.85
+    geopolitics_escalation: 0.9
+    tariffs_trade: 0.75
+    macro_hot: 0.7
+    macro_cool: 0.65
+    commodities_oil_spike: 0.7
+    commodities_gold_move: 0.6
+    earnings_beat_raise: 0.65
+    earnings_miss_cut: 0.7
+    product_launch_major: 0.55
+    ipo_secondary: 0.55
+    fda_positive: 0.8
+    fda_negative: 0.85
+    crypto_regulation: 0.75
+    crypto_exchange_incident: 0.8
+    crypto_security_hack: 0.85
+  # time decay (keep feed calm)
+  half_life_hours: 24
+
+relevance:
+  # rule-based relevance only
+  weights:
+    watchlist_hit: 1.0
+    theme_hit: 0.6
+    crypto_toggle_hit: 0.6
+    macro_pref_hit: 0.3
+  # if watchlist hit, boost strongly
+  watchlist_boost: 1.0
+  # maximum relevance cap
+  cap: 1.0
+
+trust:
+  # trust level is evidence quality, not "model confidence"
+  source_authority:
+    official: 1.0
+    regulator: 1.0
+    company_filing: 1.0
+    tier1_media: 0.8
+    other_media: 0.6
+    anonymous: 0.2
+  multi_source_bonus: 0.15
+  contradiction_penalty: 0.25
+  rumor_penalty: 0.2
+  min_sources_for_high: 2
+
+trust_level_thresholds:
+  high: 0.75
+  medium: 0.45
+
+alerts:
+  enabled: true
+  max_per_day: 3
+  # require both importance and relevance
+  min_overall_score: 0.65
+  min_relevance: 0.5
+  quiet_hours:
+    start: "21:00"
+    end: "06:00"
+
+rendering:
+  # enforce human language length for 5yo/80yo
+  max_chars_per_line_en: 90
+  max_chars_per_line_zh: 45
+  # forbid these tokens in default UI output
+  banned_tokens_default_ui:
+    - "JSON"
+    - "schema"
+    - "timestamp"
+    - "NER"
+    - "zscore"
+    - "open interest"
+    - "OI"
+    - "IV"
+    - "gamma"
+    - "delta"
+    

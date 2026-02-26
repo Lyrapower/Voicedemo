@@ -1,0 +1,38 @@
+# Env and secrets
+.env
+.env.local
+*.pem
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.mplconfig/
+
+# Data and runtime
+data/*.sqlite3
+data/*.db
+uploads/
+*.wav
+
+# Generated / temp (keep assets/screenshots and docs in repo)
+generated/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# iOS / Xcode (user-specific)
+ios-wrapper/**/xcuserdata/
+*.xcuserstate
+*.moved-aside
+
+# Logs
+*.log
+quick_recap_log.json

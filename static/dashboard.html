@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RadarBrief</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      color: #f5f7fb;
+      background: radial-gradient(120% 80% at 50% -10%, #2f4f90 0%, #121723 38%, #07090f 74%, #040507 100%);
+      letter-spacing: 0.1px;
+    }
+    .screen {
+      width: min(980px, 100%);
+      margin: 0 auto;
+      min-height: 100vh;
+      padding: 20px 22px 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 18px;
+    }
+    .frost {
+      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+      border: 1px solid rgba(255,255,255,0.11);
+      border-radius: 24px;
+      backdrop-filter: blur(18px);
+      box-shadow: 0 20px 70px rgba(0,0,0,0.45);
+    }
+    .soft { color: rgba(245, 247, 252, 0.68); }
+    .tiny { font-size: 13px; }
+    .hidden { display: none !important; }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 6px 4px; }
+    .brand-icon { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(160deg, #d3dcf7, #516fb0); }
+    .brand-name { font-size: 34px; line-height: 1.02; font-weight: 700; letter-spacing: 0.1px; margin: 0; }
+    .hero-title { font-size: clamp(54px, 11vw, 108px); line-height: 0.96; margin: 0; font-weight: 700; }
+    .hero-sub { margin-top: 14px; font-size: clamp(22px, 3.8vw, 36px); line-height: 1.25; max-width: 670px; color: rgba(245, 247, 252, 0.86); }
+    .landing-bottom { display: grid; gap: 14px; }
+    .landing-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .pill-btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 17px 24px;
+      font-size: 28px;
+      font-weight: 650;
+      letter-spacing: 0.2px;
+      cursor: pointer;
+      transition: transform .15s ease, opacity .15s ease;
+    }
+    .pill-btn:active { transform: translateY(1px) scale(0.995); }
+    .pill-primary { background: linear-gradient(180deg, #f0f3ff, #cfd9fb); color: #111827; }
+    .pill-ghost { background: rgba(255,255,255,0.12); color: #f5f7fb; border: 1px solid rgba(255,255,255,0.22); }
+
+    .app-shell { min-height: 100vh; }
+    .top-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .page-tabs { display: flex; gap: 8px; align-items: center; padding: 4px; border-radius: 999px; background: rgba(255,255,255,0.08); }
+    .tab {
+      border: 0;
+      border-radius: 999px;
+      color: rgba(245,247,252,0.88);
+      background: transparent;
+      padding: 9px 16px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 560;
+    }
+    .tab.active { background: rgba(255,255,255,0.92); color: #0f172a; }
+
+    .mode-chip {
+      display: inline-flex;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.24);
+      background: rgba(255,255,255,0.08);
+      padding: 2px;
+      gap: 2px;
+    }
+    .mode-chip button {
+      border: 0;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      color: rgba(245,247,252,0.88);
+      background: transparent;
+      cursor: pointer;
+    }
+    .mode-chip button.active { background: rgba(255,255,255,0.95); color: #0f172a; font-weight: 600; }
+
+    .page { display: none; }
+    .page.active { display: block; }
+    .today-title { margin: 0; font-size: clamp(46px, 8vw, 72px); line-height: 0.95; }
+    .main-card { padding: 20px; margin-top: 12px; }
+    .mood-line { font-size: 18px; color: rgba(245,247,252,0.92); margin: 0 0 14px; }
+    .top3-item {
+      margin-bottom: 10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.09);
+    }
+    .top3-item .l1 { font-size: 16px; line-height: 1.25; }
+    .top3-item .l2 { font-size: 14px; line-height: 1.2; color: rgba(245,247,252,0.72); margin-top: 4px; }
+    .play-brief-big {
+      margin-top: 14px;
+      width: 100%;
+      border: 0;
+      border-radius: 999px;
+      padding: 16px 20px;
+      font-size: 22px;
+      font-weight: 640;
+      cursor: pointer;
+      color: #101828;
+      background: linear-gradient(180deg, #f2f4fa, #d6def7);
+    }
+    details {
+      margin-top: 10px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 9px 12px;
+    }
+    summary { cursor: pointer; font-size: 13px; color: rgba(245,247,252,0.85); }
+    .detail-text { margin-top: 8px; font-size: 13px; line-height: 1.5; color: rgba(245,247,252,0.75); }
+
+    .brief-card, .settings-card { padding: 20px; margin-top: 12px; }
+    .event-card {
+      margin-top: 10px;
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.09);
+    }
+    .event-line { font-size: 13px; line-height: 1.35; margin: 3px 0; color: rgba(245,247,252,0.92); }
+    .event-line.soft { color: rgba(245,247,252,0.72); }
+    .bar-wrap {
+      height: 6px;
+      width: 120px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+      overflow: hidden;
+      display: inline-block;
+      vertical-align: middle;
+      margin: 0 6px;
+    }
+    .bar-fill { height: 100%; background: linear-gradient(90deg, #88a8ff, #d8e1ff); }
+    .section-title { margin: 0 0 12px; font-size: 34px; line-height: 1; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .small-pill {
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(255,255,255,0.08);
+      color: #f5f7fb;
+      padding: 8px 12px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .small-pill.primary {
+      color: #101828;
+      border-color: transparent;
+      background: linear-gradient(180deg, #f2f4fa, #d6def7);
+      font-weight: 600;
+    }
+    .select, .text-input {
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(9,12,19,0.55);
+      color: #f5f7fb;
+      padding: 9px 12px;
+      font-size: 14px;
+    }
+    .script-box {
+      margin-top: 10px;
+      width: 100%;
+      min-height: 220px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.02);
+      color: #f5f7fb;
+      padding: 12px;
+      font-size: 14px;
+      line-height: 1.45;
+      resize: none;
+    }
+    .field { margin: 10px 0 12px; }
+    .field label { display: block; font-size: 13px; color: rgba(245,247,252,0.72); margin-bottom: 6px; }
+    .status { font-size: 12px; color: rgba(245,247,252,0.7); min-height: 16px; }
+    @media (max-width: 680px) {
+      .landing-actions { grid-template-columns: 1fr; }
+      .pill-btn { font-size: 24px; }
+      .section-title { font-size: 30px; }
+      .screen { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <section id="landing" class="screen">
+    <div>
+      <div class="brand">
+        <div class="brand-icon"></div>
+        <div>
+          <div style="font-size:26px;font-weight:650;line-height:1;">RadarBrief</div>
+          <div class="soft tiny">Quiet focus, clearer moves</div>
+        </div>
+      </div>
+
+      <div style="margin-top:38px;">
+        <h1 id="landingTitle" class="hero-title">Welcome to<br/>RadarBrief</h1>
+        <div id="landingSub" class="hero-sub">A calm AI market workspace.<br/>One screen. Three key moves.</div>
+      </div>
+    </div>
+
+    <div class="landing-bottom">
+      <div id="landingLangHint" class="soft" style="text-align:center;font-size:14px;">Choose your language</div>
+      <div class="landing-actions">
+        <button id="startBtn" class="pill-btn pill-ghost">Start</button>
+        <button id="langBtn" class="pill-btn pill-primary">中文 / English</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="app" class="screen app-shell hidden">
+    <div>
+      <div class="top-row">
+        <div class="page-tabs frost">
+          <button id="tabRadar" class="tab active">Radar</button>
+          <button id="tabBrief" class="tab">Brief</button>
+          <button id="tabSettings" class="tab">Settings</button>
+        </div>
+        <div class="mode-chip">
+          <button id="modePreview" class="active">Preview</button>
+          <button id="modeTier1">Tier1</button>
+          <button id="modeTier2">Tier2</button>
+        </div>
+      </div>
+
+      <section id="pageRadar" class="page active">
+        <h1 id="todayTitle" class="today-title">Today</h1>
+        <div class="main-card frost">
+          <p id="moodLine" class="mood-line">Quiet open. Watch for clean direction.</p>
+          <div id="top3Box"></div>
+          <button id="playFromRadar" class="play-brief-big">Play Brief</button>
+          <details>
+            <summary id="detailsLabel">Details</summary>
+            <div class="detail-text">
+              <div id="detailTrust">Trust: Low</div>
+              <div id="detailSources">Sources: 0</div>
+              <div id="detailWatchlist">Watchlist: -</div>
+              <div id="detailTriggers">Triggers: -</div>
+              <div id="detailMore">More: Source not connected</div>
+            </div>
+          </details>
+          <details id="moreFold">
+            <summary id="moreLabel">More (0)</summary>
+            <div id="eventsMore"></div>
+          </details>
+          <div id="tier2Pro" class="hidden" style="margin-top:10px;">
+            <div class="event-card">
+              <div class="event-line"><strong id="setupTitle">Tomorrow Setup</strong></div>
+              <div id="setupBody" class="event-line soft">Data insufficient, no setup.</div>
+            </div>
+            <div class="event-card">
+              <div class="event-line"><strong id="flowTitle">Pro Flow Cards</strong></div>
+              <div id="flowBody" class="event-line soft">Source not connected</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="pageBrief" class="page">
+        <div class="brief-card frost">
+          <h2 class="section-title">Brief</h2>
+          <div class="row">
+            <button id="genBrief" class="small-pill">Generate</button>
+            <button id="playBrief" class="small-pill primary">Play voice brief</button>
+            <select id="briefType" class="select">
+              <option value="premarket">Pre-market</option>
+              <option value="overnight">Overnight</option>
+              <option value="quick">Quick Recap</option>
+              <option value="setup">Tomorrow Setup</option>
+            </select>
+            <select id="briefLang" class="select">
+              <option>Chinese</option>
+              <option>English</option>
+            </select>
+            <select id="briefDuration" class="select">
+              <option value="1">1 min</option>
+              <option value="3">3 min</option>
+              <option value="5" selected>5 min</option>
+              <option value="7">7 min</option>
+            </select>
+            <button id="quickRecap" class="small-pill">Quick Recap</button>
+          </div>
+          <textarea id="briefScript" class="script-box" placeholder="Brief appears here."></textarea>
+          <div id="briefStatus" class="status"></div>
+        </div>
+      </section>
+
+      <section id="pageSettings" class="page">
+        <div class="settings-card frost">
+          <h2 class="section-title">Settings</h2>
+          <div class="field">
+            <label>Watchlist</label>
+            <input id="watchInput" class="text-input" type="text" placeholder="SPY, QQQ, BTC, ETH" />
+          </div>
+          <div class="field">
+            <label><input id="cryptoToggle" type="checkbox" /> Crypto toggle (BTC/ETH priority)</label>
+          </div>
+          <div class="field">
+            <label>Language</label>
+            <select id="languageSel" class="select">
+              <option>Chinese</option>
+              <option>English</option>
+            </select>
+          </div>
+          <div class="field">
+            <label id="restoreLabel">Restore Purchases / Manage Subscription</label>
+            <div class="row">
+              <button id="restoreBtn" class="small-pill">Restore Purchases</button>
+              <button id="manageBtn" class="small-pill">Manage Subscription</button>
+            </div>
+          </div>
+          <div class="row">
+            <button id="saveSettings" class="small-pill primary">Save</button>
+            <div id="saveMsg" class="status"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div class="status" id="globalStatus"></div>
+    <audio id="voicePlayer" preload="auto"></audio>
+  </section>
+
+  <script>
+    const dict = {
+      English: {
+        chooseLang: "Choose your language",
+        welcome: "Welcome to<br/>RadarBrief",
+        sub: "A calm AI market workspace.<br/>One screen. Three key moves.",
+        today: "Today",
+        details: "Details",
+        more: "More",
+        trust: "Trust",
+        sources: "Sources",
+        watchlist: "Watchlist",
+        triggers: "Triggers",
+        start: "Start",
+        radar: "Radar",
+        brief: "Brief",
+        settings: "Settings",
+        generate: "Generate",
+        playVoice: "Play voice brief",
+        quickRecap: "Quick Recap",
+        save: "Save",
+        restore: "Restore Purchases",
+        manage: "Manage Subscription",
+      },
+      Chinese: {
+        chooseLang: "选择你的语言",
+        welcome: "欢迎来到<br/>RadarBrief",
+        sub: "安静、清晰的市场助手。<br/>一屏看懂今天重点。",
+        today: "今日",
+        details: "详情",
+        more: "更多",
+        trust: "可信度",
+        sources: "来源数",
+        watchlist: "观察名单",
+        triggers: "触发条件",
+        start: "开始",
+        radar: "雷达",
+        brief: "简报",
+        settings: "设置",
+        generate: "生成",
+        playVoice: "播放语音简报",
+        quickRecap: "快速快报",
+        save: "保存",
+        restore: "恢复购买",
+        manage: "管理订阅",
+      },
+    };
+    const state = { mode: "Preview", page: "Radar", language: "English", snapshot: null, script: "", audioUrl: "" };
+    const $ = (id) => document.getElementById(id);
+
+    async function api(url, opts) {
+      const res = await fetch(url, opts);
+      if (!res.ok) throw new Error("Request failed");
+      return res.json();
+    }
+
+    function setLandingLanguage() {
+      const cn = state.language === "Chinese";
+      const t = dict[state.language];
+      $("landingLangHint").textContent = t.chooseLang;
+      $("landingTitle").innerHTML = t.welcome;
+      $("landingSub").innerHTML = t.sub;
+      $("todayTitle").textContent = t.today;
+      $("detailsLabel").textContent = t.details;
+      $("tabRadar").textContent = t.radar;
+      $("tabBrief").textContent = t.brief;
+      $("tabSettings").textContent = t.settings;
+      $("startBtn").textContent = t.start;
+      $("genBrief").textContent = t.generate;
+      $("playBrief").textContent = t.playVoice;
+      $("playFromRadar").textContent = t.playVoice;
+      $("quickRecap").textContent = t.quickRecap;
+      $("saveSettings").textContent = t.save;
+      $("restoreBtn").textContent = t.restore;
+      $("manageBtn").textContent = t.manage;
+    }
+
+    function setMode(mode) {
+      state.mode = mode;
+      $("modePreview").classList.toggle("active", mode === "Preview");
+      $("modeTier1").classList.toggle("active", mode === "Tier1");
+      $("modeTier2").classList.toggle("active", mode === "Tier2");
+      loadRadar();
+    }
+
+    function setPage(page) {
+      state.page = page;
+      $("tabRadar").classList.toggle("active", page === "Radar");
+      $("tabBrief").classList.toggle("active", page === "Brief");
+      $("tabSettings").classList.toggle("active", page === "Settings");
+      $("pageRadar").classList.toggle("active", page === "Radar");
+      $("pageBrief").classList.toggle("active", page === "Brief");
+      $("pageSettings").classList.toggle("active", page === "Settings");
+      if (page === "Settings") loadSettings();
+    }
+
+    function renderTop3(top3) {
+      const host = $("top3Box");
+      host.innerHTML = "";
+      for (let i = 0; i < 3; i++) {
+        const item = top3[i] || { what_happened: "Source not connected", why_you: "Because you watch this." };
+        const node = document.createElement("div");
+        node.className = "top3-item";
+        node.innerHTML = `
+          <div class="l1">${i + 1}. ${item.what_happened || "Source not connected"}</div>
+          <div class="l2">${item.why_you || "Because you watch this."}</div>
+        `;
+        host.appendChild(node);
+      }
+    }
+
+    function renderEventCards(cards) {
+      const host = $("eventsMore");
+      host.innerHTML = "";
+      cards.forEach((c) => {
+        const wrap = document.createElement("div");
+        wrap.className = "event-card";
+        const strength = Number(c.strength || 0);
+        const conf = Number(c.confidence || 0);
+        wrap.innerHTML = `
+          <div class="event-line"><strong>${c.title || "Source not connected"}</strong></div>
+          <div class="event-line soft">${c.direction || "uncertain"} · <span class="bar-wrap"><span class="bar-fill" style="width:${Math.max(0, Math.min(100, strength))}%"></span></span> ${strength}/100 · confidence ${conf}/100</div>
+          <div class="event-line soft">${c.why_you || ""}</div>
+          <div class="event-line soft">${c.next_step || ""}</div>
+          <div class="event-line soft">${c.meta_line || ""}</div>
+          <details>
+            <summary>${dict[state.language].details}</summary>
+            <div class="detail-text">${((c.details||{}).evidence_bullets || []).map((x) => `<div>- ${x}</div>`).join("")}</div>
+            <div class="detail-text">${((c.details||{}).chain_3_nodes || []).join(" -> ")}</div>
+            <div class="detail-text">${((c.details||{}).source_links || []).map((s) => `<div><a href="${s.url}" target="_blank" rel="noopener">${s.label || "source"}</a></div>`).join("")}</div>
+          </details>
+        `;
+        host.appendChild(wrap);
+      });
+    }
+
+    function renderTier2Pro(pro) {
+      const show = state.mode === "Tier2";
+      $("tier2Pro").classList.toggle("hidden", !show);
+      if (!show) return;
+      const setup = (pro || {}).tomorrow_setup || {};
+      const flow = (pro || {}).options_activity || {};
+      const sec = (pro || {}).sec_radar || {};
+      $("setupBody").textContent =
+        `Mood: ${setup.mood || "Event-driven"} · Base: ${(setup.base_case || []).slice(0,3).join(" / ")} · Alt: ${(setup.alt_case || []).slice(0,2).join(" / ")} · Triggers: ${(setup.triggers || []).slice(0,3).join(" | ")} · Guardrail: ${setup.guardrail || "Data insufficient, no setup."}`;
+      const flowLine = flow.cards && flow.cards[0]
+        ? `${flow.cards[0].title} · ${flow.cards[0].meta_line} · ${flow.cards[0].next_step}`
+        : (flow.status || "Source not connected");
+      const secLine = (sec.cards || []).length
+        ? `SEC filings: ${(sec.cards || []).slice(0,2).map((x) => x.title).join(" | ")}`
+        : "SEC filings source not connected";
+      $("flowBody").textContent = `${flowLine} · ${secLine}`;
+    }
+
+    async function loadRadar() {
+      $("globalStatus").textContent = "Loading...";
+      try {
+        const payload = await api(`/radarbrief/state?mode=${encodeURIComponent(state.mode)}`);
+        state.snapshot = payload;
+        state.language = payload.language || state.language;
+        const snap = payload.today_snapshot || {};
+        $("moodLine").textContent = snap.mood_sentence || "Mixed day. Stay patient.";
+        renderTop3(snap.top3 || []);
+        $("detailTrust").textContent = `${dict[state.language].trust}: ${snap.trust_level || "Low"}`;
+        $("detailSources").textContent = `${dict[state.language].sources}: ${snap.source_count || 0}`;
+        $("detailWatchlist").textContent = `${dict[state.language].watchlist}: ${(snap.watchlist || []).join(", ") || "-"}`;
+        $("detailTriggers").textContent = `${dict[state.language].triggers}: ${(snap.triggers || []).join(" | ") || "-"}`;
+        const moreText = (payload.connection_plain_notes || []).slice(0, 2).join(" | ") || "Live feeds connected.";
+        $("detailMore").textContent = `${dict[state.language].more}: ${moreText}`;
+        const moreCount = Number(snap.more_count || 0);
+        $("moreLabel").textContent = `${dict[state.language].more} (${moreCount})`;
+        renderEventCards((payload.event_cards || []).slice(3, 8));
+        renderTier2Pro(payload.pro_strip || {});
+        setLandingLanguage();
+        $("globalStatus").textContent = "Ready";
+      } catch (e) {
+        $("globalStatus").textContent = "Source not connected";
+      }
+    }
+
+    async function loadSettings() {
+      try {
+        const s = await api("/radarbrief/settings");
+        $("watchInput").value = (s.watchlist || []).join(", ");
+        $("cryptoToggle").checked = !!s.crypto_toggle;
+        $("languageSel").value = s.language || "English";
+        $("briefLang").value = s.language || "English";
+      } catch (e) {
+        $("saveMsg").textContent = "Source not connected";
+      }
+    }
+
+    async function saveSettings() {
+      const watchlist = $("watchInput").value.split(",").map((x) => x.trim().toUpperCase()).filter(Boolean);
+      try {
+        await api("/radarbrief/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            watchlist: watchlist.length ? watchlist : ["SPY", "QQQ", "BTC", "ETH"],
+            crypto_toggle: $("cryptoToggle").checked,
+            language: $("languageSel").value,
+          }),
+        });
+        state.language = $("languageSel").value;
+        setLandingLanguage();
+        $("saveMsg").textContent = "Saved";
+        loadRadar();
+      } catch (e) {
+        $("saveMsg").textContent = "Could not save";
+      }
+    }
+
+    async function generateBrief(quickRecap) {
+      $("briefStatus").textContent = "Generating...";
+      const payload = await api("/radarbrief/brief", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: state.mode,
+          language: $("briefLang").value,
+          duration_min: Number($("briefDuration").value),
+          quick_recap: !!quickRecap,
+          brief_type: $("briefType").value,
+        }),
+      });
+      if (!payload.ok) {
+        $("briefScript").value = payload.message || "Could not generate";
+        state.script = "";
+        $("briefStatus").textContent = payload.message || "Not ready";
+        return;
+      }
+      state.script = payload.script || "";
+      $("briefScript").value = state.script;
+      $("briefStatus").textContent = "Ready to play";
+    }
+
+    async function playVoiceOneClick() {
+      if (!state.script) await generateBrief(false);
+      const text = state.script || $("briefScript").value.trim();
+      if (!text) {
+        $("briefStatus").textContent = "No brief yet";
+        return;
+      }
+      $("briefStatus").textContent = "Preparing voice...";
+      const tts = await api("/radarbrief/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, language: $("briefLang").value }),
+      });
+      if (!tts.ok || !tts.audio_url) {
+        $("briefStatus").textContent = "Voice not connected";
+        return;
+      }
+      state.audioUrl = tts.audio_url;
+      const player = $("voicePlayer");
+      player.src = `${state.audioUrl}?t=${Date.now()}`;
+      player.play().catch(() => {});
+      $("briefStatus").textContent = "Playing";
+    }
+
+    $("langBtn").onclick = () => {
+      state.language = state.language === "Chinese" ? "English" : "Chinese";
+      setLandingLanguage();
+    };
+    $("startBtn").onclick = () => {
+      $("landing").classList.add("hidden");
+      $("app").classList.remove("hidden");
+      loadSettings();
+      loadRadar();
+    };
+    $("tabRadar").onclick = () => setPage("Radar");
+    $("tabBrief").onclick = () => setPage("Brief");
+    $("tabSettings").onclick = () => setPage("Settings");
+    $("modePreview").onclick = () => setMode("Preview");
+    $("modeTier1").onclick = () => setMode("Tier1");
+    $("modeTier2").onclick = () => setMode("Tier2");
+    $("saveSettings").onclick = saveSettings;
+    $("genBrief").onclick = () => generateBrief(false).catch(() => $("briefStatus").textContent = "Could not generate");
+    $("quickRecap").onclick = () => generateBrief(true).catch(() => $("briefStatus").textContent = "Quick recap failed");
+    $("playBrief").onclick = () => playVoiceOneClick().catch(() => $("briefStatus").textContent = "Voice not connected");
+    $("playFromRadar").onclick = () => {
+      setPage("Brief");
+      playVoiceOneClick().catch(() => $("briefStatus").textContent = "Voice not connected");
+    };
+    $("restoreBtn").onclick = () => $("saveMsg").textContent = "Restore ready (placeholder)";
+    $("manageBtn").onclick = () => window.open("https://apps.apple.com/account/subscriptions", "_blank");
+    if ((navigator.language || "").toLowerCase().startsWith("zh")) state.language = "Chinese";
+    setLandingLanguage();
+  </script>
+</body>
+</html>
