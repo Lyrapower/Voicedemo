@@ -1,7 +1,9 @@
-# Sound Lab (internal) · Garden (user-facing) — live particle audio UI
+# Garden (Sound-Lab internal) — live particle audio UI
 
 **Status:** Phase-1 prototype spec  
-**Last updated:** 2026-04-27
+**Last updated:** 2026-04-28
+
+*Spec drafted 2026-04-27.*
 
 ---
 
@@ -19,13 +21,14 @@
 
 - **three.js** r165 (vanilla TypeScript, no React)
 - **lil-gui** (parameter sliders)
-- **Vite** + **pnpm** (package manager and dev/build)
+- **Vite** + **npm** (dev server; `scripts/start_sound_lab.sh` uses `npm` + `npx vite`)
+- **Aster Router** (`repo/`, port **8787**) reverse-proxies browser traffic to Vite (**5173**) so **`http://127.0.0.1:8787/`** serves the particle UI.
 
 ---
 
 ## 3 · Data packet (telemetry)
 
-**Endpoint (FastAPI stub):** `http://127.0.0.1:8787/api/telemetry`  
+**Endpoint (FastAPI stub, 方案 A):** `http://127.0.0.1:<TELEMETRY_PORT>/api/telemetry` — default **`8788`** (Aster stays on **8787**).  
 **Method:** `GET`  
 **Shape (JSON):**
 
@@ -39,19 +42,20 @@
 }
 ```
 
-- `voiceFreq` may be overridden or blended with client-side FFT estimate when the mic is active; server mock may emit a sine-wave style trajectory until fully wired.
-- `latencyMs` is end-to-end telemetry hint for HUD (avg target ≤60 ms in acceptance).
+- `voiceFreq` may be overridden or blended with client-side FFT when the mic is active; server mock may emit a sine-style trajectory until fully wired.
+- `latencyMs` is a telemetry hint for HUD (acceptance target ≤60 ms avg).
 
 ---
 
-## 4 · Coherence (choose one)
+## 4 · Coherence (phase-1 vs phase-2)
 
-| ID | Formula | Phase |
-|----|-----------|--------|
-| **OPTION_A_SIMPLE** | `1 − |voiceFreq − aiFreq| / maxFreq` (clamped to `[0,1]`) | **Phase-1 (current)** |
-| **OPTION_B_DOTPROD** | `dot(voiceSpectrum, aiSpectrum) / (‖v‖ · ‖a‖)` | Phase-2+ (stretch) |
+**Phase-1 (current):** frequency-difference coherence (simple, cheap):
 
-Phase-1 uses **OPTION_A_SIMPLE**. Phase-2 may upgrade to **OPTION_B_DOTPROD** when server sends spectrum vectors.
+\[
+\text{coherence} = \max\left(0,\ \min\left(1,\ 1 - \frac{|f_{\text{voice}} - f_{\text{ai}}|}{f_{\max}}\right)\right)
+\]
+
+**TODO (phase-2):** upgrade to **dot-product / cosine similarity** on aligned spectra when the server sends `voiceSpectrum` and `aiSpectrum` vectors (see previous OPTION_B design). Phase-1 stays on the scalar frequency formula until those payloads exist.
 
 ---
 
@@ -59,10 +63,10 @@ Phase-1 uses **OPTION_A_SIMPLE**. Phase-2 may upgrade to **OPTION_B_DOTPROD** wh
 
 | Phase | Scope |
 |-------|--------|
-| **P1** | 100k particles, ≥60 FPS (M3 Pro 16 GB), HTTP telemetry, coherence A |
-| **P2** | Server-side storage (`/storage/memories`) replaces ad-hoc local-only flows |
+| **P1** | 100k particles, ≥60 FPS (M3 Pro 16 GB), HTTP telemetry, coherence (freq-diff) |
+| **P2** | Server-side storage (`/storage/memories`); coherence → dot-product when spectra available |
 | **P3** | iframe embed → Jarvis dashboard (host `8000`) |
-| **P4** | Stretch 200k particles + dot-product coherence |
+| **P4** | Stretch 200k particles + full spectrum coherence |
 
 ---
 
@@ -74,8 +78,8 @@ ui/sound-lab/
   src/
     core/
       audio.ts       # Web Audio, AnalyserNode FFT 2048
-      controller.ts  # Coherence (OPTION_A), blend voice + AI → drive values
-      renderer.ts    # three.js scene, InstancedBufferGeometry / instancing, ~100k points
+      controller.ts  # Coherence (phase-1), blend voice + AI → drive values
+      renderer.ts    # three.js scene, instancing, ~100k points
     ui/
       hud.ts         # FPS, latency, particleCount overlay
       params.ts      # lil-gui sliders → tunables
@@ -83,18 +87,23 @@ ui/sound-lab/
   index.html
   vite.config.ts
   package.json
+telemetry/
+  main.py            # GET /api/telemetry, GET /health (stub, default 8788)
+repo/app/main.py    # Aster :8787 — middleware proxies GET/HEAD to Vite :5173
 ```
 
 ---
 
-## 7 · Dev command
+## 7 · Dev commands（终端）
 
 ```bash
-cd ui/sound-lab
-pnpm dev --host 127.0.0.1 --port 5173
+bash scripts/kill_sound_lab_dev.sh   # optional
+bash scripts/start_telemetry.sh      # 8788
+bash scripts/start_sound_lab.sh      # 5173
+cd repo && ./scripts/run.sh          # 8787 Aster + proxy
 ```
 
-Vite may proxy `/api` → `http://127.0.0.1:8787` so the browser calls same-origin `/api/telemetry` during dev.
+Open **http://127.0.0.1:8787/** for the UI (via proxy). Vite alone: **http://127.0.0.1:5173/**.
 
 ---
 
@@ -119,11 +128,11 @@ feat(sound-lab): phase-1 live particle audio UI
 - [Three.js — webgl_points_dynamic](https://threejs.org/examples/?q=points#webgl_points_dynamic)
 - [Bruno Simon](https://bruno-simon.com)
 - [Patatap](https://patatap.com)
-- [Penderecki’s Garden — Dwór Mistrza](https://penderckisgarden.pl/pl/dwor-mistrza) *(spelling: Pendercki’s Garden / photogrammetry aesthetic)*
+- [Penderecki’s Garden — Dwór Mistrza](https://penderckisgarden.pl/pl/dwor-mistrza)
 - [Google Experiments](https://experiments.withgoogle.com)
 
 ---
 
 ## 11 · Next ticket (after P1 success)
 
-- **Phase-2:** Storage migration (`/storage/memories`) + optional **OPTION_B_DOTPROD** when spectra are available.
+- **Phase-2:** Storage migration (`/storage/memories`) + spectrum-based coherence (dot-product).
