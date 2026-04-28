@@ -23,6 +23,10 @@ export type ParticleDrive = {
   coherence: number;
   /** 0..1 blend for visuals */
   energy: number;
+  /** Audio analyser amplitude (0..1) -> renderer uAmp */
+  amp: number;
+  /** Dominant analyser frequency (Hz) -> renderer uFreq */
+  freq: number;
   voiceHz: number;
   aiHz: number;
   aiAmplitude: number;
@@ -35,14 +39,17 @@ export function computeParticleDrive(
   tel: TelemetrySample,
   voiceHzMic: number,
   micActive: boolean,
-  micRms: number,
+  analyserAmp: number,
+  analyserFreq: number,
 ): ParticleDrive {
   const voiceHz = micActive && voiceHzMic > 30 ? voiceHzMic : Math.max(0, tel.voiceFreq);
   const coh = coherenceSimple(voiceHz, tel.aiFreq);
-  const energy = Math.min(1, coh * 0.55 + tel.aiAmplitude * 0.35 + micRms * 0.45);
+  const energy = Math.min(1, coh * 0.55 + tel.aiAmplitude * 0.35 + analyserAmp * 0.45);
   return {
     coherence: coh,
     energy,
+    amp: analyserAmp,
+    freq: analyserFreq > 10 ? analyserFreq : voiceHz,
     voiceHz,
     aiHz: tel.aiFreq,
     aiAmplitude: tel.aiAmplitude,

@@ -19,3 +19,9 @@ Optional cleanup: `bash scripts/kill_sound_lab_dev.sh`
 Direct Vite (no proxy): **http://127.0.0.1:5173/**
 
 `TELEMETRY_PORT` defaults to **8788**; set in shell or `ui/sound-lab/.env` (see `.env.example`).
+
+## Quick demo (Phase-2)
+
+- **Mic mode:** toggle `mic` in the panel; analyser feeds `uAmp` / `uFreq` into particle uniforms.
+- **Music fallback:** if mic permission is denied in dev, `/assets/demo.mp3` auto-attempts playback and drives analyser.
+- **Sliders:** open `Visuals` panel for `pointSize` (`0.5–6`) and `hueShift` (`0–360`).

@@ -14,6 +14,10 @@ uniform float uTime;
 uniform float u_coherence;
 uniform float u_energy;
 uniform float u_dispersion;
+uniform float uAmp;
+uniform float uFreq;
+uniform float uPointSize;
+uniform float uHueShift;
 
 varying float vAlpha;
 varying vec3 vColor;
@@ -79,21 +83,21 @@ void main(){
   vec3 base=instancePos*u_dispersion;
   float t=uTime*.11;
   vec3 p=base*1.1+vec3(t*.3,t*.21,t*.17);
-  vec3 f=curl(p)*(5.+u_energy*12.)*mix(.4,1.,u_coherence);
+  vec3 f=curl(p)*(5.+u_energy*12.+uAmp*8.)*mix(.4,1.,u_coherence);
   vec3 w=base+f*u_dispersion;
   vec3 wp=(modelMatrix*vec4(w,1.)).xyz;
   vec3 toC=normalize(uCameraPos-wp);
   vec3 up=abs(toC.y)>.95?vec3(1.,0.,0.):vec3(0.,1.,0.);
   vec3 rt=normalize(cross(up,toC));
   vec3 up2=cross(toC,rt);
-  float sc=(.25+.45*instanceSeed)*(.35+u_energy);
+  float sc=(.25+.45*instanceSeed)*(.35+u_energy)*uPointSize;
   vec3 corner=rt*position.x*sc+up2*position.y*sc;
   vUv=uv;
   vec4 mv=modelViewMatrix*vec4(w+corner,1.);
   gl_Position=projectionMatrix*mv;
   float depth=smoothstep(110.,8.,-mv.z);
   vAlpha=mix(.12,.9,depth)*(.55+.45*u_coherence);
-  float hue=fract(instanceSeed*.17+uTime*.015);
+  float hue=fract(instanceSeed*.17+uTime*.015 + uHueShift/360. + (uFreq/8000.)*0.15);
   vec3 c1=vec3(.55,.62,.78);
   vec3 c2=vec3(.45,.72,.76);
   vColor=mix(vec3(.32),mix(c1,c2,hue),.5+.4*depth);
@@ -178,6 +182,10 @@ export class ParticleRenderer {
         u_coherence: { value: 1 },
         u_energy: { value: 0 },
         u_dispersion: { value: initial.dispersion },
+        uAmp: { value: 0 },
+        uFreq: { value: 0 },
+        uPointSize: { value: 1.5 },
+        uHueShift: { value: 0 },
       },
       vertexShader: VS,
       fragmentShader: FS,
@@ -210,11 +218,21 @@ export class ParticleRenderer {
     this.material.uniforms.u_dispersion.value = d;
   }
 
+  setPointSize(v: number): void {
+    this.material.uniforms.uPointSize.value = v;
+  }
+
+  setHueShift(v: number): void {
+    this.material.uniforms.uHueShift.value = v;
+  }
+
   update(drive: ParticleDrive, timeSec: number): void {
     this.camera.getWorldPosition(this.material.uniforms.uCameraPos.value);
     this.material.uniforms.uTime.value = timeSec;
     this.material.uniforms.u_coherence.value = drive.coherence;
     this.material.uniforms.u_energy.value = drive.energy;
+    this.material.uniforms.uAmp.value = drive.amp;
+    this.material.uniforms.uFreq.value = drive.freq;
   }
 
   render(): void {

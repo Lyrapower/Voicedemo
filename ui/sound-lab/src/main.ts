@@ -1,11 +1,15 @@
 import './style.css';
-import { MicAudio } from './core/audio';
+import { AudioAnalyser } from './audio/analyser';
 import { computeParticleDrive, type TelemetrySample } from './core/controller';
 import { ParticleRenderer } from './core/renderer';
 import { createHud } from './ui/hud';
 import { createParamsPanel, type Tunables } from './ui/params';
+import { setupGui, type VisualControls } from './gui';
 
 const TELEMETRY_URL = '/api/telemetry';
+
+/** Set false when fetch to proxy/backend fails (HUD shows "telemetry mock"). */
+let telemetryLive = false;
 
 let telemetry: TelemetrySample = {
   t: 0,
@@ -22,6 +26,7 @@ async function fetchTelemetry(): Promise<void> {
     const dt = performance.now() - t0;
     if (!r.ok) throw new Error(String(r.status));
     const j = (await r.json()) as Partial<TelemetrySample>;
+    telemetryLive = true;
     telemetry = {
       t: typeof j.t === 'number' ? j.t : performance.now() / 1000,
       voiceFreq: typeof j.voiceFreq === 'number' ? j.voiceFreq : telemetry.voiceFreq,
@@ -30,6 +35,7 @@ async function fetchTelemetry(): Promise<void> {
       latencyMs: typeof j.latencyMs === 'number' ? j.latencyMs : dt,
     };
   } catch {
+    telemetryLive = false;
     const t = performance.now() / 1000;
     telemetry = {
       t,
@@ -52,12 +58,31 @@ function main(): void {
     dispersion: 1.45,
     micOn: false,
   };
+  const visual: VisualControls = {
+    pointSize: 1.5,
+    hueShift: 0,
+  };
 
-  const mic = new MicAudio();
+  const analyser = new AudioAnalyser();
   const particles = new ParticleRenderer(canvas, {
     particleCount: tunables.particleCount,
     dispersion: tunables.dispersion,
   });
+  particles.setPointSize(visual.pointSize);
+  particles.setHueShift(visual.hueShift);
+
+  const demo = new Audio('/assets/demo.mp3');
+  demo.loop = true;
+  demo.volume = 0.35;
+  let micAllowed = false;
+  const startDemoAudio = async (): Promise<void> => {
+    try {
+      await analyser.useMediaElement(demo);
+      await demo.play();
+    } catch {
+      /* autoplay may be blocked until user gesture */
+    }
+  };
 
   const hud = createHud(hudRoot);
   const { setMicGui } = createParamsPanel(guiMount, tunables, {
@@ -74,17 +99,42 @@ function main(): void {
       void (async () => {
         if (on) {
           try {
-            await mic.start();
+            await analyser.useMicrophone();
+            micAllowed = true;
+            if (!demo.paused) demo.pause();
           } catch {
             tunables.micOn = false;
             setMicGui(false);
+            await startDemoAudio();
           }
         } else {
-          mic.stop();
+          analyser.stop();
+          micAllowed = false;
+          await startDemoAudio();
         }
       })();
     },
   });
+  setupGui(guiMount, visual, (state) => {
+    particles.setPointSize(state.pointSize);
+    particles.setHueShift(state.hueShift);
+  });
+
+  // Auto-play demo track in dev when mic permission is denied/unavailable.
+  if (location.hostname === '127.0.0.1' || location.hostname === 'localhost') {
+    if ('permissions' in navigator && navigator.permissions) {
+      void navigator.permissions
+        .query({ name: 'microphone' as PermissionName })
+        .then(async (p) => {
+          if (p.state === 'denied') await startDemoAudio();
+        })
+        .catch(() => {
+          /* permission API unsupported */
+        });
+    } else {
+      void startDemoAudio();
+    }
+  }
 
   void fetchTelemetry();
   setInterval(() => void fetchTelemetry(), 80);
@@ -112,9 +162,14 @@ function main(): void {
       fpsT = now;
     }
 
-    const voiceHzMic = mic.isRunning() ? mic.getVoiceFreqHz() : 0;
-    const micRms = mic.isRunning() ? mic.getRms() : 0;
-    const drive = computeParticleDrive(telemetry, voiceHzMic, tunables.micOn, micRms);
+    const spectrum = analyser.getSpectrum();
+    const drive = computeParticleDrive(
+      telemetry,
+      spectrum.freq,
+      micAllowed && tunables.micOn,
+      spectrum.amp,
+      spectrum.freq,
+    );
 
     latRing.push(telemetry.latencyMs);
     if (latRing.length > 24) latRing.shift();
@@ -133,6 +188,7 @@ function main(): void {
       latencyMsAvg,
       particleCount: particles.getInstanceCount(),
       coherence: drive.coherence,
+      telemetry: telemetryLive ? 'live' : 'mock',
     });
 
   }
