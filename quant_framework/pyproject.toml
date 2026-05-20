@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quant-framework"
+version = "0.1.0"
+description = "Systematic factor-based quant trading framework — Phase 1"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "yfinance>=0.2.40",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "streamlit>=1.30",
+    "plotly>=5.18",
+    "python-telegram-bot>=20.0",
+    "python-dotenv>=1.0",
+    "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-asyncio>=0.23",
+    "pyarrow>=14.0",
+]
+
+[project.scripts]
+generate-signals = "quant_framework.scripts.generate_signals:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+quant_framework = ["universe/sp500_tickers.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["src"]
