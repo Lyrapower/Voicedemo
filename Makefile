@@ -1,5 +1,4 @@
-# Optional one-shot dev: UI (5173) + telemetry stub (TELEMETRY_PORT, default 8788).
-# Requires: pnpm in ui/sound-lab, uvicorn on PATH or repo .venv, Node npx.
+# Optional one-shot dev: Garden UI (5173) + telemetry stub (TELEMETRY_PORT, default 8788).
 #
 #   export TELEMETRY_PORT=8788   # optional; default 8788
 #   make sound-lab-dev
@@ -9,7 +8,7 @@
 export TELEMETRY_PORT ?= 8788
 
 sound-lab-ui:
-	cd ui/sound-lab && TELEMETRY_PORT=$(TELEMETRY_PORT) pnpm dev
+	python3 -m uvicorn scripts.sound_lab_fallback:app --host 127.0.0.1 --port 5173
 
 sound-lab-telemetry:
 	TELEMETRY_PORT=$(TELEMETRY_PORT) bash scripts/start_telemetry.sh

@@ -1,0 +1,12 @@
+=== AFTER RESTART 2026-07-03T00:04:29Z ===
+[gateway :8501]
+  PID STARTED                      COMMAND
+41367 Thu Jul  2 17:04:26 2026     /Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python gateway/local_gateway.py
+[LM Studio server :1234]
+  PID STARTED                      COMMAND
+ 6458 Tue May 26 00:57:17 2026     /Applications/LM Studio.app/Contents/MacOS/LM Studio
+[LM Studio model]
+
+IDENTIFIER         MODEL              STATUS    SIZE       CONTEXT    PARALLEL    DEVICE    TTL
+qwen/qwen3.5-9b    qwen/qwen3.5-9b    IDLE      6.55 GB    6949       4           Local        
+

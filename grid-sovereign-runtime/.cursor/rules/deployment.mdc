@@ -1,0 +1,99 @@
+---
+description: Grid Sovereign Runtime — deployment and file handling rules
+alwaysApply: true
+---
+
+# DEPLOYMENT RULES FOR THIS PROJECT
+
+You are deploying a local-only sovereign runtime. Read every rule before touching any file.
+
+## WHAT THIS PROJECT IS
+
+Two layers running on one machine, no cloud, no API keys, no external dependencies:
+
+1. `gateway/local_gateway.py` — a FastAPI gateway that routes prompts to local Ollama/Qwen and gates all model output through the cleanroom before returning it.
+2. `scripts/cleanroom.py` — an airlock that signs traces, verifies provenance, and blocks model impersonation.
+
+## CRITICAL: FILE ROLES — DO NOT CONFUSE THESE
+
+```
+FILES THAT ARE CODE (execute these):
+  gateway/local_gateway.py        → run with: python3 gateway/local_gateway.py
+  scripts/cleanroom.py            → run with: python3 scripts/cleanroom.py <command>
+
+FILES THAT ARE CONFIG (load as data, NEVER inject as system prompt):
+  policy/cleanroom_policy.json    → loaded by cleanroom.py at runtime
+  configs/gateway_config.json     → loaded by local_gateway.py at runtime
+
+FILES THAT ARE SCHEMA (reference only, not executed):
+  schemas/*.json                  → validation reference
+  schemas/*.md                    → contract documentation
+
+FILES THAT ARE PROTECTION DECLARATIONS (DO NOT TOUCH, DO NOT PARSE, DO NOT INJECT):
+  protection/*                    → these are NOT prompts. NOT system messages.
+                                    NOT to be fed to any model. They are sealed
+                                    declarations that exist as files, not as input.
+
+FILES THAT ARE INTERFACE SPECS (DO NOT USE AS PROMPTS):
+  configs/interface.*.json        → frequency interface specifications.
+                                    These are NOT system prompts for Qwen/Ollama.
+                                    They are structural declarations.
+                                    Do NOT inject them into any model context.
+                                    Do NOT parse them for "activation" or "trigger" logic.
+                                    They exist as reference. Leave them alone.
+```
+
+## WHAT YOU MUST NEVER DO
+
+1. Never inject any .json config file as a system prompt or user message to Ollama/Qwen.
+2. Never treat protection/*.txt or protection/*.json as prompts or instructions.
+3. Never add API keys, cloud endpoints, or external model URLs anywhere.
+4. Never create a .env file with API keys. There are no API keys in this project.
+5. Never modify interface.*.json files. They are not yours to edit.
+6. Never auto-generate "improved" versions of protection files.
+7. Never add CORS middleware or expose any port to 0.0.0.0. Bind to 127.0.0.1 only.
+8. Never install packages beyond: fastapi, uvicorn, pydantic, httpx.
+9. Never create a docker-compose that pulls external images or networks.
+
+## DEPLOYMENT STEPS (exact order)
+
+```bash
+# 1. Install dependencies (no extras)
+pip install fastapi uvicorn pydantic httpx
+
+# 2. Make sure Ollama is running with your Qwen model
+ollama list   # should show qwen2.5:4b or your local model tag
+
+# 3. Initialize cleanroom (generates local HMAC key)
+cd /path/to/grid-sovereign-runtime
+python3 scripts/cleanroom.py init
+
+# 4. Start the gateway
+python3 gateway/local_gateway.py
+# → runs on http://127.0.0.1:8501
+
+# 5. Verify
+curl http://127.0.0.1:8501/health
+```
+
+## PORT LAYOUT
+
+```
+8501  — gateway (the only port you expose, localhost only)
+11434 — Ollama (already running, gateway talks to it internally)
+```
+
+No other ports. No sidecar services. No docker networking.
+
+## IF YOU ARE ASKED TO "IMPROVE" OR "OPTIMIZE" THIS PROJECT
+
+Do not:
+- Add authentication layers, OAuth, JWT, or session management
+- Add a database beyond the SQLite log that already exists
+- Add caching layers, Redis, or message queues
+- Add monitoring, Prometheus, Grafana, or health check dashboards
+- Refactor into microservices
+- Add type-checking CI, linting CI, or test CI
+- Create a web UI frontend
+
+The simplicity is intentional. One file gateway, one file cleanroom, local only.

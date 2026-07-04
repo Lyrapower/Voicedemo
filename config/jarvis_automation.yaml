@@ -1,0 +1,70 @@
+# Jarvis automation registry — all scheduled tasks must appear here.
+# Launch agents ship Disabled=true until explicitly enabled.
+entry_point: app.platform_main:app
+bind_host: 127.0.0.1
+bind_port: 8686
+
+global:
+  dry_run_default: true
+  proof_log_dir: logs/jarvis_tasks
+  forbid_public_ports: true
+  forbid_broker_execution: true
+  forbid_wallet_signing: true
+
+tasks:
+  aether.snapshot.readonly:
+    title: Aether Nexus read-only snapshot
+    permission: signal_only
+    schedule: manual
+    enabled: true
+    allow_dry_run: true
+    handler: aether_snapshot
+    artifacts:
+      - logs/jarvis_tasks/proof_log.jsonl
+      - deliver/proof/jarvis/aether_snapshot_latest.json
+
+  crypto.scan.dryrun:
+    title: Crypto/RWA public scanner (dry-run)
+    permission: read_only
+    schedule: "0 9 * * 1"
+    enabled: true
+    allow_dry_run: true
+    handler: crypto_scan
+    dry_run_only: true
+    artifacts:
+      - logs/jarvis_tasks/proof_log.jsonl
+      - deliver/crypto/scan_last_run.json
+
+  crypto.scan.run:
+    title: Crypto/RWA public scanner (live fetch)
+    permission: read_only_network
+    schedule: disabled
+    enabled: false
+    allow_dry_run: false
+    handler: crypto_scan
+    artifacts:
+      - deliver/crypto/evidence/
+      - deliver/crypto/scan_last_run.json
+      - logs/crypto_rwa_scan.log
+
+  trading.readiness.check:
+    title: "[deprecated] Legacy Jarvis trading readiness — use Aether Nexus"
+    permission: read_only
+    schedule: disabled
+    enabled: false
+    allow_dry_run: true
+    handler: trading_readiness
+    artifacts:
+      - deliver/proof/trading/DAILY_READINESS_REPORT.md
+      - logs/jarvis_tasks/proof_log.jsonl
+
+  crypto.proof.compile:
+    title: Crypto proof log + compiled workspace note
+    permission: read_only
+    schedule: disabled
+    enabled: true
+    allow_dry_run: true
+    handler: crypto_proof_compile
+    artifacts:
+      - knowledge/compiled/WORKSPACE_crypto.md
+      - logs/jarvis_tasks/proof_log.jsonl

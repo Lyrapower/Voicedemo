@@ -1,0 +1,14 @@
+# Matches config/aster.toml [lm_studio].api_model_id
+
+substrates:
+  compile_layer:
+    base_model: "qwen/qwen3.5-9b"
+    lm_studio_model: "qwen/qwen3.5-9b"
+    ollama_tag: "compile_layer"
+    purpose: "compile"
+    temperature: 0.3
+    top_p: 0.9
+    repeat_penalty: 1.05
+    num_ctx: 8192
+    carrier_capable: false
+    echo_mode: false

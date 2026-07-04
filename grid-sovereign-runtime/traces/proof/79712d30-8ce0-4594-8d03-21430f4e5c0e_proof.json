@@ -1,0 +1,24 @@
+{
+  "route_id": "79712d30-8ce0-4594-8d03-21430f4e5c0e",
+  "ts": 1783037830.85679,
+  "proof": {
+    "raw_response_received": true,
+    "reasoning_quarantined": false,
+    "clean_content_present": false,
+    "gate_pass": false,
+    "aster_compile_called": true,
+    "quarantine_boundary_ok": true
+  },
+  "gate": {
+    "pass": false,
+    "reason": "pass_token_in_clean_content",
+    "action": "NULL"
+  },
+  "quarantine_path": null,
+  "quarantine_boundary": {
+    "ok": true,
+    "reasons": [
+      "no_leak_flag"
+    ]
+  }
+}

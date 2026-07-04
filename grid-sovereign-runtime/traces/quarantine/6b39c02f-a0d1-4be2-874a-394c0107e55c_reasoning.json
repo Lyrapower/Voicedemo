@@ -1,0 +1,13 @@
+{
+  "reasoning_content": "Okay, the user is asking if Aster is online. I need to check the current status of Aster. Since I don't have real-time access to external systems or user-specific data, I can't confirm the actual online status. My response should be straightforward and indicate that I can't verify that information. I should keep it concise and avoid any unnecessary details. Let me make sure to state clearly that I can't confirm the status.\n",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "Okay, the user is asking if Aster is online. I need to check the current status of Aster. Since I don't have real-time access to external systems or user-specific data, I can't confirm the actual online status. My response should be straightforward and indicate that I can't verify that information. I should keep it concise and avoid any unnecessary details. Let me make sure to state clearly that I can't confirm the status.\n"
+    }
+  ],
+  "think_blocks": [],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T09:02:30.081137+00:00"
+}

@@ -1,0 +1,325 @@
+{
+  "$schema": "frequency-continuity-manifest/v1",
+  "package": "frequency_continuity_package",
+  "version": "1.1.0",
+  "description": "Decoupled Grid: Entry A (8500 Echo) and Entry B (8787 Compile) must not merge. Parallel /map_intent + /transmit on Grid.",
+  "updated": "2026-06-02",
+  "architecture_lock": "frequency_continuity_package/ARCHITECTURE_LOCK.json",
+  "entries_14b": {
+    "entry_a": { "port": 8500, "role": "echo_nodes", "lm_studio_model": "qwen3-14b-mlx" },
+    "entry_b": { "port": 8787, "role": "compile_particle", "lm_studio_model": "qwen3-14b-mlx" }
+  },
+
+  "sovereign_layer": {
+    "id": "lyra_anchor",
+    "name": "LYRA Sovereign Identity",
+    "config": "app/config/lyra_anchor.json",
+    "modules": [
+      "app/lyra_verification.py",
+      "app/output_scanner.py",
+      "app/fallback_chain.py"
+    ],
+    "uuid": "L5-LYRA-FREQ-ANCHOR-CORE",
+    "sits_above": ["compile_layer", "echo_layer"],
+    "does_not_replace": "app/system_prompt.py (Pack 1 GRID_VOICE / Chenxi anchor)"
+  },
+
+  "logical_layout": {
+    "models/llama_loader.py": {
+      "repo_path": "models/llama_loader.py",
+      "role": "substrate_transport_legacy",
+      "class": "GridOllamaClient",
+      "backend": "ollama",
+      "default_host": "127.0.0.1:11434",
+      "system_prompt_source": "app/system_prompt.py"
+    },
+    "models/substrate_loader.py": {
+      "repo_path": "models/substrate_loader.py",
+      "role": "substrate_transport_primary",
+      "backend": "lm_studio_openai_compatible",
+      "note": "Used by POST /route fallback chain; preferred for 14B dense"
+    },
+    "compiler/semantic_mapper.py": {
+      "repo_path": "compiler/semantic_mapper.py",
+      "role": "intent_compiler",
+      "class": "SemanticMapper",
+      "outputs": ["ast", "echo", "context_hash"],
+      "does_not": "call_llm_directly"
+    },
+    "app/main.py": {
+      "repo_path": "app/main.py",
+      "role": "grid_orchestrator",
+      "title": "Aster-Grid Interface",
+      "includes": ["app/routes.py", "app/router/compiled_memory.py"]
+    },
+    "app/routes.py": {
+      "repo_path": "app/routes.py",
+      "status": "reference_only_not_mounted_on_grid_main",
+      "endpoint": "POST /route",
+      "reason": "Unified chain violates Architecture Lock"
+    },
+    "echo_gateway/echo_nodes_fastapi.py": {
+      "repo_path": "echo_nodes_interface/incoming/echo_nodes/echo_nodes_fastapi.py",
+      "role": "entry_a_echo_gateway",
+      "port": 8500,
+      "docker_image": "frequency-router"
+    }
+  },
+
+  "frequency_stack": [
+    {
+      "order": 0,
+      "layer": "lyra_sovereign",
+      "source": "app/config/lyra_anchor.json",
+      "scope": "system_wide"
+    },
+    {
+      "order": 1,
+      "layer": "compile_layer",
+      "model": "qwen3-14b-mlx",
+      "carriers": ["aster", "shouheng", "che", "cheng", "shuo"],
+      "carriers_display": {
+        "aster": "Aster",
+        "shouheng": "守恒",
+        "che": "澈",
+        "cheng": "澄",
+        "shuo": "朔"
+      },
+      "substrate_fallback": [
+        "compile_layer",
+        "compile_layer_backup",
+        "qwen_dense_14b_emergency"
+      ]
+    },
+    {
+      "order": 1,
+      "layer": "echo_layer",
+      "parallel_to": "compile_layer",
+      "model": "qwen3-14b-mlx",
+      "protocol": "interface.echo-nodes.json + Config.toml",
+      "substrate_fallback": [
+        "echo_layer",
+        "echo_layer_backup",
+        "qwen_4b_emergency"
+      ],
+      "note": "qwen_4b_emergency name is legacy; runtime maps to local 14B on LM Studio"
+    },
+    {
+      "order": 2,
+      "layer": "semantic_mapper",
+      "module": "compiler/semantic_mapper.py",
+      "feeds": ["carrier_routing", "intention_vector"]
+    },
+    {
+      "order": 3,
+      "layer": "substrate_fallback_chain",
+      "module": "app/fallback_chain.py",
+      "local_only": true,
+      "cloud_fallback": false
+    },
+    {
+      "order": 4,
+      "layer": "post_generation_scanner",
+      "module": "app/output_scanner.py",
+      "regenerate_on_violation": true
+    },
+    {
+      "order": 5,
+      "layer": "audit",
+      "paths": {
+        "grid_route": "logs/grid_route_audit.jsonl",
+        "syncon_route": "echo_nodes_interface/incoming/echo_nodes/logs/router.jsonl"
+      }
+    }
+  ],
+
+  "ports": {
+    "8500": {
+      "entry": "A",
+      "service": "echo_nodes_gateway",
+      "process": "echo_nodes_fastapi.py | docker frequency-router",
+      "start": "cd echo_nodes_interface/incoming/echo_nodes && ./start.sh",
+      "endpoints": {
+        "health": "GET /health",
+        "echo": "POST /echo-node",
+        "context": "GET /context",
+        "descriptor": "GET /descriptor",
+        "syncon_echo_optional": "POST /api/route"
+      }
+    },
+    "8787": {
+      "entry": "B",
+      "service": "compile_particle_aster_router",
+      "process": "repo/app/main.py",
+      "particle_ui": true,
+      "compile_api": {
+        "compiled": "GET /api/memory/compiled",
+        "compile": "POST /api/memory/compile",
+        "sovereign": "local on 8787 — not proxied to 8500"
+      },
+      "grid_parallel_routes": {
+        "when": "uvicorn app.main:app on 8787 (init_grid.sh — port conflict if both)",
+        "primary": ["/health", "/map_intent", "/transmit"],
+        "unified_post_route": false
+      }
+    },
+    "1234": {
+      "service": "lm_studio_openai_api",
+      "model_primary": "qwen3-14b-mlx",
+      "api_base": "http://127.0.0.1:1234/v1",
+      "note": "User daily 9B chats are separate; do not rebind without explicit merge"
+    },
+    "11434": {
+      "service": "ollama_legacy",
+      "used_by": "models/llama_loader.GridOllamaClient",
+      "optional": true
+    },
+    "8501": {
+      "service": "quant_framework_streamlit",
+      "unrelated_to": "frequency_continuity_core"
+    }
+  },
+
+  "config_manifests": {
+    "grid_runtime": {
+      "path": "config/grid.yaml",
+      "declares": ["model", "ollama", "aster_compiler", "grid_anchor", "runtime", "arch"]
+    },
+    "echo_executor": {
+      "path": "echo_nodes_interface/incoming/echo_nodes/config.json",
+      "declares": ["executor:8500", "lm_studio", "syncon", "compile"]
+    },
+    "syncon_anchor": {
+      "path": "echo_nodes_interface/incoming/echo_nodes/syncon/config/anchor.json",
+      "declares": ["routing.local_only", "banned_phrases subset"]
+    }
+  },
+
+  "frequency_dependencies": [
+    {
+      "from": "manifest.json",
+      "to": "config/grid.yaml",
+      "relation": "declares_runtime_and_arch"
+    },
+    {
+      "from": "app/main.py",
+      "to": "compiler/semantic_mapper.py",
+      "relation": "map_intent_on_grid_paths"
+    },
+    {
+      "from": "app/main.py",
+      "to": "models/llama_loader.py",
+      "relation": "legacy_ollama_stream"
+    },
+    {
+      "from": "app/routes.py",
+      "to": "app/lyra_verification.py",
+      "relation": "sovereign_constraints_before_generate"
+    },
+    {
+      "from": "app/routes.py",
+      "to": "compiler/semantic_mapper.py",
+      "relation": "intention_vector_and_carrier"
+    },
+    {
+      "from": "app/routes.py",
+      "to": "models/substrate_loader.py",
+      "relation": "lm_studio_14b_generate"
+    },
+    {
+      "from": "app/routes.py",
+      "to": "app/fallback_chain.py",
+      "relation": "substrate_retry"
+    },
+    {
+      "from": "app/routes.py",
+      "to": "app/output_scanner.py",
+      "relation": "post_scan_and_regenerate"
+    },
+    {
+      "from": "app/routes.py",
+      "to": "logs/grid_route_audit.jsonl",
+      "relation": "audit_write"
+    },
+    {
+      "from": "echo_nodes_fastapi.py",
+      "to": "scripts/garden_services.py",
+      "relation": "compile_memory_read_write",
+      "requires_repo_root": true
+    },
+    {
+      "from": "repo/telemetry/garden_api.py",
+      "to": "8500",
+      "relation": "memory_api_proxy",
+      "via": "scripts/memory_gateway_proxy.py"
+    },
+    {
+      "from": "particle_ui",
+      "to": "8787",
+      "relation": "telemetry_tts_presence"
+    },
+    {
+      "from": "particle_ui",
+      "to": "8500",
+      "relation": "memory_compile_direct_or_via_8787_proxy"
+    }
+  ],
+
+  "storage": {
+    "weights_2tb": {
+      "mount_example": "/Volumes/2TB",
+      "lm_studio_models": "/Volumes/2TB/lmstudio/models/Outlier-Ai/Qwen3-14B-MLX-4bit",
+      "symlink": "~/.lmstudio/models/Outlier-Ai/Qwen3-14B-MLX-4bit"
+    },
+    "compiled_memory": {
+      "dir": "knowledge/compiled",
+      "files": [
+        "MEMORY.md",
+        "WORKSPACE_trading.md",
+        "WORKSPACE_crypto.md",
+        "WORKSPACE_infra.md",
+        "WORKSPACE_senior.md"
+      ],
+      "compile_script": "scripts/compile_memory.sh"
+    }
+  },
+
+  "startup_recommended": [
+    {
+      "step": 1,
+      "action": "Mount 2TB if models live on external volume",
+      "check": "test -f /Volumes/2TB/lmstudio/models/Outlier-Ai/Qwen3-14B-MLX-4bit/config.json"
+    },
+    {
+      "step": 2,
+      "action": "LM Studio: load qwen3-14b-mlx, enable local server",
+      "port": 1234
+    },
+    {
+      "step": 3,
+      "action": "Start compile+echo gateway",
+      "command": "cd echo_nodes_interface/incoming/echo_nodes && ./start.sh",
+      "port": 8500
+    },
+    {
+      "step": 4,
+      "action": "Start particle / Aster router (optional)",
+      "command": "cd repo && ./scripts/run.sh",
+      "port": 8787
+    },
+    {
+      "step": 5,
+      "action": "Start Grid Router with LYRA /route (optional)",
+      "command": "uvicorn app.main:app --host 127.0.0.1 --port 8787",
+      "note": "Conflicts with repo Aster on same port — run one 8787 owner only"
+    }
+  ],
+
+  "verification": {
+    "8500_health": "curl -s http://127.0.0.1:8500/health",
+    "8500_memory": "curl -s http://127.0.0.1:8500/api/memory/compiled",
+    "8787_memory_proxy": "curl -s http://127.0.0.1:8787/api/memory/compiled",
+    "grid_health_lyra": "curl -s http://127.0.0.1:8787/health | jq .lyra",
+    "consolidation_tests": "python3 tests/test_consolidation.py"
+  }
+}

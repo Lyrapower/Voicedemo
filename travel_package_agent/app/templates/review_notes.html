@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Review Notes — TripPack AI (Internal)</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .rn-shell    { max-width: 600px; margin: 0 auto; padding: 0 16px 80px; }
+    .rn-badge    { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px;
+                   font-weight: 700; letter-spacing: 0.3px; margin-bottom: 6px; }
+    .rn-internal { background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; }
+    .rn-h1       { font-size: 26px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; margin: 12px 0 6px; }
+    .rn-sub      { font-size: 14px; color: var(--text-secondary); margin-bottom: 32px; }
+    .rn-section  { margin-bottom: 28px; }
+    .rn-h2       { font-size: 16px; font-weight: 700; color: var(--blue-deep); letter-spacing: -0.2px;
+                   margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid var(--blue-tint); }
+    .rn-card     { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+                   padding: 16px; margin-bottom: 10px; box-shadow: var(--shadow-card); }
+    .rn-p        { font-size: 14px; color: var(--text-secondary); line-height: 1.65; margin-bottom: 8px; }
+    .rn-p:last-child { margin-bottom: 0; }
+    .rn-list     { padding-left: 20px; margin: 6px 0; }
+    .rn-list li  { font-size: 14px; color: var(--text-secondary); line-height: 1.7; }
+    .rn-table    { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .rn-table th { text-align: left; font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+                   text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 10px; border-bottom: 2px solid var(--border); }
+    .rn-table td { padding: 10px; border-bottom: 1px solid var(--border); color: var(--text-secondary); vertical-align: top; }
+    .rn-table tr:last-child td { border-bottom: none; }
+    .rn-table td:first-child { font-weight: 600; color: var(--text-primary); white-space: nowrap; }
+    .pass-tag    { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border);
+                   border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
+    .na-tag      { background: var(--bg); color: var(--text-tertiary); border: 1px solid var(--border);
+                   border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 600; }
+    .warn-tag    { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border);
+                   border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
+    code         { background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+                   padding: 1px 5px; font-size: 13px; color: var(--blue-deep); }
+    @media (min-width: 650px) {
+      body { background: #E8ECF0; }
+      .rn-shell { background: var(--bg); border-radius: 24px; margin-top: 24px; margin-bottom: 24px;
+                  box-shadow: 0 0 60px rgba(16,24,40,0.10); padding-bottom: 40px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="rn-shell">
+  <nav class="app-nav" style="position: static; padding: 24px 0 0;">
+    <div class="nav-logo">TripPack AI</div>
+    <a href="/" class="nav-link">← Back to app</a>
+  </nav>
+
+  <div style="padding: 16px 0 0;">
+    <span class="rn-badge rn-internal">INTERNAL — NOT FOR CONSUMER UI</span>
+    <h1 class="rn-h1">App Review Notes</h1>
+    <p class="rn-sub">
+      This page is for App Store review, internal QA, and engineering reference.
+      It is not linked from the main consumer experience.
+      Route: <code>/review-notes</code>
+    </p>
+  </div>
+
+  <!-- What the app does -->
+  <div class="rn-section">
+    <h2 class="rn-h2">1. What TripPack AI does</h2>
+    <div class="rn-card">
+      <p class="rn-p">
+        TripPack AI is a <strong>budget-locked travel package decision engine</strong>. Given a budget, date window,
+        origin, and preferences, it assembles ranked complete travel packages — flight + hotel + rental car —
+        and rejects any option that fails deterministic validation rules.
+      </p>
+      <p class="rn-p">
+        This is <strong>not a chatbot</strong>. Voice and typed text are input methods only.
+        The core product function — package assembly, cost calculation, and budget validation —
+        is executed by deterministic Python code with no LLM involvement.
+      </p>
+    </div>
+  </div>
+
+  <!-- Demo path -->
+  <div class="rn-section">
+    <h2 class="rn-h2">2. Demo path for App Review</h2>
+    <div class="rn-card">
+      <p class="rn-p"><strong>No login required. No account needed. Works immediately.</strong></p>
+      <ol class="rn-list">
+        <li>Open <code>http://127.0.0.1:8765</code></li>
+        <li>Tap <strong>"Try $5,000 demo"</strong></li>
+        <li>Watch the animated loading checklist (2 seconds)</li>
+        <li>See 3 ranked packages — Seattle, Denver, Maui — each under $5,000</li>
+        <li>Tap <strong>"View Details"</strong> on any card</li>
+        <li>See the full detail sheet: flight, hotel, car, budget math, ranking explanation</li>
+        <li>Expand <strong>"Rejected options"</strong> — see Cancun (over budget), New York (hotel rating), Vancouver (date window)</li>
+        <li>Tap <strong>"Save"</strong> on a package — saves to browser localStorage</li>
+        <li>Visit <code>/privacy</code> via footer link</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- Not a chatbot -->
+  <div class="rn-section">
+    <h2 class="rn-h2">3. Why this is not a chatbot wrapper</h2>
+    <div class="rn-card">
+      <table class="rn-table">
+        <tr><th>Dimension</th><th>Generic chatbot wrapper</th><th>TripPack AI</th></tr>
+        <tr>
+          <td>Core function</td>
+          <td>Passes user message to LLM, displays text output</td>
+          <td>Runs deterministic package solver; LLM not involved in output</td>
+        </tr>
+        <tr>
+          <td>Budget enforcement</td>
+          <td>LLM "tries" to stay within budget</td>
+          <td>Python code rejects any package where total_cost &gt; budget</td>
+        </tr>
+        <tr>
+          <td>Output format</td>
+          <td>Free-form text</td>
+          <td>Structured ranked package cards with line-item breakdowns</td>
+        </tr>
+        <tr>
+          <td>Rejection logic</td>
+          <td>None — LLM may suggest over-budget trips</td>
+          <td>Explicit fail rules: budget, date window, nights, hotel rating ≥ 4.0</td>
+        </tr>
+        <tr>
+          <td>Reproducibility</td>
+          <td>Different answer each time</td>
+          <td>Same inputs → identical output (deterministic)</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- Deterministic vs AI -->
+  <div class="rn-section">
+    <h2 class="rn-h2">4. What is deterministic code vs AI-generated text</h2>
+    <div class="rn-card">
+      <p class="rn-p"><strong>Deterministic (no AI):</strong></p>
+      <ul class="rn-list">
+        <li>Package cost calculation: flight_total + hotel_total + car_total + taxes + buffer</li>
+        <li>Budget PASS/FAIL: <code>total_cost &lt;= budget</code></li>
+        <li>Date window check: <code>departure &gt;= earliest</code> and <code>return &lt;= latest</code></li>
+        <li>Hotel rating check: <code>rating &gt;= 4.0</code></li>
+        <li>Scoring formula: weighted combination of savings ratio, hotel rating, flight quality</li>
+        <li>Natural language parser: regex/keyword extraction (no LLM)</li>
+      </ul>
+      <p class="rn-p" style="margin-top: 10px;"><strong>AI-generated text (clearly labeled):</strong></p>
+      <ul class="rn-list">
+        <li>One-sentence package explanation (generated from template, not LLM)</li>
+        <li>Voice transcription uses browser Web Speech API only</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Mock data -->
+  <div class="rn-section">
+    <h2 class="rn-h2">5. What is mock data in V0</h2>
+    <div class="rn-card">
+      <table class="rn-table">
+        <tr><th>Data type</th><th>V0 Status</th><th>V1 Plan</th></tr>
+        <tr><td>Flight prices</td><td><span class="warn-tag">MOCK</span></td><td>Amadeus / Duffel API</td></tr>
+        <tr><td>Hotel nightly rates</td><td><span class="warn-tag">MOCK</span></td><td>Booking.com / Hotels API</td></tr>
+        <tr><td>Rental car rates</td><td><span class="warn-tag">MOCK</span></td><td>Rentalcars.com API</td></tr>
+        <tr><td>Taxes and fees</td><td><span class="warn-tag">12% flat estimate</span></td><td>Destination-specific</td></tr>
+        <tr><td>Booking links</td><td><span class="warn-tag">MOCK — labeled</span></td><td>Affiliate deep links</td></tr>
+        <tr><td>Package scoring</td><td><span class="pass-tag">DETERMINISTIC</span></td><td>Same formula + real data</td></tr>
+        <tr><td>Budget validation</td><td><span class="pass-tag">DETERMINISTIC</span></td><td>Same formula + real data</td></tr>
+      </table>
+      <p class="rn-p" style="margin-top: 12px; font-size: 13px;">
+        All mock data is labeled in the UI. Booking links are disabled placeholders, not real confirmed booking flows.
+      </p>
+    </div>
+  </div>
+
+  <!-- Permissions -->
+  <div class="rn-section">
+    <h2 class="rn-h2">6. Permissions used in V0</h2>
+    <div class="rn-card">
+      <table class="rn-table">
+        <tr><th>Permission</th><th>Status</th><th>Notes</th></tr>
+        <tr><td>Microphone</td><td><span class="warn-tag">Optional</span></td><td>Browser Web Speech API only. App works without it.</td></tr>
+        <tr><td>Location</td><td><span class="na-tag">Not used</span></td><td>Origin is entered manually.</td></tr>
+        <tr><td>Contacts</td><td><span class="na-tag">Not used</span></td><td>Not required in V0.</td></tr>
+        <tr><td>Notifications</td><td><span class="na-tag">Placeholder only</span></td><td>UI placeholder visible. Permission not requested in V0.</td></tr>
+        <tr><td>Camera</td><td><span class="na-tag">Not used</span></td><td>No photo functionality.</td></tr>
+        <tr><td>Health/Motion</td><td><span class="na-tag">Not used</span></td><td>Not relevant.</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- Disabled placeholders -->
+  <div class="rn-section">
+    <h2 class="rn-h2">7. Features that are disabled placeholders in V0</h2>
+    <div class="rn-card">
+      <ul class="rn-list">
+        <li><strong>Track Price</strong> — button visible, disabled, labeled "V1"</li>
+        <li><strong>Enable notifications</strong> — UI element on Privacy page, disabled, labeled "coming in V1"</li>
+        <li><strong>Booking links</strong> — disabled buttons labeled "Mock link · V1"</li>
+        <li><strong>Live flight/hotel/car APIs</strong> — all data is deterministic mock</li>
+        <li><strong>Login / accounts</strong> — no authentication in V0</li>
+        <li><strong>Payment</strong> — no payment in V0</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- What V0 does not have -->
+  <div class="rn-section">
+    <h2 class="rn-h2">8. Confirmed V0 does NOT include</h2>
+    <div class="rn-card" style="background: var(--green-bg); border-color: var(--green-border);">
+      <ul class="rn-list" style="color: var(--green);">
+        <li>No real-money payment flow</li>
+        <li>No real booking confirmation</li>
+        <li>No guaranteed or claimed final prices</li>
+        <li>No fake "Book Now" buttons linked to external checkout</li>
+        <li>No login or user accounts</li>
+        <li>No server-side data storage</li>
+        <li>No LLM deciding whether a package passes budget</li>
+        <li>No real-time external API calls</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Solver route -->
+  <div class="rn-section">
+    <h2 class="rn-h2">9. Key internal routes</h2>
+    <div class="rn-card">
+      <table class="rn-table">
+        <tr><th>Route</th><th>Description</th></tr>
+        <tr><td><code>GET /</code></td><td>Home screen — voice/text input, manual form</td></tr>
+        <tr><td><code>POST /search</code></td><td>Package solver — returns ranked results page</td></tr>
+        <tr><td><code>POST /parse-request</code></td><td>Natural language parser (regex, no LLM) → JSON</td></tr>
+        <tr><td><code>GET /privacy</code></td><td>Privacy information page</td></tr>
+        <tr><td><code>GET /review-notes</code></td><td>This page (internal, not linked in consumer UI)</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div style="padding: 12px; text-align: center; font-size: 12px; color: var(--text-tertiary); border-top: 1px solid var(--border); margin-top: 20px;">
+    TripPack AI — V0 Internal Review Notes · Not for distribution
+  </div>
+
+</div>
+</body>
+</html>

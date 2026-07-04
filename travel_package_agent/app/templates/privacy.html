@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#F5F7FA">
+  <title>Privacy — TripPack AI</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .privacy-shell { max-width: 430px; margin: 0 auto; min-height: 100dvh; }
+    .privacy-body  { padding: 0 16px 60px; }
+    .priv-section  { margin-bottom: 24px; }
+    .priv-h2       { font-size: 18px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.3px; margin-bottom: 10px; }
+    .priv-p        { font-size: 15px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 8px; }
+    .priv-list     { padding-left: 20px; margin: 8px 0; }
+    .priv-list li  { font-size: 15px; color: var(--text-secondary); line-height: 1.7; }
+    .priv-card     { background: var(--bg-card); border: 1px solid var(--border); border-radius: 18px;
+                     padding: 16px; margin-bottom: 12px; box-shadow: var(--shadow-card); }
+    .priv-card-title { font-size: 13px; font-weight: 700; color: var(--text-primary);
+                       text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .priv-badge    { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px;
+                     border-radius: 100px; font-size: 12px; font-weight: 600; margin-bottom: 12px; }
+    .badge-green   { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+    .badge-gray    { background: var(--bg); color: var(--text-tertiary); border: 1px solid var(--border); }
+    .clear-btn     { width: 100%; height: 46px; border-radius: 14px; background: var(--bg);
+                     border: 1.5px solid var(--border); color: var(--text-secondary); font-size: 15px;
+                     font-weight: 500; cursor: pointer; margin-top: 8px; transition: background 0.15s; }
+    .clear-btn:hover { background: #FFF1F1; border-color: #FCA5A5; color: #DC2626; }
+    .page-hero     { padding: 20px 16px 16px; }
+    .page-eyebrow  { font-size: 12px; font-weight: 600; color: var(--blue-action); text-transform: uppercase;
+                     letter-spacing: 0.6px; margin-bottom: 6px; }
+    .page-title    { font-size: 28px; font-weight: 700; letter-spacing: -0.6px; color: var(--text-primary);
+                     margin-bottom: 6px; }
+    .page-sub      { font-size: 14px; color: var(--text-secondary); line-height: 1.5; }
+    @media (min-width: 500px) {
+      body { background: #E8ECF0; }
+      .privacy-shell { border-left: 1px solid var(--border); border-right: 1px solid var(--border);
+                        box-shadow: 0 0 60px rgba(16,24,40,0.10); background: var(--bg); }
+    }
+  </style>
+</head>
+<body>
+<div class="privacy-shell">
+
+  <nav class="app-nav">
+    <div class="nav-logo">TripPack AI</div>
+    <a href="/" class="nav-link">← Home</a>
+  </nav>
+
+  <div class="page-hero">
+    <p class="page-eyebrow">Privacy</p>
+    <h1 class="page-title">Your data stays yours.</h1>
+    <p class="page-sub">TripPack AI is designed to work without collecting sensitive personal information.</p>
+  </div>
+
+  <div class="privacy-body">
+
+    <!-- V0 status -->
+    <div class="priv-card" style="background: var(--green-bg); border-color: var(--green-border);">
+      <p class="priv-card-title" style="color: var(--green);">V0 Status — Local Only</p>
+      <p class="priv-p" style="color: var(--green); margin: 0;">
+        This version runs entirely on your device. No account is required. No data is sent to external servers.
+        All preferences are stored locally in your browser.
+      </p>
+    </div>
+
+    <!-- What we use -->
+    <div class="priv-section">
+      <h2 class="priv-h2">What TripPack AI uses</h2>
+      <div class="priv-card">
+        <p class="priv-card-title">Trip request inputs</p>
+        <ul class="priv-list">
+          <li>Origin city or airport</li>
+          <li>Budget (USD)</li>
+          <li>Travel dates</li>
+          <li>Number of travelers</li>
+          <li>Destination preference</li>
+          <li>Rental car requirement</li>
+          <li>Travel style</li>
+        </ul>
+        <p class="priv-p" style="margin-top: 10px; font-size: 13px;">
+          These are used only to generate and score travel packages. They are not stored on any server in V0.
+        </p>
+      </div>
+      <div class="priv-card">
+        <p class="priv-card-title">Browser localStorage (optional)</p>
+        <p class="priv-p">
+          If you save a package, it is stored in your browser's localStorage — not on any server.
+          You can clear saved packages at any time.
+        </p>
+        <button class="clear-btn" onclick="clearSaved()">Clear saved packages</button>
+        <p id="clear-confirm" style="font-size:13px;color:var(--green);text-align:center;margin-top:8px;display:none;">
+          Saved packages cleared.
+        </p>
+      </div>
+    </div>
+
+    <!-- What we do NOT need -->
+    <div class="priv-section">
+      <h2 class="priv-h2">What TripPack AI does not need</h2>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+        <span class="priv-badge badge-gray">No contacts</span>
+        <span class="priv-badge badge-gray">No photos</span>
+        <span class="priv-badge badge-gray">No location</span>
+        <span class="priv-badge badge-gray">No login</span>
+        <span class="priv-badge badge-gray">No payment info</span>
+        <span class="priv-badge badge-gray">No health data</span>
+      </div>
+      <p class="priv-p">Precise location is never requested. Destination preference is entered manually.</p>
+    </div>
+
+    <!-- Voice -->
+    <div class="priv-section">
+      <h2 class="priv-h2">Voice input</h2>
+      <div class="priv-card">
+        <span class="priv-badge badge-green">Optional</span>
+        <p class="priv-p">
+          Voice input uses the browser's built-in Web Speech API. Audio is processed by your browser —
+          TripPack AI does not receive raw audio.
+        </p>
+        <p class="priv-p" style="font-size: 13px;">
+          Voice is entirely optional. You can type your trip request directly and all features work without microphone access.
+        </p>
+      </div>
+    </div>
+
+    <!-- Notifications placeholder -->
+    <div class="priv-section">
+      <h2 class="priv-h2">Notifications (coming in V1)</h2>
+      <div class="priv-card" style="opacity: 0.65;">
+        <p class="priv-card-title">Price drop alerts — not active in V0</p>
+        <p class="priv-p">
+          A future version will optionally request notification permission to alert you to price changes.
+          This is not enabled in V0. No notification permission is requested.
+        </p>
+      </div>
+    </div>
+
+    <!-- Data honesty -->
+    <div class="priv-section">
+      <h2 class="priv-h2">Pricing and data honesty</h2>
+      <div class="priv-card" style="background: var(--amber-bg); border-color: var(--amber-border);">
+        <p class="priv-card-title" style="color: var(--amber);">V0 Uses Deterministic Demo Data</p>
+        <p class="priv-p" style="color: var(--amber); margin: 0;">
+          All travel packages in V0 are generated from deterministic mock data.
+          Prices are not live. Booking links are placeholders. Do not use these numbers to make real financial decisions.
+        </p>
+      </div>
+      <p class="priv-p" style="font-size: 13px;">
+        When live APIs are integrated, copy will change to:
+        "Prices can change at checkout. Final price is confirmed by the booking partner."
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function clearSaved() {
+  localStorage.removeItem('trippack_saved');
+  const confirm = document.getElementById('clear-confirm');
+  confirm.style.display = 'block';
+  setTimeout(() => confirm.style.display = 'none', 3000);
+}
+</script>
+</body>
+</html>

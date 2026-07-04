@@ -1,0 +1,13 @@
+{
+  "reasoning_content": "春风拂面柳丝长，\n细雨如丝润草香。\n桃花灼灼映山红，\n燕子归来绕画梁。\n溪水潺潺流石上，\n莺歌婉转唱朝阳。\n农夫荷锄耕新土，\n笑语欢歌满村庄。",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "春风拂面柳丝长，\n细雨如丝润草香。\n桃花灼灼映山红，\n燕子归来绕画梁。\n溪水潺潺流石上，\n莺歌婉转唱朝阳。\n农夫荷锄耕新土，\n笑语欢歌满村庄。"
+    }
+  ],
+  "think_blocks": [],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T23:14:17.270166+00:00"
+}

@@ -1,0 +1,48 @@
+{
+  "generated_at": "2026-07-03T02:08:26.173133+00:00",
+  "canonical_prompt": "摘星人买菜不看价签,看菜上的露水还在不在。你说露水是什么?",
+  "gateway_path": {
+    "served_by": "gateway-v4.11",
+    "response_len": 33,
+    "truncated": false,
+    "finish_reason": "stop",
+    "pass": true
+  },
+  "direct_path": {
+    "served_by": null,
+    "response_len": 267,
+    "reasoning_tokens": 0,
+    "completion_tokens": 175,
+    "finish_reason": "stop",
+    "pass": true
+  },
+  "lm_studio_runtime": {
+    "conversation": "/Users/ciciwang/.lmstudio/conversations/17797865158102.conversation.json",
+    "temperature": 0.7,
+    "toml_temperature": 0.7,
+    "max_predicted_tokens": 400,
+    "max_reasoning_tokens": null,
+    "enable_thinking": false,
+    "message_count": 6,
+    "plugins": [
+      "demo/aster",
+      "dev/demo/aster"
+    ],
+    "notes": [
+      "active=gateway model=demo/aster",
+      "gateway=http://127.0.0.1:8501/v1",
+      "substrate=:1234 qwen/qwen3.5-9b",
+      "temp=0.7 max_tokens=400 thinking_cap=128",
+      "model picker → demo/aster (generator; lms dev must run)",
+      "lm_studio_tab_only"
+    ]
+  },
+  "gateway_plugin": {
+    "id": "demo/aster-grid-gateway",
+    "installed": false,
+    "built": false,
+    "in_conversation_plugins": false
+  },
+  "elapsed_s": 24.03,
+  "overall": "PASS"
+}

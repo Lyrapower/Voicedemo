@@ -1,0 +1,234 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1AAPPDELEGATE /* JarvisCoachApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AAPPFILE /* JarvisCoachApp.swift */; };
+		1AMODELS /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AMODELSFILE /* Models.swift */; };
+		1ADEBOUNCER /* Debouncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ADEBOUNCERFILE /* Debouncer.swift */; };
+		1ADISPLAY /* DisplayProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ADISPLAYFILE /* DisplayProvider.swift */; };
+		1ATALKTRACKS /* TalkTracksLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ATALKTRACKSFILE /* TalkTracksLoader.swift */; };
+		1AAUDIO /* AudioSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AAUDIOFILE /* AudioSessionManager.swift */; };
+		1ASPEECH /* SpeechTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ASPEECHFILE /* SpeechTranscriber.swift */; };
+		1ANTHROPIC /* AnthropicClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ANTHROPICFILE /* AnthropicClient.swift */; };
+		1APROMPT /* PromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1APROMPTFILE /* PromptBuilder.swift */; };
+		1AHOME /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AHOMEFILE /* HomeView.swift */; };
+		1ALIVEHUD /* LiveHUDView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ALIVEHUDFILE /* LiveHUDView.swift */; };
+		1ASCRIPT /* ScriptLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ASCRIPTLIBFILE /* ScriptLibraryView.swift */; };
+		1ASETTINGS /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ASETTINGSFILE /* SettingsView.swift */; };
+		1ABIGCARD /* BigCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ABIGCARDFILE /* BigCard.swift */; };
+		1ADEBUGFOLD /* DebugFold.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ADEBUGFOLDFILE /* DebugFold.swift */; };
+		1ATALKTRACKSYAML /* talk_tracks.yaml in Resources */ = {isa = PBXBuildFile; fileRef = 1ATALKTRACKSYAMLFILE /* talk_tracks.yaml */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1APROJECT /* JarvisCoach.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JarvisCoach.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1AAPPFILE /* JarvisCoachApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarvisCoachApp.swift; sourceTree = "<group>"; };
+		1AMODELSFILE /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		1ADEBOUNCERFILE /* Debouncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Debouncer.swift; sourceTree = "<group>"; };
+		1ADISPLAYFILE /* DisplayProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayProvider.swift; sourceTree = "<group>"; };
+		1ATALKTRACKSFILE /* TalkTracksLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TalkTracksLoader.swift; sourceTree = "<group>"; };
+		1AAUDIOFILE /* AudioSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionManager.swift; sourceTree = "<group>"; };
+		1ASPEECHFILE /* SpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechTranscriber.swift; sourceTree = "<group>"; };
+		1ANTHROPICFILE /* AnthropicClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicClient.swift; sourceTree = "<group>"; };
+		1APROMPTFILE /* PromptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptBuilder.swift; sourceTree = "<group>"; };
+		1AHOMEFILE /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		1ALIVEHUDFILE /* LiveHUDView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveHUDView.swift; sourceTree = "<group>"; };
+		1ASCRIPTLIBFILE /* ScriptLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptLibraryView.swift; sourceTree = "<group>"; };
+		1ASETTINGSFILE /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		1ABIGCARDFILE /* BigCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigCard.swift; sourceTree = "<group>"; };
+		1ADEBUGFOLDFILE /* DebugFold.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugFold.swift; sourceTree = "<group>"; };
+		1ATALKTRACKSYAMLFILE /* talk_tracks.yaml */ = {isa = PBXFileReference; lastKnownFileType = text; path = talk_tracks.yaml; sourceTree = "<group>"; };
+		1APRODUCTGROUP /* Products */ = {isa = PBXGroup; children = (1APROJECT /* JarvisCoach.app */, ); name = Products; sourceTree = "<group>"; };
+		1AMAINGROUP /* JarvisCoach */ = {isa = PBXGroup; children = (
+				1AAPPGROUP /* App */,
+				1ACOREGROUP /* Core */,
+				1AAUDIOGROUP /* Audio */,
+				1ASPEECHGROUP /* Speech */,
+				1ANETGROUP /* Networking */,
+				1AUIGROUP /* UI */,
+				1ARESOURCESGROUP /* Resources */,
+			); path = JarvisCoach; sourceTree = "<group>"; };
+		1AAPPGROUP /* App */ = {isa = PBXGroup; children = (1AAPPFILE /* JarvisCoachApp.swift */, ); path = App; sourceTree = "<group>"; };
+		1ACOREGROUP /* Core */ = {isa = PBXGroup; children = (1AMODELSFILE, 1ADEBOUNCERFILE, 1ADISPLAYFILE, 1ATALKTRACKSFILE); path = Core; sourceTree = "<group>"; };
+		1AAUDIOGROUP /* Audio */ = {isa = PBXGroup; children = (1AAUDIOFILE, ); path = Audio; sourceTree = "<group>"; };
+		1ASPEECHGROUP /* Speech */ = {isa = PBXGroup; children = (1ASPEECHFILE, ); path = Speech; sourceTree = "<group>"; };
+		1ANETGROUP /* Networking */ = {isa = PBXGroup; children = (1ANTHROPICFILE, 1APROMPTFILE); path = Networking; sourceTree = "<group>"; };
+		1AUIGROUP /* UI */ = {isa = PBXGroup; children = (1AHOMEFILE, 1ALIVEHUDFILE, 1ASCRIPTLIBFILE, 1ASETTINGSFILE, 1AUICOMPONENTSGROUP); path = UI; sourceTree = "<group>"; };
+		1AUICOMPONENTSGROUP /* Components */ = {isa = PBXGroup; children = (1ABIGCARDFILE, 1ADEBUGFOLDFILE); path = Components; sourceTree = "<group>"; };
+		1ARESOURCESGROUP /* Resources */ = {isa = PBXGroup; children = (1ATALKTRACKSYAMLFILE, ); path = Resources; sourceTree = "<group>"; };
+		1AROOTGROUP = {isa = PBXGroup; children = (1AMAINGROUP, 1APRODUCTGROUP); sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXNativeTarget section */
+		1ATARGET /* JarvisCoach */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1ABUILDCONFIGLIST /* Build configuration list for PBXNativeTarget "JarvisCoach" */;
+			buildPhases = (
+				1ASOURCES /* Sources */,
+				1ARESS /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = JarvisCoach;
+			productName = JarvisCoach;
+			productReference = 1APROJECT /* JarvisCoach.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1APROJ /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1540;
+				TargetAttributes = {
+					1ATARGET = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = 1APROJCONFIGLIST /* Build configuration list for PBXProject "JarvisCoach" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 1AROOTGROUP;
+			productRefGroup = 1APRODUCTGROUP;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1ATARGET /* JarvisCoach */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1ASOURCES /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1AAPPDELEGATE,
+				1AMODELS,
+				1ADEBOUNCER,
+				1ADISPLAY,
+				1ATALKTRACKS,
+				1AAUDIO,
+				1ASPEECH,
+				1ANTHROPIC,
+				1APROMPT,
+				1AHOME,
+				1ALIVEHUD,
+				1ASCRIPT,
+				1ASETTINGS,
+				1ABIGCARD,
+				1ADEBUGFOLD,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1ARESS /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1ATALKTRACKSYAML,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1APROJ_DEBUG /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "JarvisCoach 需要访问麦克风以实时转写你的对话，提供对话建议。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "JarvisCoach 需要使用语音识别以将你的语音转换为文本。";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.example.JarvisCoach";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		1APROJ_RELEASE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "JarvisCoach 需要访问麦克风以实时转写你的对话，提供对话建议。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "JarvisCoach 需要使用语音识别以将你的语音转换为文本。";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.example.JarvisCoach";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		1ATARGET_DEBUG /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				OTHER_SWIFT_FLAGS = "";
+			};
+			name = Debug;
+		};
+		1ATARGET_RELEASE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				OTHER_SWIFT_FLAGS = "";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1APROJCONFIGLIST /* Build configuration list for PBXProject "JarvisCoach" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1APROJ_DEBUG /* Debug */,
+				1APROJ_RELEASE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		1ABUILDCONFIGLIST /* Build configuration list for PBXNativeTarget "JarvisCoach" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1ATARGET_DEBUG /* Debug */,
+				1ATARGET_RELEASE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+	};
+	rootObject = 1APROJ /* Project object */;
+}
+

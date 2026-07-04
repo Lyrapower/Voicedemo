@@ -1,0 +1,11 @@
+{
+  "rwa_infrastructure_map": true,
+  "stablecoin_evidence_card": true,
+  "agent_payment_risk_note": true,
+  "rwa_proof_pack_candidate": true,
+  "last_updated": "2026-07-02T03:26:40Z",
+  "last_action": "export_pack",
+  "last_generated_file": "outputs/crypto_rwa/",
+  "blocker": "NONE",
+  "pack_complete": true
+}

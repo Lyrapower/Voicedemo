@@ -1,0 +1,80 @@
+{
+  "schema": "crypto_rwa_v1",
+  "sections": [
+    {
+      "id": "stablecoins",
+      "title": "Stablecoins",
+      "summary": "Issuance, reserve claims, redemption rails, and counterparty exposure from public sources only.",
+      "registry_path": "deliver/crypto/sections/stablecoins.md",
+      "status": "watching"
+    },
+    {
+      "id": "tokenized_rwa",
+      "title": "Tokenized Assets / RWA",
+      "summary": "Tokenized treasuries, credit, real estate, and commodity wrappers plus custody chains.",
+      "registry_path": "deliver/crypto/sections/tokenized_rwa.md",
+      "status": "watching"
+    },
+    {
+      "id": "onchain_identity",
+      "title": "On-chain Identity",
+      "summary": "Attestation, credential, and identity-layer protocols tied to financial access.",
+      "registry_path": "deliver/crypto/sections/onchain_identity.md",
+      "status": "empty"
+    },
+    {
+      "id": "wallets",
+      "title": "Wallets",
+      "summary": "Wallet infrastructure and custody patterns. No wallet connection in V1.",
+      "registry_path": "deliver/crypto/sections/wallets.md",
+      "status": "watching"
+    },
+    {
+      "id": "programmable_payments",
+      "title": "Programmable Payments",
+      "summary": "Payment intent, streaming, and settlement rail experiments.",
+      "registry_path": "deliver/crypto/sections/programmable_payments.md",
+      "status": "empty"
+    },
+    {
+      "id": "ai_agent_rails",
+      "title": "AI-Agent Financial Rails",
+      "summary": "Infrastructure where agents request, verify, or settle value with human gates.",
+      "registry_path": "deliver/crypto/sections/ai_agent_rails.md",
+      "status": "empty"
+    },
+    {
+      "id": "risk_proof",
+      "title": "Risk / Proof / Compliance Evidence",
+      "summary": "Evidence cards, proof-pack candidates, and regulatory or counterparty risk flags.",
+      "registry_path": "deliver/crypto/sections/risk_proof.md",
+      "status": "active"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "deliver/crypto/TRUST_LAYER.md",
+      "description": "Custody boundaries, kill switch language, and trust model."
+    },
+    {
+      "path": "deliver/crypto/DELIVERY_WORKFLOW.md",
+      "description": "Three-step delivery workflow with artifact outputs."
+    },
+    {
+      "path": "deliver/crypto/FAQ.md",
+      "description": "FAQ including wallet custody and continuity questions."
+    },
+    {
+      "path": "deliver/crypto/onchain/BOUNDARIES.md",
+      "description": "Explicit on-chain custody and key-touch boundaries."
+    },
+    {
+      "path": "deliver/crypto/onchain/VERIFIED_ACTION_GATES.md",
+      "description": "Human-approval gates for high-risk actions."
+    },
+    {
+      "path": "deliver/crypto/security/SECURITY_BASELINE.md",
+      "description": "Security baseline for crypto module operations."
+    }
+  ]
+}

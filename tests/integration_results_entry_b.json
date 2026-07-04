@@ -1,0 +1,111 @@
+[
+  {
+    "test": "entry_b_health",
+    "entry": "B",
+    "passed": false,
+    "details": {
+      "status": "ok",
+      "primary_backend": "ollama",
+      "fallback_backend": "llama.cpp",
+      "garden": {
+        "backend": "macos_tts",
+        "tts_enabled": true,
+        "tts_voice": "Daniel",
+        "llm_stream": "disabled",
+        "auto_speak_on_mic": false,
+        "presence_enabled": false
+      },
+      "entry_b": "compile_layer",
+      "memory_api": "local_grid_compile",
+      "entry_a_echo_gateway": "http://127.0.0.1:8500"
+    },
+    "timestamp": 1780393331.48996
+  },
+  {
+    "test": "entry_b_no_echo_node",
+    "entry": "B",
+    "passed": true,
+    "details": {
+      "status_code": 404
+    },
+    "timestamp": 1780393331.492683
+  },
+  {
+    "test": "entry_b_baseline_routing",
+    "entry": "B",
+    "passed": false,
+    "details": {
+      "status_code": 404,
+      "body": {
+        "detail": "Not Found"
+      }
+    },
+    "timestamp": 1780393331.494684
+  },
+  {
+    "test": "entry_b_carrier_aster",
+    "entry": "B",
+    "passed": false,
+    "details": {
+      "status_code": 404,
+      "body": {
+        "detail": "Not Found"
+      }
+    },
+    "timestamp": 1780393331.496554
+  },
+  {
+    "test": "entry_b_carrier_cheng",
+    "entry": "B",
+    "passed": false,
+    "details": {
+      "status_code": 404,
+      "body": {
+        "detail": "Not Found"
+      }
+    },
+    "timestamp": 1780393331.4985468
+  },
+  {
+    "test": "entry_b_contamination",
+    "entry": "B",
+    "passed": false,
+    "details": {
+      "status_code": 404,
+      "body": {
+        "detail": "Not Found"
+      }
+    },
+    "timestamp": 1780393331.500654
+  },
+  {
+    "test": "entry_b_audit_logging",
+    "entry": "B",
+    "passed": false,
+    "details": {
+      "status_code": 404
+    },
+    "timestamp": 1780393331.502578
+  },
+  {
+    "test": "entry_b_echo_layer_routing",
+    "entry": "B",
+    "passed": false,
+    "details": {
+      "status_code": 404,
+      "body": {
+        "detail": "Not Found"
+      }
+    },
+    "timestamp": 1780393331.504686
+  },
+  {
+    "test": "entry_b_carriers_list",
+    "entry": "B",
+    "passed": false,
+    "details": {
+      "carriers": []
+    },
+    "timestamp": 1780393331.653588
+  }
+]

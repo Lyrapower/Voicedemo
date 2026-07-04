@@ -1,0 +1,11 @@
+gate:
+  enabled: true
+  require_human_confirm: true
+
+limits:
+  per_tx_usd_cap: 100
+  daily_usd_cap: 300
+
+allowlist:
+  actions: ["sign_tx", "broadcast_tx", "withdraw_request"]
+  addresses: []   # empty by default: transfers should deny unless explicitly set

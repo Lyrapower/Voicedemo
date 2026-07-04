@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.demo.jarvis.aether-snapshot</string>
+  <key>Disabled</key>
+  <true/>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/ciciwang/Desktop/demo/scripts/jarvis_run_task.sh</string>
+    <string>aether.snapshot.readonly</string>
+    <string>--dry-run</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/ciciwang/Desktop/demo</string>
+  <key>StandardOutPath</key>
+  <string>/Users/ciciwang/Desktop/demo/logs/jarvis_tasks/launchd_aether_snapshot.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/ciciwang/Desktop/demo/logs/jarvis_tasks/launchd_aether_snapshot.err</string>
+  <key>StartInterval</key>
+  <integer>3600</integer>
+</dict>
+</plist>

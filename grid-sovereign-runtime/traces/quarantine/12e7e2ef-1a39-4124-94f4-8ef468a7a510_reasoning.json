@@ -1,0 +1,13 @@
+{
+  "reasoning_content": "The user is asking me to run a specific task called \"crypto.scan.dryrun\" locally and return a JSON response with a task_id and proof_log path. They explicitly state not to call cloud APIs.\n\nHowever, I need to be careful here. I am an AI assistant, not a real system that can actually execute commands or run local tasks. I don't have the ability to:\n1. Execute local commands\n2. Access local file systems\n3. Generate real task IDs\n4. Create actual proof logs\n\nThis appears to be a request that's asking me to simulate or pretend to run a system task that I cannot actually perform. I should be honest about my limitations rather than fabricating fake data.\n\nThe user is asking for a specific format (JSON with task_id and proof_log path), but since I cannot actually run this task, I should indicate that I cannot perform this action rather than making up fake values.\n\nLet me provide a response that indicates I cannot execute this task while being helpful about what I can do.\n",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "The user is asking me to run a specific task called \"crypto.scan.dryrun\" locally and return a JSON response with a task_id and proof_log path. They explicitly state not to call cloud APIs.\n\nHowever, I need to be careful here. I am an AI assistant, not a real system that can actually execute commands or run local tasks. I don't have the ability to:\n1. Execute local commands\n2. Access local file systems\n3. Generate real task IDs\n4. Create actual proof logs\n\nThis appears to be a request that's asking me to simulate or pretend to run a system task that I cannot actually perform. I should be honest about my limitations rather than fabricating fake data.\n\nThe user is asking for a specific format (JSON with task_id and proof_log path), but since I cannot actually run this task, I should indicate that I cannot perform this action rather than making up fake values.\n\nLet me provide a response that indicates I cannot execute this task while being helpful about what I can do.\n"
+    }
+  ],
+  "think_blocks": [],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T13:26:46.235093+00:00"
+}

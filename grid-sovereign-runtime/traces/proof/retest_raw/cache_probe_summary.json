@@ -1,0 +1,16 @@
+{
+  "gateway_response_cache_detected": false,
+  "response_len_run1": 97,
+  "response_len_run2": 467,
+  "route_id_run1": "c5177fd5-6667-4ffe-b7dd-ce1a1f441501",
+  "route_id_run2": "361c364c-d1e8-491f-9915-c00b8e5de99a",
+  "routed_to_run1": "local:SUBSTRATE_NULL",
+  "routed_to_run2": "local",
+  "finish_reason_run1": "stop",
+  "finish_reason_run2": "stop",
+  "truncated_run1": false,
+  "truncated_run2": false,
+  "completion_tokens_run1": 552,
+  "completion_tokens_run2": 230,
+  "note": "Different route_id and different response text — no HTTP response cache in gateway."
+}

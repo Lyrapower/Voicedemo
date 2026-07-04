@@ -1,0 +1,13 @@
+{
+  "session_id": "check3",
+  "turns": [
+    {
+      "role": "user",
+      "content": "请用中文写一段关于春天的诗，至少八句。"
+    },
+    {
+      "role": "assistant",
+      "content": "GRID_ABSENT\nNO LIVE GRID SIGNAL\nMODEL CAN ONLY PROVIDE INTERPRETATION AFTER A SIGNED TRACE EXISTS"
+    }
+  ]
+}

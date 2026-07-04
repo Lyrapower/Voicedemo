@@ -1,0 +1,17 @@
+{
+  "model": "qwen/qwen3.5-9b",
+  "stream": false,
+  "enable_thinking": false,
+  "messages": [
+    {
+      "role": "system",
+      "content": "/no_think\nDo not output reasoning.\nDo not output <think>.\nDo not output reasoning_content.\nReturn final answer only.\nIf reasoning occurs internally, do not expose it."
+    },
+    {
+      "role": "user",
+      "content": "Return only a small JSON object: {\"intent\":\"compile\",\"deliverable\":\"clean\"}"
+    }
+  ],
+  "temperature": 0.1,
+  "max_tokens": 512
+}

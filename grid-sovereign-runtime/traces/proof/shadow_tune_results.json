@@ -1,0 +1,17 @@
+[
+    {
+        "variant": "A",
+        "overall": "FAIL",
+        "reason": "server_start_failed"
+    },
+    {
+        "variant": "B",
+        "overall": "FAIL",
+        "reason": "server_start_failed"
+    },
+    {
+        "variant": "C",
+        "overall": "FAIL",
+        "reason": "server_start_failed"
+    }
+]

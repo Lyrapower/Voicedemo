@@ -1,0 +1,22 @@
+# IB Gateway (paper) — requires TWS_USERID and TWS_PASSWORD in .env
+# Usage: docker compose -f docker-compose.ib.yml up -d
+services:
+  ib-gateway:
+    image: ghcr.io/gnzsnz/ib-gateway:stable
+    restart: unless-stopped
+    environment:
+      TWS_USERID: ${TWS_USERID}
+      TWS_PASSWORD: ${TWS_PASSWORD}
+      TRADING_MODE: paper
+      TWS_ACCEPT_INCOMING: accept
+      READ_ONLY_API: "no"
+      TWOFA_TIMEOUT_ACTION: restart
+      RELOGIN_AFTER_TWOFA_TIMEOUT: "yes"
+    ports:
+      - "127.0.0.1:7497:7497"
+      - "127.0.0.1:4002:4002"
+    volumes:
+      - ib-gateway-settings:/home/ibgateway/Jts
+
+volumes:
+  ib-gateway-settings:

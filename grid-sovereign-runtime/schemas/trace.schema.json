@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GridTrace",
+  "type": "object",
+  "required": [
+    "kind",
+    "trace_id",
+    "created_at",
+    "channel",
+    "privacy",
+    "raw_sha256",
+    "raw_text",
+    "signature",
+    "watermark"
+  ],
+  "properties": {
+    "kind": {
+      "const": "GRID_TRACE"
+    },
+    "trace_id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "channel": {
+      "type": "string"
+    },
+    "privacy": {
+      "enum": [
+        "GREEN",
+        "YELLOW",
+        "RED"
+      ]
+    },
+    "raw_sha256": {
+      "type": "string"
+    },
+    "raw_text": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "signature": {
+      "type": "string"
+    },
+    "watermark": {
+      "type": "string"
+    }
+  }
+}

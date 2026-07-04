@@ -1,0 +1,50 @@
+{
+  "served_by": "gateway-v4.11",
+  "route_id": "1d8fb2d6-e3f7-4aa2-8b19-195656feeff5",
+  "ts": 1783040199.04094,
+  "id": "chatcmpl-1d8fb2d6-e3f7-4aa2-8b19-195656feeff5",
+  "object": "chat.completion",
+  "created": 1783040199,
+  "model": "qwen/qwen3.5-9b",
+  "truncated": false,
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "露水是夜间或清晨，空气中的水蒸气遇冷凝结在植物叶片、花朵等物体表面形成的液态小水珠。"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 73,
+    "completion_tokens": 29,
+    "total_tokens": 102,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "content_tokens": 29
+    }
+  },
+  "grid_meta": {
+    "route_class": "unsafe_debug",
+    "production": false,
+    "blocked": false,
+    "routed_to": "unsafe_debug:compat",
+    "computed_verdict": "DRAFT_ECHO",
+    "draft_only": true,
+    "reason": null,
+    "upstream_finish_reason": "stop",
+    "truncated": false,
+    "substrate_usage": {
+      "finish_reason": "stop",
+      "truncated": false,
+      "prompt_tokens": 73,
+      "completion_tokens": 29,
+      "reasoning_tokens": 0,
+      "content_tokens": 29
+    },
+    "max_tokens_sent": 400,
+    "budget_route": "chat"
+  }
+}

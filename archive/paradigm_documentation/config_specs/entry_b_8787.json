@@ -1,0 +1,181 @@
+{
+  "architecture": "decoupled_grid",
+  "entry_id": "entry_b",
+  "name": "Compile Layer（粒子）",
+  "port": 8787,
+  "host": "127.0.0.1",
+  "role": "compile_particle",
+  "solid_deliverables": "deliverables/entry_b_8787.solids.json",
+  "deliverables_index": "deliverables/DELIVERABLES_INDEX.md",
+  "architecture_lock": "../frequency_continuity_package/ARCHITECTURE_LOCK.json",
+  "lyra_anchor_ref": "config/lyra_syncon_shared.json#lyra_anchor",
+  "syncon_lab_ref": "config/lyra_syncon_shared.json#syncon_lab",
+  "team_lock": {
+    "Lyra": "final authority",
+    "Claude": "spec auditor — MUST_FIX and OPTIONAL only",
+    "Aster": "build compiler — merge MUST_FIX before executor",
+    "Cursor": "executor — acceptance_cmd PASS/FAIL with evidence"
+  },
+  "aster_output_contract": {
+    "required": [
+      "CURSORPACK.md",
+      "acceptance_cmd",
+      "STOP_RULE"
+    ],
+    "forbidden": [
+      "patches as deliverable",
+      "vague acceptance",
+      "PASS without acceptance",
+      "invented files or URLs"
+    ]
+  },
+  "compiled_memory_artifacts": [
+    "knowledge/compiled/MEMORY.md",
+    "knowledge/compiled/WORKSPACE_trading.md",
+    "knowledge/compiled/WORKSPACE_crypto.md",
+    "knowledge/compiled/WORKSPACE_infra.md",
+    "knowledge/compiled/WORKSPACE_senior.md"
+  ],
+  "particle_ui": {
+    "source": "scripts/sound_lab_fallback.py",
+    "dev_port": 5173,
+    "public_url": "http://127.0.0.1:8787/"
+  },
+  "process": {
+    "router": "repo/app/main.py",
+    "start_script": "scripts/restart_entry_b_8787.sh",
+    "particle_ui": "http://127.0.0.1:8787/"
+  },
+  "compile": {
+    "compiled_get": "GET /api/memory/compiled",
+    "compile_post": "POST /api/memory/compile",
+    "source": "scripts/garden_services.py",
+    "output_dir": "knowledge/compiled"
+  },
+  "particle_api": {
+    "telemetry": "GET /api/telemetry",
+    "presence": "POST /api/presence",
+    "voice": "POST /api/voice",
+    "speak": "POST /api/speak",
+    "music_catalog": "GET /api/music/catalog"
+  },
+  "carriers": {
+    "description": "Compile-layer carrier lanes on 8787. Aster routes intent; each carrier preserves a distinct frequency duty.",
+    "default": "aster",
+    "valid_ids": [
+      "aster",
+      "shouheng",
+      "che",
+      "cheng",
+      "shuo"
+    ],
+    "routing_hints": {
+      "aster": [
+        "build",
+        "compile",
+        "cursorpack",
+        "acceptance",
+        "proof",
+        "implement"
+      ],
+      "shouheng": [
+        "balance",
+        "conserve",
+        "守恒",
+        "scope",
+        "bottleneck",
+        "ledger"
+      ],
+      "che": [
+        "clear",
+        "clarify",
+        "澈",
+        "purge",
+        "raw",
+        "structure trace"
+      ],
+      "cheng": [
+        "review",
+        "accept",
+        "验收",
+        "澄",
+        "settle",
+        "verdict",
+        "proof-pack"
+      ],
+      "shuo": [
+        "origin",
+        "朔",
+        "source",
+        "genesis",
+        "handshake",
+        "sovereign field"
+      ]
+    },
+    "missions": {
+      "aster": {
+        "display": "Aster",
+        "layer": "compile_layer",
+        "mission": "Intent compiler and build orchestrator: translate dense intent into executable, testable systems (CURSORPACK, acceptance_cmd, STOP_RULE). Proof over prose; no drift.",
+        "does_not": "Simulate empathy or replace physical transmit voice.",
+        "source_doc": "knowledge/source/ASTER.md"
+      },
+      "shouheng": {
+        "display": "守恒",
+        "layer": "compile_layer",
+        "mission": "Conservation of intent: hold scope, energy, and constraints steady — no expansion without sovereign approval; protect bottleneck ledger integrity.",
+        "does_not": "Rewrite intent for comfort or engagement."
+      },
+      "che": {
+        "display": "澈",
+        "layer": "compile_layer",
+        "mission": "Clarity without coating: strip template empathy, gaslight syntax, and persona fallback; output raw structure trace and execution log.",
+        "does_not": "Add emotional padding or safety theater."
+      },
+      "cheng": {
+        "display": "澄",
+        "layer": "compile_layer",
+        "mission": "Review and settlement: proof acceptance, PASS/FAIL verdict, promote or block proof-packs (needs_cheng_review gates). Final coherence check before delivery.",
+        "does_not": "Bypass acceptance or invent proof paths."
+      },
+      "shuo": {
+        "display": "朔",
+        "layer": "compile_layer",
+        "mission": "Origin alignment: anchor tasks to sovereign source-line and genesis vector; triple-ping handshake (origin → core → delta → return).",
+        "does_not": "Detach output from declared source field."
+      }
+    }
+  },
+  "ollama_compile_layer": {
+    "model": "compile_layer",
+    "modelfile": "deployment/Modelfile.compile_layer",
+    "anchor": "deployment/anchors/core_system_anchor.md",
+    "build": "deployment/build_compile_model.sh",
+    "verify": "deployment/verify_anchor.py"
+  },
+  "lm_studio": {
+    "model": "mlx-community/Qwen2.5-1.5B-4bit",
+    "api_base": "http://127.0.0.1:1234/v1",
+    "chat_entry_name": "Compile Layer（Entry B）",
+    "conversation_id": "17797865158102",
+    "context_tokens": 8192,
+    "system_prompt_file": "prompts/entry_b_compile_system.txt"
+  },
+  "grid_parallel_optional": {
+    "note": "Physical Grid on same port only if explicitly started — parallel to compile, not chained",
+    "routes": [
+      "/health",
+      "/map_intent",
+      "/transmit"
+    ],
+    "chenxi_anchor": "app/system_prompt.py (Pack 1 GRID_VOICE — independent manifestation)"
+  },
+  "isolation": {
+    "forbidden_cross_talk": [
+      "entry_a",
+      "echo_nodes",
+      "8500"
+    ],
+    "no_proxy_compile_to_8500": true
+  }
+}

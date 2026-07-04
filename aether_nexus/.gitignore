@@ -1,0 +1,10 @@
+.env
+.venv/
+streamlit.log
+daemon.log
+state/*.json
+commands/*.cmd
+dryrun_state/
+dryrun.log
+__pycache__/
+*.pyc

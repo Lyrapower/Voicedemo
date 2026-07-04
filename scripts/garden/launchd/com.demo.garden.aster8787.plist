@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.demo.garden.aster8787</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON__</string>
+    <string>__DEMO_ROOT__/scripts/garden/start_aster_8787.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__DEMO_ROOT__</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/demo-garden/aster8787.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/demo-garden/aster8787.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Library/Frameworks/Python.framework/Versions/3.13/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>GARDEN_TTS_ENABLED</key>
+    <string>1</string>
+    <key>GARDEN_TTS_VOICE</key>
+    <string>Daniel</string>
+    <key>GARDEN_TTS_AUTO_ON_MIC</key>
+    <string>0</string>
+    <key>GARDEN_TTS_RATE</key>
+    <string>155</string>
+  </dict>
+</dict>
+</plist>

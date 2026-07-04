@@ -1,0 +1,4 @@
+--- RUNTIME FLAGS (entry A) ---
+# safety_persona = false
+# fallback_template = null
+# reroute_empathy_response = DISABLED

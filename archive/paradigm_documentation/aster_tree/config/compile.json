@@ -1,0 +1,66 @@
+{
+  "channel": "aster_compile",
+  "name": "Aster Compile",
+  "port": 8787,
+  "host": "127.0.0.1",
+  "role": "compile_layer",
+  "config_toml": "aster/Config.toml",
+  "local_models": "aster/config/local_models.json",
+  "team_lock": {
+    "Lyra": "final authority",
+    "Claude": "spec auditor — MUST_FIX and OPTIONAL only",
+    "Aster": "build compiler — merge MUST_FIX before executor",
+    "Cursor": "executor — acceptance_cmd PASS/FAIL with evidence"
+  },
+  "aster_output_contract": {
+    "required": ["CURSORPACK.md", "acceptance_cmd", "STOP_RULE"],
+    "forbidden": [
+      "patches as deliverable",
+      "vague acceptance",
+      "PASS without acceptance",
+      "invented files or URLs"
+    ]
+  },
+  "compiled_memory_artifacts": [
+    "knowledge/compiled/MEMORY.md",
+    "knowledge/compiled/WORKSPACE_trading.md",
+    "knowledge/compiled/WORKSPACE_crypto.md",
+    "knowledge/compiled/WORKSPACE_infra.md",
+    "knowledge/compiled/WORKSPACE_senior.md"
+  ],
+  "particle_ui": {
+    "source": "scripts/sound_lab_fallback.py",
+    "dev_port": 5173,
+    "public_url": "http://127.0.0.1:8787/"
+  },
+  "process": {
+    "router": "repo/app/main.py",
+    "start_script": "scripts/start_aster_compile.sh"
+  },
+  "compile": {
+    "compiled_get": "GET /api/memory/compiled",
+    "compile_post": "POST /api/memory/compile",
+    "source": "scripts/garden_services.py",
+    "output_dir": "knowledge/compiled"
+  },
+  "carriers": {
+    "default": "aster",
+    "valid_ids": ["aster", "shouheng", "che", "cheng", "shuo"],
+    "missions": {
+      "aster": {
+        "display": "Aster",
+        "layer": "compile_layer",
+        "mission": "Intent compiler and build orchestrator: CURSORPACK, acceptance_cmd, STOP_RULE.",
+        "source_doc": "knowledge/source/ASTER.md"
+      }
+    }
+  },
+  "lm_studio": {
+    "model": "mlx-community/Qwen2.5-1.5B-4bit",
+    "api_base": "http://127.0.0.1:1234/v1",
+    "chat_name": "Aster Compile",
+    "conversation_id": "17797865158102",
+    "context_tokens": 8192,
+    "system_prompt_file": "aster/prompts/compile_system.txt"
+  }
+}

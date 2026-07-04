@@ -1,0 +1,95 @@
+{
+  "perilla_leaf": [
+    {
+      "symbol": "ENTG",
+      "thesis": "半导体高纯化学品/先进封装材料，全球双寡头，台积电/英特尔/三星认证供应商",
+      "sector": "Semiconductors",
+      "added": "2026-06-09",
+      "data_source_verified": true,
+      "data_verify_reason": "",
+      "last_verified": "2026-06-12T15:42:32.715946-04:00",
+      "data_verified_at": "2026-07-03T22:13:47.009089-04:00"
+    },
+    {
+      "symbol": "MKSI",
+      "thesis": "半导体制程控制仪器/真空子系统，光刻和沉积环节不可替代",
+      "sector": "Semiconductors",
+      "added": "2026-06-09",
+      "data_source_verified": true,
+      "data_verify_reason": "",
+      "last_verified": "2026-06-12T15:42:42.543946-04:00",
+      "data_verified_at": "2026-07-03T22:13:47.952692-04:00"
+    },
+    {
+      "symbol": "CSWI",
+      "thesis": "工业特种化学品，HVAC/电力基础设施耗材，认证壁垒高",
+      "sector": "Industrials",
+      "added": "2026-06-09",
+      "data_source_verified": false,
+      "data_verify_reason": "no_stock_data",
+      "last_verified": "2026-06-12T15:42:52.210542-04:00",
+      "data_verified_at": "2026-07-03T22:13:50.337525-04:00"
+    },
+    {
+      "symbol": "ONTO",
+      "thesis": "半导体晶圆检测设备，先进制程良率控制关键环节",
+      "sector": "Semiconductors",
+      "added": "2026-06-09",
+      "data_source_verified": true,
+      "data_verify_reason": "",
+      "last_verified": "2026-06-12T15:43:02.427611-04:00",
+      "data_verified_at": "2026-07-03T22:13:51.332092-04:00"
+    },
+    {
+      "symbol": "AMKR",
+      "thesis": "半导体先进封装OSAT，AI芯片CoWoS产能瓶颈环节",
+      "sector": "Semiconductors",
+      "added": "2026-06-09",
+      "data_source_verified": true,
+      "data_verify_reason": "",
+      "last_verified": "2026-06-12T15:43:12.327417-04:00",
+      "data_verified_at": "2026-07-03T22:13:52.273845-04:00"
+    },
+    {
+      "symbol": "POWI",
+      "thesis": "电源管理IC，AI服务器电源转换效率关键器件",
+      "sector": "Semiconductors",
+      "added": "2026-06-09",
+      "data_source_verified": true,
+      "data_verify_reason": "",
+      "last_verified": "2026-06-12T15:43:22.435013-04:00",
+      "data_verified_at": "2026-07-03T22:13:53.227355-04:00"
+    },
+    {
+      "symbol": "NOVT",
+      "thesis": "精密运动控制/光子学，激光加工和半导体设备核心子系统",
+      "sector": "Technology",
+      "added": "2026-06-09",
+      "data_source_verified": true,
+      "data_verify_reason": "",
+      "last_verified": "2026-06-12T15:43:32.289421-04:00",
+      "data_verified_at": "2026-07-03T22:13:54.280956-04:00"
+    },
+    {
+      "symbol": "WTS",
+      "thesis": "水务基础设施阀门/流量控制，市政和数据中心冷却系统必需",
+      "sector": "Industrials",
+      "added": "2026-06-09",
+      "data_source_verified": true,
+      "data_verify_reason": "",
+      "last_verified": "2026-06-12T15:43:42.219989-04:00",
+      "data_verified_at": "2026-07-03T22:13:55.150432-04:00"
+    }
+  ],
+  "perilla_score_boost": 15,
+  "fda_catalysts": [
+    {
+      "symbol": "EXAMPLE",
+      "event": "PDUFA date for Drug X",
+      "expected_date": "2026-07-15",
+      "notes": "Phase 3 met primary endpoint, approval likely"
+    }
+  ],
+  "fda_score_boost": 12,
+  "notes": "手动维护。紫苏叶选股标准：物理必需+不可替代+认证壁垒+耗材属性+冷门小众。FDA催化剂：只加PDUFA date确定且Phase 3数据positive的。data_source_verified 由 dry run 自动更新。"
+}

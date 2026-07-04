@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.demo.jarvis.trading-readiness-dryrun</string>
+  <key>Disabled</key>
+  <true/>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/ciciwang/Desktop/demo/scripts/jarvis_run_task.sh</string>
+    <string>trading.readiness.check</string>
+    <string>--dry-run</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/ciciwang/Desktop/demo</string>
+  <key>StandardOutPath</key>
+  <string>/Users/ciciwang/Desktop/demo/logs/jarvis_tasks/launchd_trading_readiness.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/ciciwang/Desktop/demo/logs/jarvis_tasks/launchd_trading_readiness.err</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>1</integer>
+    <key>Hour</key>
+    <integer>8</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+</dict>
+</plist>

@@ -1,0 +1,32 @@
+{
+  "generated_at": "2026-05-20T04:06:12Z",
+  "recommended_tier": "Pro Node",
+  "price_range": "$3,500–$5,000",
+  "target": "AI-heavy founder / researcher / consultant",
+  "includes": [
+    "local model",
+    "OCR → Markdown",
+    "Obsidian/RAG",
+    "FastAPI/local router",
+    "30-day support",
+    "setup guide"
+  ],
+  "alternatives": {
+    "Lite Node": "$1,800–$2,500",
+    "Pro Node": "$3,500–$5,000",
+    "Sovereign Node": "$7,000+"
+  },
+  "intake_summary": {
+    "customer_type": "AI-heavy solo founder",
+    "current_device": "MacBook Pro M3, 36GB RAM",
+    "target_use_case": "Private client research notes + OCR pipeline",
+    "privacy_sensitivity": "high privacy",
+    "desired_local_functions": "OCR, Obsidian RAG, local Qwen, FastAPI router",
+    "budget_range": "$4,000-$5,000"
+  },
+  "review_routing": {
+    "needs_cheng_review": true,
+    "needs_lyra_review": false
+  },
+  "rationale": "Selected Pro Node based on intake. Budget signal: $4,000-$5,000. Privacy signal: high privacy. Requested functions: OCR, Obsidian RAG, local Qwen, FastAPI router."
+}

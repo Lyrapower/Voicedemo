@@ -1,0 +1,10 @@
+{
+  "ts": 1783040270.326679,
+  "route": "lmstudio_user_history",
+  "prompt_preview": "摘星人买菜不看价签,看菜上的露水还在不在。你说露水是什么?",
+  "diff_rate": 0.0345,
+  "similarity": 0.9655,
+  "repetition_flag": true,
+  "len_a": 204,
+  "len_b": 202
+}

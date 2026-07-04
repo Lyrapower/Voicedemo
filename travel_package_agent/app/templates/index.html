@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#F6F3EE">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>TripPack AI</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div id="loading-screen" class="loading-screen" aria-hidden="true">
+  <div>
+    <div class="loading-ring"></div>
+    <p class="loading-h">Building your best trip<br>packages…</p>
+    <div>
+      <div class="load-row" id="li-0"><span class="load-dot"></span> Checking flights</div>
+      <div class="load-row" id="li-1"><span class="load-dot"></span> Pairing hotels</div>
+      <div class="load-row" id="li-2"><span class="load-dot"></span> Adding rental car</div>
+      <div class="load-row" id="li-3"><span class="load-dot"></span> Fees + buffer</div>
+      <div class="load-row" id="li-4"><span class="load-dot"></span> Rejecting over-budget</div>
+    </div>
+  </div>
+</div>
+
+<div class="app-shell" id="home-container">
+
+  <header class="app-nav">
+    <span class="brand">TripPack AI</span>
+    <span class="badge-demo">Demo</span>
+  </header>
+
+  <section class="hero-panel" aria-label="Product introduction">
+    <div class="hero-panel-inner">
+      <div>
+        <span class="hero-pill">BUDGET-LOCKED TRAVEL AGENT</span>
+        <h1 class="hero-h1" style="margin-top:12px;">Three trips you can actually afford.</h1>
+        <p class="hero-mute" style="margin-top:8px; font-size:15px; line-height:1.4; color:rgba(255,255,255,0.9);">Tell us your budget, dates, and vibe. TripPack builds complete flight + hotel + car packages and rejects anything that breaks your rules.</p>
+      </div>
+      <div>
+        <div class="hero-stats" aria-label="Default demo context">
+          <span class="hero-stat">$5,000 demo</span>
+          <span class="hero-stat">May 8–22</span>
+          <span class="hero-stat">Live watch</span>
+          <span class="hero-stat">Budget pass</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <p class="sec-label" style="margin:0 var(--px) 6px;">Request</p>
+
+  <form id="trip-form" method="POST" action="/search">
+    <div class="composer">
+      <div class="composer-card">
+        <h2 class="composer-h">Tell us the trip</h2>
+        <div class="composer-text-wrap">
+          <label for="voice-transcript" class="visually-hidden">Describe your trip</label>
+          <textarea id="voice-transcript" class="composer-ta" rows="4"
+            placeholder="I have $5,000 and want to travel from San Diego in the second or third week of May. I prefer beach and need a rental car."
+            oninput="onTranscriptInput(this.value)"></textarea>
+          <button type="button" class="mic-fab" id="mic-btn" onclick="startVoice()" aria-label="Speak trip">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 19v3M9 22h6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <p class="composer-hint" id="voice-status">Voice is optional. Type your trip, or <button type="button" class="link-voice" onclick="startVoice()" style="background:none;border:none;padding:0;color:var(--ocean);font-weight:600;text-decoration:underline;cursor:pointer;font-size:inherit;">Speak trip</button>.</p>
+
+        <div class="chips" role="group" aria-label="Quick values">
+          <span class="chip" data-field="origin" data-val="San Diego" onclick="applyChip(this)">San Diego</span>
+          <span class="chip" data-field="budget" data-val="5000" onclick="applyChip(this)">$5,000</span>
+          <span class="chip" data-field="dates" data-val="may-window" onclick="applyChip(this)">May 8–22</span>
+          <span class="chip" data-field="destination_preference" data-val="Beach" onclick="applyChip(this)">Beach</span>
+          <span class="chip active" data-field="rental_car_required" data-val="true" onclick="applyChip(this)">Rental car</span>
+        </div>
+
+        <button type="button" class="btn-pri" onclick="document.getElementById('trip-form').requestSubmit()">Build my three packages</button>
+        <button type="button" class="btn-pri-ghost" onclick="fillDemo()">Try $5,000 May demo</button>
+        <p class="sub-hint">Or edit details below</p>
+      </div>
+    </div>
+
+    <details class="trip-deets" id="trip-deets">
+      <summary>
+        <span>Trip details</span>
+        <svg class="td-chev" viewBox="0 0 20 20" fill="none"><path d="M5 7.5l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </summary>
+      <div class="td-body">
+        <div class="td-row"><span class="td-l">From</span><input type="text" name="origin" id="f-origin" class="td-in" value="San Diego"></div>
+        <div class="td-row"><span class="td-l">Budget</span>
+          <span class="td-v" style="display:flex;align-items:center;gap:2px;justify-content:flex-end;"><span style="color:var(--text-2)">$</span><input type="number" name="budget" id="f-budget" class="td-in" value="5000" min="500" max="99999" style="max-width:100px"></span>
+        </div>
+        <div class="td-row"><span class="td-l">Earliest go</span><input type="date" name="earliest_departure" id="f-depart" class="td-in" value="2026-05-08"></div>
+        <div class="td-row"><span class="td-l">Latest return</span><input type="date" name="latest_return" id="f-return" class="td-in" value="2026-05-22"></div>
+        <div class="td-row"><span class="td-l">Travelers</span>
+          <div class="step">
+            <button type="button" onclick="step(-1)">−</button>
+            <input class="step-val" type="number" name="travelers" id="f-travelers" value="1" min="1" max="8">
+            <button type="button" onclick="step(1)">+</button>
+          </div>
+        </div>
+        <div class="td-row"><span class="td-l">Vibe</span>
+          <select name="destination_preference" id="f-pref" class="td-sel">
+            <option value="Any">Any</option>
+            <option value="Beach">Beach</option>
+            <option value="City">City</option>
+            <option value="Nature">Nature</option>
+          </select>
+        </div>
+        <div class="td-row"><span class="td-l">Style</span>
+          <select name="style" id="f-style" class="td-sel">
+            <option value="Best Value">Best Value</option>
+            <option value="Comfort">Comfort</option>
+            <option value="Cheapest Valid">Cheapest Valid</option>
+          </select>
+        </div>
+        <div class="td-row"><span class="td-l">Rental car</span>
+          <label class="td-toggle"><input type="checkbox" name="rental_car_required" id="f-car" checked><span class="td-t"></span></label>
+        </div>
+      </div>
+    </details>
+
+    <div class="site-foot" style="padding-bottom:8px;">
+      <a href="/privacy">Privacy</a>
+      <a href="/review-notes">Review notes</a>
+      <p>Demo data only. No real booking or guaranteed prices yet.</p>
+    </div>
+  </form>
+
+  <div class="sticky-cta" style="z-index:250;">
+    <div class="cta-wrap">
+      <p class="cta-mute">Demo data · budget checked by code</p>
+      <button type="button" class="btn-pri" form="trip-form" onclick="document.getElementById('trip-form').requestSubmit()">Generate packages</button>
+    </div>
+  </div>
+</div>
+
+<style>.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}</style>
+<script>
+function startVoice() {
+  const mic = document.getElementById('mic-btn');
+  const st = document.getElementById('voice-status');
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { st.textContent = 'Voice may need permission in Safari. Type instead — it works the same.'; return; }
+  const rec = new SR();
+  rec.continuous = false; rec.interimResults = true; rec.lang = 'en-US';
+  mic.classList.add('listening');
+  st.textContent = 'Listening…';
+  rec.onresult = e => {
+    const t = Array.from(e.results).map(r => r[0].transcript).join('');
+    document.getElementById('voice-transcript').value = t;
+    if (e.results[e.results.length - 1].isFinal) onTranscriptInput(t);
+  };
+  rec.onend = () => { mic.classList.remove('listening'); st.textContent = 'Voice is optional. Type your trip, or use Speak trip.'; };
+  rec.onerror = () => { mic.classList.remove('listening'); st.textContent = 'Type your trip — mic unavailable.'; };
+  rec.start();
+}
+let parseTimeout = null;
+function onTranscriptInput(t) { clearTimeout(parseTimeout); if (t && t.length >= 8) parseTimeout = setTimeout(() => parseTranscript(t), 600); }
+async function parseTranscript(text) {
+  try {
+    const fd = new FormData(); fd.append('text', text);
+    const d = await (await fetch('/parse-request', { method: 'POST', body: fd })).json();
+    if (d.origin) document.getElementById('f-origin').value = d.origin;
+    if (d.budget) document.getElementById('f-budget').value = d.budget;
+    if (d.earliest_departure) document.getElementById('f-depart').value = d.earliest_departure;
+    if (d.latest_return) document.getElementById('f-return').value = d.latest_return;
+    if (d.travelers) document.getElementById('f-travelers').value = d.travelers;
+    if (d.destination_preference) document.getElementById('f-pref').value = d.destination_preference;
+    if (d.style) document.getElementById('f-style').value = d.style;
+    if (d.rental_car_required !== undefined) document.getElementById('f-car').checked = d.rental_car_required;
+  } catch (e) {}
+}
+function fillDemo() {
+  document.getElementById('f-origin').value = 'San Diego';
+  document.getElementById('f-budget').value = '5000';
+  document.getElementById('f-depart').value = '2026-05-08';
+  document.getElementById('f-return').value = '2026-05-22';
+  document.getElementById('f-travelers').value = '1';
+  document.getElementById('f-pref').value = 'Any';
+  document.getElementById('f-style').value = 'Best Value';
+  document.getElementById('f-car').checked = true;
+  document.getElementById('voice-transcript').value = 'I have $5,000 and want to travel from San Diego in the second or third week of May. I prefer beach and need a rental car.';
+  document.getElementById('trip-form').requestSubmit();
+}
+function step(d) { const e = document.getElementById('f-travelers'); const v = parseInt(e.value,10) + d; if (v>=1 && v<=8) e.value = v; }
+function applyChip(el) {
+  el.classList.toggle('active');
+  const f = el.dataset.field, v = el.dataset.val;
+  if (f==='origin') document.getElementById('f-origin').value = v;
+  if (f==='budget') document.getElementById('f-budget').value = v;
+  if (f==='dates' && v==='may-window'){ document.getElementById('f-depart').value = '2026-05-08'; document.getElementById('f-return').value = '2026-05-22'; }
+  if (f==='destination_preference') document.getElementById('f-pref').value = v;
+  if (f==='rental_car_required') document.getElementById('f-car').checked = v==='true';
+}
+document.getElementById('trip-form').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const home = document.getElementById('home-container');
+  const load = document.getElementById('loading-screen');
+  home.style.opacity = '0'; home.style.transition = 'opacity 0.25s';
+  setTimeout(() => {
+    home.style.display = 'none';
+    load.style.display = 'flex'; load.style.flexDirection = 'column';
+    [0,1,2,3,4].forEach(i => setTimeout(() => { document.getElementById('li-'+i).classList.add('done'); }, (i+1)*320));
+    setTimeout(() => this.submit(), 1900);
+  }, 200);
+});
+</script>
+</body>
+</html>

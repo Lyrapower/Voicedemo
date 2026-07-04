@@ -1,0 +1,98 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+/* Begin PBXBuildFile section */
+		A1C0FFEE00010001 /* in Sources */ = {isa = PBXBuildFile; fileRef = A1C0FFEE00010002 /* AppConfig.swift */; };
+		F947F172C2CD4EA682095018 /* in Sources */ = {isa = PBXBuildFile; fileRef = F31D62ED8CBA43C2BE2978C8 /* DesignTokens.swift */; };
+		895587312BE24ACFA2918FB9 /* in Sources */ = {isa = PBXBuildFile; fileRef = 84380526807748AFBD2284DA /* Models/ApiTypes.swift */; };
+		C67F2B1171664121BE90C126 /* in Sources */ = {isa = PBXBuildFile; fileRef = D0553571BE1E4048937F7986 /* Services/TripAPIClient.swift */; };
+		DCF5582F2AFE4D12A33465F4 /* in Sources */ = {isa = PBXBuildFile; fileRef = E76413A90372421EAB9E8533 /* TripPackAIApp.swift */; };
+		48BB8FADFC0145D18631D3A1 /* in Sources */ = {isa = PBXBuildFile; fileRef = 1146B406B76046149FCA382C /* Utilities/RelativeTime.swift */; };
+		E57AC521FC9D4BE6AB368485 /* in Sources */ = {isa = PBXBuildFile; fileRef = ED1C732951794464AB7DA71D /* Views/Deals/DealsListView.swift */; };
+		E2D57B43CF884919B89D5C3E /* in Sources */ = {isa = PBXBuildFile; fileRef = A9096065667A4FA0B4813E27 /* Views/RootTabView.swift */; };
+		835AA54EFA954E099CF9B61B /* in Sources */ = {isa = PBXBuildFile; fileRef = 418BABB3006543D5A041B30E /* Views/Settings/SettingsView.swift */; };
+		C35FA7E0C1AF4AB4AF8A8CAE /* in Sources */ = {isa = PBXBuildFile; fileRef = DEF827B65D67495497C0867F /* Views/Watch/WatchDetailView.swift */; };
+		C2B1FA70E9094A4B93C4A0A4 /* in Sources */ = {isa = PBXBuildFile; fileRef = 9E64C40953AF4A82A6596C47 /* Views/Watch/WatchListView.swift */; };
+		16B01863DA0840098982E522 /* in Resources */ = {isa = PBXBuildFile; fileRef = 2C9493FAABB24C9ABA40788C /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+/* Begin PBXFileReference section */
+		A1C0FFEE00010002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		F62E8633F7034BDAAAD6ED8F = {isa = PBXFileReference; explicitFileType = wrapper.application; path = TripPackAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F31D62ED8CBA43C2BE2978C8 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DesignTokens.swift"; sourceTree = "<group>"; };
+		84380526807748AFBD2284DA = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/ApiTypes.swift"; sourceTree = "<group>"; };
+		D0553571BE1E4048937F7986 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/TripAPIClient.swift"; sourceTree = "<group>"; };
+		E76413A90372421EAB9E8533 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TripPackAIApp.swift"; sourceTree = "<group>"; };
+		1146B406B76046149FCA382C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Utilities/RelativeTime.swift"; sourceTree = "<group>"; };
+		ED1C732951794464AB7DA71D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/Deals/DealsListView.swift"; sourceTree = "<group>"; };
+		A9096065667A4FA0B4813E27 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/RootTabView.swift"; sourceTree = "<group>"; };
+		418BABB3006543D5A041B30E = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/Settings/SettingsView.swift"; sourceTree = "<group>"; };
+		DEF827B65D67495497C0867F = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/Watch/WatchDetailView.swift"; sourceTree = "<group>"; };
+		9E64C40953AF4A82A6596C47 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/Watch/WatchListView.swift"; sourceTree = "<group>"; };
+		2C9493FAABB24C9ABA40788C = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A1B2C3D41E2F4A5B6C7D8E9F0 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+/* Begin PBXFrameworksBuildPhase section */
+		6273FEECEB4B416BB77AC428 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ( ); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+/* Begin PBXShellScriptBuildPhase section */
+		B3E0FEED0000DEADBEEF0001 = {isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; alwaysOutOfDate = 1; files = ( ); name = "Ensure TripPack API :8810"; runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "cd \"${SRCROOT}/..\" && bash scripts/ensure_trippack_api.sh\n"; showEnvVarsInLog = 0; };
+/* End PBXShellScriptBuildPhase section */
+/* Begin PBXGroup section */
+		DBA0C0E149B2441EAFB82A26 = {isa = PBXGroup; children = ( B8382FE829904D6F8AA5F998 /* src */, 2975A19B03D54807BAEA98CF /* Products */ ); sourceTree = "<group>"; };
+		2975A19B03D54807BAEA98CF = {isa = PBXGroup; children = ( F62E8633F7034BDAAAD6ED8F ); name = Products; sourceTree = "<group>"; };
+		B8382FE829904D6F8AA5F998 = {isa = PBXGroup; children = (
+			A1C0FFEE00010002 /* AppConfig.swift */,
+			F31D62ED8CBA43C2BE2978C8 /* DesignTokens.swift */,
+			84380526807748AFBD2284DA /* Models/ApiTypes.swift */,
+			D0553571BE1E4048937F7986 /* Services/TripAPIClient.swift */,
+			E76413A90372421EAB9E8533 /* TripPackAIApp.swift */,
+			1146B406B76046149FCA382C /* Utilities/RelativeTime.swift */,
+			ED1C732951794464AB7DA71D /* Views/Deals/DealsListView.swift */,
+			A9096065667A4FA0B4813E27 /* Views/RootTabView.swift */,
+			418BABB3006543D5A041B30E /* Views/Settings/SettingsView.swift */,
+			DEF827B65D67495497C0867F /* Views/Watch/WatchDetailView.swift */,
+			9E64C40953AF4A82A6596C47 /* Views/Watch/WatchListView.swift */,
+			2C9493FAABB24C9ABA40788C /* Assets */,
+			A1B2C3D41E2F4A5B6C7D8E9F0 /* Info.plist */,
+		); path = TripPackAI; sourceTree = "<group>"; };
+/* End PBXGroup section */
+/* Begin PBXResourcesBuildPhase section */
+		975B63D30BE84FC7B5B7C7C7 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ( 16B01863DA0840098982E522, ); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+/* Begin PBXNativeTarget section */
+		33DC5376BBEE48879A329864 = {isa = PBXNativeTarget; buildConfigurationList = DF488C0E72DE47B281E5A5BF; buildPhases = ( B3E0FEED0000DEADBEEF0001, 200EB00D062F4AD681E00DF6, 6273FEECEB4B416BB77AC428, 975B63D30BE84FC7B5B7C7C7 ); name = TripPackAI; productName = TripPackAI; productReference = F62E8633F7034BDAAAD6ED8F; productType = com.apple.product-type.application; };
+/* End PBXNativeTarget section */
+/* Begin PBXSourcesBuildPhase section */
+		200EB00D062F4AD681E00DF6 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+			A1C0FFEE00010001,
+			F947F172C2CD4EA682095018,
+			895587312BE24ACFA2918FB9,
+			C67F2B1171664121BE90C126,
+			DCF5582F2AFE4D12A33465F4,
+			48BB8FADFC0145D18631D3A1,
+			E57AC521FC9D4BE6AB368485,
+			E2D57B43CF884919B89D5C3E,
+			835AA54EFA954E099CF9B61B,
+			C35FA7E0C1AF4AB4AF8A8CAE,
+			C2B1FA70E9094A4B93C4A0A4,
+		); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+/* Begin PBXProject section */
+		48CC194077A347278948B5A1 = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1;}; buildConfigurationList = A6F5D93373FF4E81BFC01FB6; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,Base,); mainGroup = DBA0C0E149B2441EAFB82A26; targets = ( 33DC5376BBEE48879A329864 /* TripPackAI */ );};
+/* End PBXProject section */
+/* Begin XCBuildConfiguration section */
+		F591CD4A6B414026AC6AB80B = {isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; }; name = Debug; };
+		6A41400E193F4FE7B3C02D92 = {isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; }; name = Release; };
+		D9BD3C34BF044F76A24CC4C6 = {isa = XCBuildConfiguration; buildSettings = { ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CLANG_TREAT_WARNINGS_AS_ERRORS = NO; CODE_SIGN_STYLE = Automatic; CODE_SIGNING_ALLOWED = YES; "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-"; DEVELOPMENT_ASSET_PATHS = ""; ENABLE_PREVIEWS = NO; ENABLE_TESTABILITY = YES; GCC_OPTIMIZATION_LEVEL = 0; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_FILE = TripPackAI/Info.plist; INFOPLIST_KEY_CFBundleDisplayName = TripPackAI; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks"); LOCALIZATION_PREFERS_STRING_CATALOGS = NO; MARKETING_VERSION = 1.0; ONLY_ACTIVE_ARCH = YES; PRODUCT_BUNDLE_IDENTIFIER = com.trippack.TripPackAI; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphonesimulator iphoneos"; SWIFT_TREAT_WARNINGS_AS_ERRORS = NO; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 1; }; name = Debug; };
+		98AEAA4DBFBE46B28FB8B859 = {isa = XCBuildConfiguration; buildSettings = { ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CLANG_TREAT_WARNINGS_AS_ERRORS = NO; CODE_SIGN_STYLE = Automatic; DEVELOPMENT_ASSET_PATHS = ""; ENABLE_PREVIEWS = NO; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_FILE = TripPackAI/Info.plist; INFOPLIST_KEY_CFBundleDisplayName = TripPackAI; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks"); LOCALIZATION_PREFERS_STRING_CATALOGS = NO; MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = com.trippack.TripPackAI; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphonesimulator iphoneos"; SWIFT_TREAT_WARNINGS_AS_ERRORS = NO; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 1; }; name = Release; };
+/* End XCBuildConfiguration section */
+/* Begin XCConfigurationList section */
+		A6F5D93373FF4E81BFC01FB6 = {isa = XCConfigurationList; buildConfigurations = ( F591CD4A6B414026AC6AB80B, 6A41400E193F4FE7B3C02D92 ); defaultConfigurationName = Release; };
+		DF488C0E72DE47B281E5A5BF = {isa = XCConfigurationList; buildConfigurations = ( D9BD3C34BF044F76A24CC4C6, 98AEAA4DBFBE46B28FB8B859 ); defaultConfigurationName = Debug; };
+/* End XCConfigurationList section */
+	};
+	rootObject = 48CC194077A347278948B5A1 /* Project */;
+}

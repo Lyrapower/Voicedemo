@@ -1,0 +1,43 @@
+{
+  "hosts": {
+    "sovereign-mac": "100.72.135.23"
+  },
+  "tagOwners": {
+    "tag:sovereign-mac": ["autogroup:admin"],
+    "tag:mobile-client": ["autogroup:admin"]
+  },
+  "dns": {
+    "magicDNS": true,
+    "nameservers": [
+      {
+        "addr": "100.100.100.100",
+        "split": ["tail76db5b.ts.net", "ts.net"]
+      },
+      {
+        "addr": "https://dns.nextdns.io/2aa2da"
+      }
+    ]
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["autogroup:admin"],
+      "dst": ["*:*"]
+    },
+    {
+      "action": "accept",
+      "src": ["tag:mobile-client", "autogroup:members"],
+      "dst": ["sovereign-mac:443", "sovereign-mac:8501", "tag:sovereign-mac:443", "tag:sovereign-mac:8501"]
+    }
+  ],
+  "tests": [
+    {
+      "src": "tag:mobile-client",
+      "accept": ["sovereign-mac:443", "sovereign-mac:8501"]
+    },
+    {
+      "src": "tag:mobile-client",
+      "deny": ["sovereign-mac:1234", "sovereign-mac:8686"]
+    }
+  ]
+}

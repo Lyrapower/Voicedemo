@@ -1,0 +1,21 @@
+{
+  "local_only": true,
+  "no_external_ssd": true,
+  "compile": {
+    "model_id": "mlx-community/Qwen2.5-1.5B-4bit",
+    "lms_load_name": "mlx-community/Qwen2.5-1.5B-4bit",
+    "params": "1.5B",
+    "variant": "base",
+    "quantization": "4bit-mlx",
+    "context_length": 8192,
+    "hf_url": "https://huggingface.co/mlx-community/Qwen2.5-1.5B-4bit",
+    "lm_studio_conv": "17797865158102",
+    "http_port": 8787,
+    "chat_name": "Aster Compile"
+  },
+  "daily": {
+    "model_id": "qwen/qwen3.5-9b",
+    "untouchable": true,
+    "note": "Separate LM Studio tab — not bound to Aster HTTP."
+  }
+}

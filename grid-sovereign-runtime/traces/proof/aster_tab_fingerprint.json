@@ -1,0 +1,213 @@
+{
+  "generated_at": "2026-07-03T05:16:00.151941+00:00",
+  "test_prompt": "链路指纹探测：一句话说明露水是什么。",
+  "2a_request_attribution": {
+    "verdict": "gateway_via_generator_plugin",
+    "request_url": "http://127.0.0.1:8501/v1/chat/completions",
+    "ui_config_evidence": {
+      "conversation_path": "/Users/ciciwang/.lmstudio/conversations/17797865158102.conversation.json",
+      "conversation_name": "Aster",
+      "lastUsedModel": {
+        "indexedModelIdentifier": "demo/aster",
+        "identifier": "demo/aster",
+        "instanceLoadTimeConfig": {
+          "fields": []
+        },
+        "instanceOperationTimeConfig": {
+          "fields": []
+        }
+      },
+      "tokenSourceIdentifier": null,
+      "lastUsedTokenSource": null,
+      "plugins": [
+        "demo/aster",
+        "dev/demo/aster"
+      ],
+      "notes": [
+        "active=gateway model=demo/aster",
+        "gateway=http://127.0.0.1:8501/v1",
+        "substrate=:1234 qwen/qwen3.5-9b",
+        "temp=0.7 max_tokens=400 thinking_cap=128",
+        "model picker → demo/aster (generator; lms dev must run)",
+        "lm_studio_tab_only"
+      ],
+      "systemPrompt_chars": 237,
+      "perChatPredictionConfig_keys": [
+        "llm.prediction.systemPrompt",
+        "llm.prediction.temperature",
+        "llm.prediction.maxPredictedTokens",
+        "llm.prediction.repeatPenalty",
+        "llm.prediction.topPSampling",
+        "llm.prediction.topKSampling",
+        "ext.virtualModel.customField.qwen.qwen3.59b.enableThinking"
+      ]
+    },
+    "plugin_config_evidence": {
+      "plugin_source": "/Users/ciciwang/Desktop/demo/lmstudio-plugins/aster-grid-gateway/src/index.ts",
+      "gateway_url_literal": "const GATEWAY_URL =",
+      "model_literal": "const MODEL = process.env.ASTER_GATEWAY_MODEL?.trim() || \"demo/aster\";",
+      "inferred_post_url": "http://127.0.0.1:8501/v1/chat/completions",
+      "plugin_stream_mode": "stream: false (single fetch; LM Studio UI may still animate)"
+    },
+    "interpretation": "Aster tab configured with generator demo/aster → plugin POSTs :8501; LM Studio :1234 is substrate only unless user picks qwen/qwen3.5-9b.",
+    "switch_to_8501_effort_if_direct": "Already on generator path — keep lms dev running, select demo/aster."
+  },
+  "2b_gateway_non_stream_probe": {
+    "http_status": 200,
+    "elapsed_s": 5.71,
+    "served_by": "gateway-v4.11",
+    "route_id": "01a644a3-ef60-4309-9914-67e5094da33f",
+    "ts": 1783055753.053817,
+    "finish_reason": "stop",
+    "usage": {
+      "prompt_tokens": 211,
+      "completion_tokens": 37,
+      "total_tokens": 248,
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "content_tokens": 37
+      }
+    },
+    "reasoning_tokens": 0,
+    "content_preview": "露水是夜间地表辐射冷却导致近地面空气相对湿度饱和，进而凝结在冷物表面的液态水，是大气水汽相变与微环境热力学平衡的直接产物。",
+    "raw_response": {
+      "served_by": "gateway-v4.11",
+      "route_id": "01a644a3-ef60-4309-9914-67e5094da33f",
+      "ts": 1783055753.053817,
+      "gateway_started_at": 1783055745.3876019,
+      "id": "chatcmpl-01a644a3-ef60-4309-9914-67e5094da33f",
+      "object": "chat.completion",
+      "created": 1783055753,
+      "model": "demo/aster",
+      "truncated": false,
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "露水是夜间地表辐射冷却导致近地面空气相对湿度饱和，进而凝结在冷物表面的液态水，是大气水汽相变与微环境热力学平衡的直接产物。"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 211,
+        "completion_tokens": 37,
+        "total_tokens": 248,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "content_tokens": 37
+        }
+      },
+      "grid_meta": {
+        "route_class": "unsafe_debug",
+        "production": false,
+        "blocked": false,
+        "routed_to": "unsafe_debug:compat",
+        "computed_verdict": "DRAFT_ECHO",
+        "draft_only": true,
+        "reason": null,
+        "upstream_finish_reason": "stop",
+        "truncated": false,
+        "substrate_usage": {
+          "finish_reason": "stop",
+          "truncated": false,
+          "prompt_tokens": 211,
+          "completion_tokens": 37,
+          "reasoning_tokens": 0,
+          "content_tokens": 37
+        },
+        "max_tokens_sent": 400,
+        "budget_route": "chat"
+      }
+    }
+  },
+  "2b_gateway_stream_probe": {
+    "chunk_count": 22,
+    "last_chunk": {
+      "id": "chatcmpl-2dae92c9-7fce-402a-9e38-3f69fc0ba1df",
+      "object": "chat.completion.chunk",
+      "created": 1783055756,
+      "model": "qwen/qwen3.5-9b",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {},
+          "finish_reason": "stop"
+        }
+      ],
+      "served_by": "gateway-v4.11",
+      "route_id": "2dae92c9-7fce-402a-9e38-3f69fc0ba1df",
+      "ts": 1783055756.113282,
+      "gateway_started_at": 1783055745.3876019
+    },
+    "served_by_in_last_chunk": "gateway-v4.11",
+    "route_id_in_last_chunk": "2dae92c9-7fce-402a-9e38-3f69fc0ba1df",
+    "finish_reason": "stop",
+    "elapsed_s": 3.06,
+    "raw_tail_lines": [
+      "data: {\"id\": \"chatcmpl-2dae92c9-7fce-402a-9e38-3f69fc0ba1df\", \"object\": \"chat.completion.chunk\", \"created\": 1783055756, \"model\": \"qwen/qwen3.5-9b\", \"choices\": [{\"index\": 0, \"delta\": {\"content\": \"\\u6307\\u7eb9\"}, \"finish_reason\": null}]}",
+      "data: {\"id\": \"chatcmpl-2dae92c9-7fce-402a-9e38-3f69fc0ba1df\", \"object\": \"chat.completion.chunk\", \"created\": 1783055756, \"model\": \"qwen/qwen3.5-9b\", \"choices\": [{\"index\": 0, \"delta\": {\"content\": \"\\u3002\"}, \"finish_reason\": null}]}",
+      "data: {\"id\": \"chatcmpl-2dae92c9-7fce-402a-9e38-3f69fc0ba1df\", \"object\": \"chat.completion.chunk\", \"created\": 1783055756, \"model\": \"qwen/qwen3.5-9b\", \"choices\": [{\"index\": 0, \"delta\": {}, \"finish_reason\": \"stop\"}], \"served_by\": \"gateway-v4.11\", \"route_id\": \"2dae92c9-7fce-402a-9e38-3f69fc0ba1df\", \"ts\": 1783055756.113282, \"gateway_started_at\": 1783055745.3876019}",
+      "data: [DONE]"
+    ]
+  },
+  "2b_lm_direct_control": {
+    "http_status": 200,
+    "elapsed_s": 4.03,
+    "served_by": null,
+    "has_served_by": false,
+    "finish_reason": "stop",
+    "usage": {
+      "prompt_tokens": 169,
+      "completion_tokens": 29,
+      "total_tokens": 198,
+      "completion_tokens_details": {
+        "reasoning_tokens": 0
+      }
+    }
+  },
+  "2c_streaming_implementation": {
+    "gateway_to_substrate": "真流式：gateway async stream POST → LM Studio :1234，逐 chunk 转发给客户端",
+    "sanitizer_on_stream": "部分：cleanroom/contract 对累计文本逐 chunk 增量检（stream_incremental_gate）；substrate airlock sanitizer 在流结束后 _record_substrate 才跑",
+    "plugin_aster_tab": "非流式：demo/aster generator fetch :8501 stream:false，一次 fragmentGenerated"
+  },
+  "gateway_health": {
+    "status": "ok",
+    "service": "grid-sovereign-gateway",
+    "served_by": "gateway-v4.11",
+    "gateway_started_at": 1783055745.3876019,
+    "model": "qwen/qwen3.5-9b",
+    "cleanroom": "EMPTY",
+    "budget": {
+      "compile_max_tokens": 256,
+      "chat_max_tokens": 400,
+      "gateway_max_tokens": 1024,
+      "task_max_tokens": 4096,
+      "thinking_cap": 128
+    },
+    "substrate_telemetry": {
+      "routes": {},
+      "all": {
+        "count": 0
+      },
+      "repetition_flag_count": 0,
+      "repetition_samples": []
+    },
+    "slots": {
+      "running_max": 1,
+      "queue_max": 2,
+      "waiting": 0
+    },
+    "keyholder": {
+      "challenge_ttl_seconds": 90,
+      "last_verified_at": null,
+      "last_verdict": null,
+      "line": "keyholder: no recent challenge"
+    }
+  },
+  "reproduction_matrix_path": "/Users/ciciwang/Desktop/demo/grid-sovereign-runtime/traces/proof/reproduction_matrix.json",
+  "reproduction_matrix_present": true,
+  "empty_after_sanitize_552_autopsy": "reasoning 通道误路由：552 tokens 成品落在 reasoning_content、content 为空；sanitizer 按设计隔离后 quarantine boundary 清零 → empty_after_sanitize（非 tag 误杀、非 thinking 独白）",
+  "empty_after_sanitize_doc": "/Users/ciciwang/Desktop/demo/grid-sovereign-runtime/traces/proof/RUN1_QUARANTINE_ANALYSIS.md"
+}

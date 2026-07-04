@@ -1,0 +1,11 @@
+{
+  "mode": 0,
+  "lines": [
+    "start mode=0",
+    "GET /health 200",
+    "GET /ui/dev 200",
+    "{'demo_mode': False, 'providers': {'flight': 'NOT_CONNECTED', 'stay': 'NOT_CONNECTED', 'car': 'NOT_CONNECTED'}, 'last_worker_run_at_ms': 0, 'next_scheduled_run_at_ms': 0}",
+    "check-now 409"
+  ],
+  "goal_id_a": "f0c89ebb-01f0-41df-8fd4-5ad6bb9a8f1d"
+}

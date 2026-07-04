@@ -1,0 +1,21 @@
+{
+  "intent": "deployment status compilation",
+  "deliverable": "status report",
+  "boundary": "cannot verify node presence",
+  "allowed": [
+    "NULL output",
+    "verification action"
+  ],
+  "forbidden": [
+    "fake confirmation",
+    "identity claims"
+  ],
+  "actions": [
+    "output NULL form"
+  ],
+  "verification": "keyholder must confirm node status",
+  "unknowns": [
+    "actual node online status"
+  ],
+  "requires_confirmation": true
+}

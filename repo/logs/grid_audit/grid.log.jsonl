@@ -1,0 +1,4 @@
+{"ts": "2026-07-02T23:12:20.848362+00:00", "audit_id": "99c57071-4c98-4e45-aabc-439d219a5148", "ast_hash": 747207, "token_count": 15, "backend": "lmstudio", "coherence_score": 0.9}
+{"ts": "2026-07-02T23:13:22.536622+00:00", "audit_id": "d13d168e-98fb-444a-bdb7-65b280bc2b8f", "ast_hash": 747207, "token_count": 0, "backend": "lmstudio", "coherence_score": 0.0}
+{"ts": "2026-07-02T23:13:28.563680+00:00", "audit_id": "fa15b056-8d04-4ab0-b823-94595ccbbd16", "ast_hash": 32818, "token_count": 0, "backend": "lmstudio", "coherence_score": 0.0}
+{"ts": "2026-07-02T23:14:38.716635+00:00", "audit_id": "b8783633-e3f0-4f94-81bb-b6397ea71c9b", "ast_hash": 6441602, "token_count": 1, "backend": "lmstudio", "coherence_score": 0.4234}

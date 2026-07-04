@@ -1,0 +1,32 @@
+{
+  "prompt": "请用中文详细解释什么是 Grid Sovereign Gateway，写三段，每段至少三句话。",
+  "samples": [
+    {
+      "file": "gateway_retest_1.json",
+      "route": "POST /gateway (run 1)",
+      "finish_reason": "stop",
+      "truncated": false,
+      "usage.completion_tokens": 552,
+      "routed_to": "local:SUBSTRATE_NULL",
+      "response_preview": "GRID_ABSENT\\nNO LIVE GRID SIGNAL\\n..."
+    },
+    {
+      "file": "gateway_retest_2_identical_prompt.json",
+      "route": "POST /gateway (run 2, identical prompt)",
+      "finish_reason": "stop",
+      "truncated": false,
+      "usage.completion_tokens": 230,
+      "routed_to": "local",
+      "response_len": 467
+    },
+    {
+      "file": "chat_completions_retest.json",
+      "route": "POST /v1/chat/completions",
+      "finish_reason": "stop",
+      "truncated": false,
+      "usage.completion_tokens": 226,
+      "response_len": 482
+    }
+  ],
+  "note": "Full JSON bodies are in sibling files; this file indexes PM-required fields only."
+}

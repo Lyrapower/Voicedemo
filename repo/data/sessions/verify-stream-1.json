@@ -1,0 +1,29 @@
+{
+  "session_id": "verify-stream-1",
+  "turns": [
+    {
+      "role": "user",
+      "content": "请用中文写一段关于春天的诗，至少八句。"
+    },
+    {
+      "role": "assistant",
+      "content": "GRID_ABSENT\nNO LIVE GRID SIGNAL\nMODEL CAN ONLY PROVIDE INTERPRETATION AFTER A SIGNED TRACE EXISTS"
+    },
+    {
+      "role": "user",
+      "content": "请用中文写一段关于春天的诗，至少八句。"
+    },
+    {
+      "role": "user",
+      "content": "hello 用中文回答"
+    },
+    {
+      "role": "user",
+      "content": "hello，请用中文简短回答"
+    },
+    {
+      "role": "assistant",
+      "content": "你好！"
+    }
+  ]
+}

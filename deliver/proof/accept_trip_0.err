@@ -1,0 +1,5 @@
+start mode=0
+GET /health 200
+GET /ui/dev 200
+{'demo_mode': False, 'providers': {'flight': 'NOT_CONNECTED', 'stay': 'NOT_CONNECTED', 'car': 'NOT_CONNECTED'}, 'last_worker_run_at_ms': 0, 'next_scheduled_run_at_ms': 0}
+check-now 409

@@ -1,0 +1,33 @@
+//@version=5
+indicator("Jarvis ORH VWAP RVOL Gate", overlay=true)
+
+webhook_secret = input.string("", "webhook_secret")
+iv_rank_manual = input.float(na, "iv_rank_manual")
+rvol_length = input.int(20, "rvol_length", minval=1)
+rvol_min = input.float(1.5, "rvol_min", minval=0.1)
+
+vwap_val = ta.vwap(hlc3)
+
+in_regular = not na(time(timeframe.period, "0930-1600"))
+in_first_15 = not na(time(timeframe.period, "0930-0945"))
+var float open_range_high = na
+
+if ta.change(time("D"))
+    open_range_high := na
+
+if in_regular and in_first_15
+    open_range_high := na(open_range_high) ? high : math.max(open_range_high, high)
+
+avg_vol = ta.sma(volume, rvol_length)
+rvol = avg_vol > 0 ? volume / avg_vol : 0.0
+
+gate_ok = in_regular and not na(open_range_high) and close > vwap_val and close > open_range_high and rvol >= rvol_min
+
+plot(vwap_val, "VWAP", color=color.new(color.blue, 0), linewidth=2)
+plot(open_range_high, "Open Range High", color=color.new(color.purple, 0), linewidth=2)
+
+if gate_ok
+    message = '{"secret":"' + webhook_secret + '","source":"tradingview","ticker":"' + syminfo.ticker + '","timestamp":"' + str.tostring(time_close) + '","price":' + str.tostring(close) + ',"vwap":' + str.tostring(vwap_val) + ',"open_range_high":' + str.tostring(open_range_high) + ',"rvol":' + str.tostring(rvol) + ',"iv_rank":' + str.tostring(iv_rank_manual) + ',"signal":"ORH_VWAP_RVOL_GATE"}'
+    alert(message, alert.freq_once_per_bar_close)
+
+// Starter only. Do not treat as production-grade signal.

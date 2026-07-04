@@ -1,0 +1,7 @@
+=== BEFORE RESTART 2026-07-03T00:04:10Z ===
+[gateway :8501]
+  PID STARTED                      COMMAND
+24566 Thu Jul  2 16:41:04 2026     /Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python gateway/local_gateway.py
+[LM Studio server :1234]
+  PID STARTED                      COMMAND
+ 6458 Tue May 26 00:57:17 2026     /Applications/LM Studio.app/Contents/MacOS/LM Studio

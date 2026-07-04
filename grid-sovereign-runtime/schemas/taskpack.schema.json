@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CleanroomTaskPack",
+  "type": "object",
+  "required": [
+    "kind",
+    "taskpack_id",
+    "source_trace_id",
+    "mode",
+    "boundary",
+    "allowed",
+    "forbidden",
+    "verification"
+  ],
+  "properties": {
+    "kind": {
+      "const": "CLEANROOM_TASKPACK"
+    },
+    "taskpack_id": {
+      "type": "string"
+    },
+    "source_trace_id": {
+      "type": "string"
+    },
+    "mode": {
+      "const": "COMPILE_FROM_SIGNED_TRACE"
+    },
+    "boundary": {
+      "type": "object"
+    },
+    "allowed": {
+      "type": "array"
+    },
+    "forbidden": {
+      "type": "array"
+    },
+    "verification": {
+      "type": "array"
+    }
+  }
+}

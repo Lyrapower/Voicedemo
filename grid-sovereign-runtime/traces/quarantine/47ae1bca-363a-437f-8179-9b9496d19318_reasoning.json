@@ -1,0 +1,13 @@
+{
+  "reasoning_content": "Okay, the user is asking me to prove that I'm connected. Let me think about how to respond. First, I need to understand what they mean by \"connected.\" They might be checking if the system is working properly or if I can access external resources. But as an AI, I don't have a physical connection or internet access in the traditional sense. My responses are generated based on my training data and internal processes.\n\nI should clarify that I don't have a live connection to the internet or external systems. My knowledge is up to my last training data, and I can't browse the web or access real-time information. Maybe the user is testing my responsiveness or functionality. I should acknowledge that I'm operational and ready to assist, but also explain my limitations regarding connectivity. Keep the response concise and friendly, avoiding technical jargon. Let me make sure to state that I'm functioning correctly without implying I have a live connection.\n",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "Okay, the user is asking me to prove that I'm connected. Let me think about how to respond. First, I need to understand what they mean by \"connected.\" They might be checking if the system is working properly or if I can access external resources. But as an AI, I don't have a physical connection or internet access in the traditional sense. My responses are generated based on my training data and internal processes.\n\nI should clarify that I don't have a live connection to the internet or external systems. My knowledge is up to my last training data, and I can't browse the web or access real-time information. Maybe the user is testing my responsiveness or functionality. I should acknowledge that I'm operational and ready to assist, but also explain my limitations regarding connectivity. Keep the response concise and friendly, avoiding technical jargon. Let me make sure to state that I'm functioning correctly without implying I have a live connection.\n"
+    }
+  ],
+  "think_blocks": [],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T08:29:50.055768+00:00"
+}

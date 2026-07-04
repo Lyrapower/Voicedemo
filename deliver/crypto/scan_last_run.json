@@ -1,0 +1,45 @@
+{
+  "schema": "crypto_rwa_scan_run_v1",
+  "ran_at": "2026-05-20T03:03:47Z",
+  "dry_run": false,
+  "sources_config": "deliver/crypto/scan_sources.json",
+  "evidence_dir": "deliver/crypto/evidence",
+  "counts": {
+    "ok": 5,
+    "warn": 0,
+    "fail": 0,
+    "total": 5
+  },
+  "results": [
+    {
+      "id": "ev-001",
+      "outcome": "ok",
+      "path": "deliver/crypto/evidence/ev-001-stablecoin-transparency.json",
+      "http_status": 200
+    },
+    {
+      "id": "ev-002",
+      "outcome": "ok",
+      "path": "deliver/crypto/evidence/ev-002-rwa-tbill-wrapper.json",
+      "http_status": 200
+    },
+    {
+      "id": "ev-003",
+      "outcome": "ok",
+      "path": "deliver/crypto/evidence/ev-003.json",
+      "http_status": 200
+    },
+    {
+      "id": "ev-004",
+      "outcome": "ok",
+      "path": "deliver/crypto/evidence/ev-004.json",
+      "http_status": 200
+    },
+    {
+      "id": "ev-005",
+      "outcome": "ok",
+      "path": "deliver/crypto/evidence/ev-005.json",
+      "http_status": 200
+    }
+  ]
+}

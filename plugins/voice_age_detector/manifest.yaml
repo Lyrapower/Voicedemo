@@ -1,0 +1,6 @@
+name: voice_age_detector
+allow_gpu: false
+outbound_net: false
+version: "0.1.0"
+description: Voice age detection plugin
+entry: handler.py

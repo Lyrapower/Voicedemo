@@ -1,0 +1,60 @@
+# NextDNS Allowlist — REQUIRED for LM Mini / Tailscale Serve on iPhone
+# Add these in NextDNS dashboard → Allowlist (NOT Denylist)
+# Without this, NextDNS may block tailscale / VPN / ts.net and /health won't open.
+
+tail76db5b.ts.net
+ts.net
+tailscale.com
+controlplane.tailscale.com
+log.tailscale.com
+
+# OpenAI / ChatGPT
+# Blocks common cloud-AI APIs and chat UIs. LM Mini via your Mac tailnet URL is NOT affected.
+#
+# Setup: https://nextdns.io → add device → install iOS Configuration Profile
+# Enable: AI, Chat, Native Tracking Protection, Threat Intelligence Feeds
+
+# OpenAI / ChatGPT
+chatgpt.com
+chat.openai.com
+api.openai.com
+openai.com
+oaiusercontent.com
+
+# Anthropic / Claude
+claude.ai
+anthropic.com
+api.anthropic.com
+
+# Google Gemini / AI
+gemini.google.com
+generativelanguage.googleapis.com
+ai.google.dev
+
+# Microsoft Copilot
+copilot.microsoft.com
+bing.com/chat
+
+# Perplexity / general AI search
+perplexity.ai
+poe.com
+character.ai
+you.com
+
+# Meta AI
+meta.ai
+
+# xAI
+grok.x.ai
+x.ai
+
+# Cursor cloud (optional — block if you only want local stack)
+cursor.com
+cursor.sh
+api2.cursor.sh
+
+# Common telemetry / ad crawlers (extra hardening)
+doubleclick.net
+google-analytics.com
+facebook.net
+scorecardresearch.com

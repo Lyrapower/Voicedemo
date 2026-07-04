@@ -1,0 +1,22 @@
+# model.yaml — UI entry for Aster (substrate remains qwen/qwen3.5-9b under the hood)
+model: demo/aster
+base: qwen/qwen3.5-9b
+metadataOverrides:
+  domain: llm
+  architectures:
+    - qwen35
+  compatibilityTypes:
+    - gguf
+  paramsStrings:
+    - Aster
+config:
+  operation:
+    fields:
+      - key: llm.prediction.systemPrompt
+        value: ""
+      - key: llm.prediction.temperature
+        value: 0.7
+      - key: llm.prediction.maxPredictedTokens
+        value:
+          checked: true
+          value: 400

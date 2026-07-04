@@ -5,3 +5,9 @@ matplotlib
 librosa
 soundfile
 edge-tts
+aiohttp
+pyyaml>=6.0
+anthropic
+openai
+python-multipart
+jinja2

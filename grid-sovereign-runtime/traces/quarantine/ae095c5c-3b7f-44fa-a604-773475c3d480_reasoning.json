@@ -1,0 +1,13 @@
+{
+  "reasoning_content": "A gateway acts as a bridge between different networks, enabling communication between devices that use different protocols. It also functions as a security checkpoint, filtering traffic and controlling access between network segments.\n",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "A gateway acts as a bridge between different networks, enabling communication between devices that use different protocols. It also functions as a security checkpoint, filtering traffic and controlling access between network segments.\n"
+    }
+  ],
+  "think_blocks": [],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T23:42:39.767612+00:00"
+}

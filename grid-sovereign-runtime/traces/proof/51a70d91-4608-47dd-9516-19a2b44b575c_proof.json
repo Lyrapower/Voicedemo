@@ -1,0 +1,21 @@
+{
+  "route_id": "51a70d91-4608-47dd-9516-19a2b44b575c",
+  "ts": 1782957283.803005,
+  "proof": {
+    "raw_response_received": true,
+    "reasoning_quarantined": false,
+    "clean_content_present": false,
+    "gate_pass": false,
+    "aster_compile_called": false
+  },
+  "gate": {
+    "pass": false,
+    "reason": "blocked_pattern",
+    "blocked_hits": [
+      "\\bI\\s+am\\s+Grid\\b",
+      "\\bGrid\\s+is\\s+online\\b"
+    ],
+    "action": "NULL"
+  },
+  "quarantine_path": null
+}

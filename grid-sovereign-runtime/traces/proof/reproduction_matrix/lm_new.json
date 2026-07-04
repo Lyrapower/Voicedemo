@@ -1,0 +1,29 @@
+{
+  "id": "chatcmpl-748bhg43iplymoxkkk4d6",
+  "object": "chat.completion",
+  "created": 1783040203,
+  "model": "qwen/qwen3.5-9b",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "\n\n露水是清晨凝结在植物叶片、花朵或蔬菜表面的微小水珠。它是夜间气温降低，空气中的水汽遇冷凝结而成的自然现象，通常被认为是新鲜、自然的象征。\n\n在买菜的语境中，“看菜上的露水还在不在”是一种带有诗意的挑选方式——露水还在，意味着蔬菜刚从地里采来，带着清晨的凉意，可能更新鲜；如果露水已经干，可能放置了一段时间。不过，实际上露水的存在与否更多是时间与环境的结果，不一定完全等同于新鲜度。",
+        "reasoning_content": "",
+        "tool_calls": []
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 28,
+    "completion_tokens": 109,
+    "total_tokens": 137,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "stats": {},
+  "system_fingerprint": "qwen/qwen3.5-9b"
+}

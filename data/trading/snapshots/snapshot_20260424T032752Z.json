@@ -1,0 +1,39 @@
+{
+  "latest_local_data_update": "2026-04-24T03:27:52Z",
+  "data_freshness_status": "local market payload present",
+  "raw_path": "data/trading/raw/ingest_20260424T032752Z.json",
+  "normalized_path": "data/trading/normalized/current.json",
+  "snapshots_path": "data/trading/snapshots",
+  "raw_days": 7,
+  "snapshots_keep": 30,
+  "retention_status": "enforced during ingest/update flow",
+  "deleted_raw_files": [
+    "data/trading/raw/ingest_20260329T124134Z.json",
+    "data/trading/raw/ingest_20260329T124147Z.json",
+    "data/trading/raw/ingest_20260329T124218Z.json",
+    "data/trading/raw/ingest_20260329T124624Z.json",
+    "data/trading/raw/ingest_20260329T124733Z.json",
+    "data/trading/raw/ingest_20260329T130421Z.json",
+    "data/trading/raw/ingest_20260329T130745Z.json",
+    "data/trading/raw/ingest_20260329T132946Z.json",
+    "data/trading/raw/ingest_20260329T133110Z.json",
+    "data/trading/raw/ingest_20260329T133446Z.json",
+    "data/trading/raw/ingest_20260329T232620Z.json",
+    "data/trading/raw/ingest_20260330T052521Z.json",
+    "data/trading/raw/ingest_20260330T052552Z.json",
+    "data/trading/raw/ingest_20260330T054451Z.json",
+    "data/trading/raw/ingest_20260330T054518Z.json"
+  ],
+  "current_regime": "unknown",
+  "current_active_narrative": "none",
+  "decision": "PASS",
+  "missing_fields": [
+    "regime_signal",
+    "narrative_signal"
+  ],
+  "weekly_trade_count": 0,
+  "trading_permission": "allowed_only_if_active_constraint_required",
+  "trading_permission_active_required": true,
+  "active_constraints_present": false,
+  "permission_granted": false
+}

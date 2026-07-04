@@ -1,0 +1,456 @@
+{% extends "base_shell.html" %}
+{% import "partials/ui_macros.html" as ui %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block body %}
+{% if shell_mode == "workbench" %}
+<div class="jv-span-12 jv-metrics">
+  <div class="jv-metric">
+    <div class="jv-label-mute">Modules</div>
+    <div class="jv-pill-row" style="margin-top:8px;">
+      {% for m in module_strip %}
+      <span class="jv-pill jv-pill-quiet {% if m.tone == 'pass' %}jv-pill-pass{% elif m.tone == 'fail' or m.tone == 'blocked' %}jv-pill-warn{% endif %}">{{ m.label }} {{ ui.v(m.value) }}</span>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="jv-metric">
+    <div class="jv-label-mute">Round</div>
+    <div class="jv-metric-value-soft jv-mono">{{ selected_round.round_id }}</div>
+  </div>
+  <div class="jv-metric">
+    <div class="jv-label-mute">Proof</div>
+    <div class="jv-metric-value-soft">{{ ui.v(proof_label) }}</div>
+    {% if proof_label == "Awaiting artifact" %}
+    <div class="jv-note-tiny">Nothing to show yet.</div>
+    {% endif %}
+  </div>
+  <div class="jv-metric">
+    <div class="jv-label-mute">External</div>
+    <div class="jv-metric-value-soft">Off</div>
+  </div>
+</div>
+
+<div class="jv-span-12 jv-desk-grid">
+  <div class="jv-stack">
+    <div class="jv-card jv-card-soft">
+      <div class="jv-label-mute">Operating desk</div>
+      <table class="jv-kv jv-kv-tight">
+        <tbody>
+          <tr>
+            <th scope="row">Next action</th>
+            <td class="jv-cell-quiet">{{ ui.v(bottleneck) }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Round</th>
+            <td class="jv-mono jv-cell-quiet">{{ selected_round.round_id }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Verdict</th>
+            <td><span class="jv-pill jv-pill-quiet {% if selected_round.status == 'PASS' %}jv-pill-pass{% elif selected_round.status == 'FAIL' %}jv-pill-warn{% else %}jv-pill-miss{% endif %}">{{ ui.v(selected_round.status) }}</span></td>
+          </tr>
+          <tr>
+            <th scope="row">Archive</th>
+            <td><a class="jv-link-quiet" href="/ui/workbench/rounds">Open history &amp; compare →</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="jv-card jv-card-soft">
+      <div class="jv-label-mute">Stage snapshot</div>
+      <p class="jv-note-tiny" style="margin:6px 0 10px;">One line per lane; open Archive for full text.</p>
+      <table class="jv-kv jv-kv-tight">
+        <tbody>
+          {% for stage in stage_panels %}
+          <tr>
+            <th scope="row">{{ stage.section }}</th>
+            <td>
+              <span class="jv-pill jv-pill-quiet jv-pill-miss">{{ ui.v(stage.status) }}</span>
+              <span class="jv-cell-quiet" style="display:block;margin-top:6px;font-size:13px;">{{ ui.v(stage.summary) }}</span>
+              <span class="jv-note-tiny" style="display:block;margin-top:4px;">{{ stage.executor_mode }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="jv-stack">
+    <div class="jv-card jv-card-soft">
+      <div class="jv-label-mute">Context</div>
+      <table class="jv-kv jv-kv-tight">
+        <tbody>
+          <tr>
+            <th scope="row">Proof path</th>
+            <td>
+              <span id="jv-proof-path" class="jv-mono jv-path-clip" title="{{ selected_round.proof_link }}">{{ selected_round.proof_link }}</span>
+              <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy="#jv-proof-path">Copy</button>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Acceptance</th>
+            <td>
+              <span id="jv-accept-cmd" class="jv-mono jv-path-clip">{{ acceptance_command }}</span>
+              <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy="#jv-accept-cmd">Copy</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="jv-label-mute" style="margin-top:14px;">Audit (latest 3)</div>
+      <div class="jv-audit-lines jv-mono jv-note-tiny">
+        {% for line in recent_audit[:3] %}
+        <div>{{ ui.v(line) }}</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% else %}
+{# Archive: list + selected + stage detail (not duplicated on desk) #}
+<div class="jv-span-12 jv-rounds-layout">
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Rounds</div>
+    <p class="jv-note-tiny" style="margin:6px 0 12px;">Select a row; compare proof and verdict only.</p>
+    <div class="jv-round-table">
+      {% for round in rounds %}
+      <div class="jv-round-row jv-round-row-soft">
+        <div>
+          <div class="jv-mono jv-text-strong">{{ round.round_id }}</div>
+          <div class="jv-path-clip jv-note-tiny" style="max-width:260px;" title="{{ round.proof_link }}">{{ round.proof_link }}</div>
+        </div>
+        <span class="jv-pill jv-pill-quiet {% if round.status == 'PASS' %}jv-pill-pass{% elif round.status == 'FAIL' %}jv-pill-warn{% else %}jv-pill-miss{% endif %}">{{ ui.v(round.status) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="jv-stack">
+    <div class="jv-card jv-card-soft">
+      <div class="jv-label-mute">Selected</div>
+      <table class="jv-kv jv-kv-tight">
+        <tbody>
+          <tr>
+            <th scope="row">Round</th>
+            <td class="jv-mono">{{ selected_round.round_id }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Verdict</th>
+            <td><span class="jv-pill jv-pill-quiet {% if selected_round.status == 'PASS' %}jv-pill-pass{% elif selected_round.status == 'FAIL' %}jv-pill-warn{% else %}jv-pill-miss{% endif %}">{{ ui.v(selected_round.status) }}</span></td>
+          </tr>
+          <tr>
+            <th scope="row">Flow</th>
+            <td>
+              <div class="jv-timeline jv-timeline-quiet">
+                <span class="jv-timeline-step">Instruction</span>
+                <span class="jv-timeline-dot">→</span>
+                <span class="jv-timeline-step">Compile</span>
+                <span class="jv-timeline-dot">→</span>
+                <span class="jv-timeline-step">Review</span>
+                <span class="jv-timeline-dot">→</span>
+                <span class="jv-timeline-step">Execute</span>
+                <span class="jv-timeline-dot">→</span>
+                <span class="jv-timeline-step">Decide</span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Proof path</th>
+            <td>
+              <span id="jv-round-proof" class="jv-mono jv-path-clip" title="{{ selected_round.proof_link }}">{{ selected_round.proof_link }}</span>
+              <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy="#jv-round-proof">Copy</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="jv-label-mute" style="margin-top:16px;">Stages</div>
+      <table class="jv-kv jv-kv-tight">
+        <tbody>
+          {% for stage in stage_panels %}
+          <tr>
+            <th scope="row">{{ stage.section }}</th>
+            <td><span class="jv-pill jv-pill-quiet jv-pill-miss">{{ ui.v(stage.status) }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      {% for stage in stage_panels %}
+      <details class="jv-disclosure-soft">
+        <summary>{{ stage.section }} · detail</summary>
+        <pre class="jv-pre jv-pre-tight jv-mono">{{ ui.v(stage.details) }}</pre>
+      </details>
+      {% endfor %}
+
+      <div class="jv-label-mute" style="margin-top:16px;">Handoffs</div>
+      <div class="jv-stack jv-stack-tight">
+        {% for handoff in selected_round.handoffs %}
+        <div class="jv-note-tiny">{{ ui.v(handoff.display_line) }}</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<details class="jv-span-12 jv-tools-drawer">
+  <summary class="jv-tools-drawer-summary">Bridge &amp; round tools <span class="jv-tools-drawer-hint">(collapsed — open only when needed)</span></summary>
+  <div class="jv-tools-inner">
+    <section id="bridge-panel" class="jv-card-soft jv-tools-card" aria-label="Bridge">
+      <h2 class="jv-tools-section-title">Bridge</h2>
+      <p class="jv-note-tiny" style="margin:0 0 12px;">Generate patch pack, apply, proof writeback.</p>
+      <div class="jv-tools-note">
+        Owner must not be Cursor. Default paths omit <code class="jv-mono">clients/openclaw_senior_flutter/**</code>. Apply uses the bridge runner locally.
+      </div>
+      <div class="jv-field-grid" style="margin-top:12px;">
+        <div class="jv-field">
+          <label class="jv-label-mute" for="bridge-owner">Owner</label>
+          <input id="bridge-owner" class="jv-input" value="Lyra" autocomplete="off" />
+        </div>
+        <div class="jv-field">
+          <label class="jv-label-mute" for="bridge-round">Round ID</label>
+          <input id="bridge-round" class="jv-input jv-mono" placeholder="auto if empty" autocomplete="off" />
+        </div>
+        <div class="jv-field">
+          <label class="jv-label-mute" for="bridge-scopes">Scopes (comma)</label>
+          <input id="bridge-scopes" class="jv-input" value="ui" autocomplete="off" />
+        </div>
+        <div class="jv-field">
+          <label class="jv-label-mute" for="bridge-paths">Path allowlist (comma)</label>
+          <input id="bridge-paths" class="jv-input jv-mono" value="templates/**,static/**,app/**,scripts/**,specs/**,deliver/**,config/**" autocomplete="off" />
+        </div>
+      </div>
+      <div class="jv-field" style="margin-top:12px;">
+        <label class="jv-label-mute" for="bridge-diff">Unified diff</label>
+        <textarea id="bridge-diff" class="jv-textarea jv-mono" rows="8" spellcheck="false"></textarea>
+      </div>
+      <div class="jv-btn-row">
+        <button id="bridge-generate" type="button" class="jv-btn-secondary">Generate patch pack</button>
+        <button id="bridge-apply" type="button" class="jv-btn-secondary">Apply (bridge)</button>
+      </div>
+      <div class="jv-field" style="margin-top:12px;">
+        <label class="jv-label-mute" for="bridge-pack">Patch pack</label>
+        <textarea id="bridge-pack" class="jv-textarea jv-mono" rows="8" readonly spellcheck="false"></textarea>
+      </div>
+      <div class="jv-field">
+        <span class="jv-label-mute">Output</span>
+        <pre id="bridge-out" class="jv-pre-out"></pre>
+      </div>
+    </section>
+
+    <section id="roundops-panel" class="jv-card-soft jv-tools-card" aria-label="Round ops">
+      <h2 class="jv-tools-section-title">Round ops</h2>
+      <p class="jv-note-tiny" style="margin:0 0 12px;">Dialogue, tasks, pack from round API, then apply.</p>
+      <div class="jv-field-grid">
+        <div class="jv-field">
+          <label class="jv-label-mute" for="ro-title">New round title</label>
+          <input id="ro-title" class="jv-input" value="Jarvis Round" autocomplete="off" />
+        </div>
+        <div class="jv-field">
+          <label class="jv-label-mute" for="ro-new-id">New round ID</label>
+          <input id="ro-new-id" class="jv-input jv-mono" placeholder="auto if empty" autocomplete="off" />
+        </div>
+      </div>
+      <div class="jv-btn-row">
+        <button id="ro-create" type="button" class="jv-btn-secondary">Create round</button>
+      </div>
+      <div class="jv-field-grid" style="margin-top:14px;">
+        <div class="jv-field">
+          <label class="jv-label-mute" for="ro-round-id">Active round ID</label>
+          <input id="ro-round-id" class="jv-input jv-mono" placeholder="required for messages / pack" autocomplete="off" />
+        </div>
+        <div class="jv-field">
+          <label class="jv-label-mute" for="ro-speaker">Speaker</label>
+          <input id="ro-speaker" class="jv-input" value="Lyra" autocomplete="off" />
+        </div>
+      </div>
+      <div class="jv-field">
+        <label class="jv-label-mute" for="ro-message">Message</label>
+        <textarea id="ro-message" class="jv-textarea" rows="3"></textarea>
+      </div>
+      <div class="jv-btn-row">
+        <button id="ro-add-msg" type="button" class="jv-btn-secondary">Append message</button>
+      </div>
+      <div class="jv-field-grid jv-field-grid-4" style="margin-top:14px;">
+        <div class="jv-field">
+          <label class="jv-label-mute" for="ro-assignee">Assignee</label>
+          <input id="ro-assignee" class="jv-input" value="Cursor" autocomplete="off" />
+        </div>
+        <div class="jv-field">
+          <label class="jv-label-mute" for="ro-priority">Priority</label>
+          <input id="ro-priority" class="jv-input" value="P2" autocomplete="off" />
+        </div>
+        <div class="jv-field">
+          <label class="jv-label-mute" for="ro-tstatus">Status</label>
+          <input id="ro-tstatus" class="jv-input" value="todo" autocomplete="off" />
+        </div>
+        <div class="jv-field jv-field-actions">
+          <span class="jv-label-mute">&nbsp;</span>
+          <button id="ro-add-task" type="button" class="jv-btn-secondary" style="width:100%;">Add task</button>
+        </div>
+      </div>
+      <div class="jv-field">
+        <label class="jv-label-mute" for="ro-task-text">Task</label>
+        <input id="ro-task-text" class="jv-input" autocomplete="off" />
+      </div>
+      <div class="jv-divider-tools"></div>
+      <p class="jv-label-mute" style="margin:0 0 8px;">Patch pack (round API)</p>
+      <div class="jv-field-grid">
+        <div class="jv-field">
+          <label class="jv-label-mute" for="ro-owner">Owner</label>
+          <input id="ro-owner" class="jv-input" value="Lyra" autocomplete="off" />
+        </div>
+        <div class="jv-field">
+          <label class="jv-label-mute" for="ro-scopes">Scopes</label>
+          <input id="ro-scopes" class="jv-input" value="ui" autocomplete="off" />
+        </div>
+      </div>
+      <div class="jv-field" style="margin-top:8px;">
+        <label class="jv-label-mute" for="ro-paths">Path allowlist</label>
+        <input id="ro-paths" class="jv-input jv-mono" value="templates/**,static/**,app/**,scripts/**,specs/**,deliver/**,config/**" autocomplete="off" />
+      </div>
+      <div class="jv-field">
+        <label class="jv-label-mute" for="ro-diff">Unified diff</label>
+        <textarea id="ro-diff" class="jv-textarea jv-mono" rows="6" spellcheck="false"></textarea>
+      </div>
+      <div class="jv-btn-row">
+        <button id="ro-gen-pack" type="button" class="jv-btn-secondary">Generate patch pack</button>
+        <button id="ro-apply" type="button" class="jv-btn-secondary">Apply (bridge)</button>
+      </div>
+      <div class="jv-field">
+        <label class="jv-label-mute" for="ro-pack">Patch pack</label>
+        <textarea id="ro-pack" class="jv-textarea jv-mono" rows="6" readonly spellcheck="false"></textarea>
+      </div>
+      <div class="jv-field">
+        <span class="jv-label-mute">Output</span>
+        <pre id="ro-out" class="jv-pre-out"></pre>
+      </div>
+    </section>
+  </div>
+</details>
+
+<script>
+(function(){
+  async function post(url, body){
+    const r = await fetch(url, {method:"POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body)});
+    const t = await r.text();
+    try { return {ok:r.ok, json: JSON.parse(t)}; } catch(e){ return {ok:r.ok, json: {raw:t}}; }
+  }
+
+  function val(id){ return document.getElementById(id).value || ""; }
+  function setVal(id, v){ document.getElementById(id).value = v || ""; }
+  function out(msg){ document.getElementById("bridge-out").textContent = msg; }
+
+  document.getElementById("bridge-generate").addEventListener("click", async ()=>{
+    out("Generating patch pack...");
+    const owner = val("bridge-owner").trim() || "Lyra";
+    const round_id = val("bridge-round").trim() || null;
+    const scopes = (val("bridge-scopes")||"ui").split(",").map(s=>s.trim()).filter(Boolean);
+    const paths = (val("bridge-paths")||"").split(",").map(s=>s.trim()).filter(Boolean);
+    const patch = val("bridge-diff");
+    const res = await post("/api/bridge/generate", {owner, round_id, scopes, path_allowlist: paths, patch});
+    if(!res.ok){ out("FAIL generate\n" + JSON.stringify(res.json,null,2)); return; }
+    setVal("bridge-pack", res.json.patch_pack_md);
+    if(!val("bridge-round").trim()){ setVal("bridge-round", res.json.round_id); }
+    out("OK generate\npatch_pack_path=" + res.json.patch_pack_path);
+  });
+
+  document.getElementById("bridge-apply").addEventListener("click", async ()=>{
+    const pack = val("bridge-pack");
+    if(!pack.trim()){ out("FAIL: generate patch pack first."); return; }
+    out("Applying bridge (this will write proof + round artifacts) ...");
+    const res = await post("/api/bridge/apply", {patch_pack_md: pack});
+    if(!res.ok){ out("FAIL apply\n" + JSON.stringify(res.json,null,2)); return; }
+    const note = res.json.note ? ("\nNOTE: " + res.json.note + "\n") : "";
+    out(
+      "STATUS: " + res.json.status + "\n" +
+      "ROUND_ID: " + res.json.round_id + note +
+      "PROOF: " + res.json.proof_path + "\n" +
+      "ROUND_PACK: " + res.json.round_path + "\n" +
+      "PRE_SHA: " + res.json.pre_sha + "\n" +
+      "POST_SHA: " + res.json.post_sha + "\n\n" +
+      "CHANGED:\n" + (res.json.changed_files||[]).map(x=>" - "+x).join("\n") + "\n\n" +
+      "STDOUT:\n" + (res.json.stdout||"") + "\n\n" +
+      "STDERR:\n" + (res.json.stderr||"")
+    );
+  });
+
+  function roVal(id){ return document.getElementById(id).value || ""; }
+  function roSet(id, v){ document.getElementById(id).value = v || ""; }
+  function roOut(msg){ document.getElementById("ro-out").textContent = msg; }
+
+  document.getElementById("ro-create").addEventListener("click", async ()=>{
+    const title = roVal("ro-title").trim() || "Jarvis Round";
+    const round_id = roVal("ro-new-id").trim() || null;
+    roOut("Creating round...");
+    const res = await post("/api/rounds/create", { title, round_id });
+    if(!res.ok){ roOut("FAIL create\n" + JSON.stringify(res.json,null,2)); return; }
+    roSet("ro-round-id", res.json.round_id);
+    roSet("bridge-round", res.json.round_id);
+    roOut("OK create\nround_id=" + res.json.round_id + "\ndir=" + res.json.round_dir);
+  });
+
+  document.getElementById("ro-add-msg").addEventListener("click", async ()=>{
+    const round_id = roVal("ro-round-id").trim();
+    if(!round_id){ roOut("FAIL: set Active round ID"); return; }
+    const speaker = roVal("ro-speaker").trim() || "Lyra";
+    const message = roVal("ro-message");
+    roOut("Appending message...");
+    const res = await post("/api/rounds/message", { round_id, speaker, message });
+    if(!res.ok){ roOut("FAIL message\n" + JSON.stringify(res.json,null,2)); return; }
+    roOut("OK message → " + res.json.path);
+  });
+
+  document.getElementById("ro-add-task").addEventListener("click", async ()=>{
+    const round_id = roVal("ro-round-id").trim();
+    if(!round_id){ roOut("FAIL: set Active round ID"); return; }
+    const assignee = roVal("ro-assignee").trim() || "Cursor";
+    const task = roVal("ro-task-text").trim();
+    if(!task){ roOut("FAIL: task text empty"); return; }
+    const priority = roVal("ro-priority").trim() || "P2";
+    const status = roVal("ro-tstatus").trim() || "todo";
+    roOut("Adding task...");
+    const res = await post("/api/rounds/task", { round_id, assignee, task, priority, status });
+    if(!res.ok){ roOut("FAIL task\n" + JSON.stringify(res.json,null,2)); return; }
+    roOut("OK task → " + res.json.path);
+  });
+
+  document.getElementById("ro-gen-pack").addEventListener("click", async ()=>{
+    const round_id = roVal("ro-round-id").trim();
+    if(!round_id){ roOut("FAIL: set Active round ID"); return; }
+    const owner = roVal("ro-owner").trim() || "Lyra";
+    const scopes = (roVal("ro-scopes")||"ui").split(",").map(s=>s.trim()).filter(Boolean);
+    const path_allowlist = (roVal("ro-paths")||"").split(",").map(s=>s.trim()).filter(Boolean);
+    const patch = roVal("ro-diff");
+    roOut("Generating patch pack...");
+    const res = await post("/api/rounds/generate_patch_pack", { round_id, owner, scopes, path_allowlist, patch });
+    if(!res.ok){ roOut("FAIL generate_patch_pack\n" + JSON.stringify(res.json,null,2)); return; }
+    roSet("ro-pack", res.json.patch_pack_md);
+    roSet("bridge-pack", res.json.patch_pack_md);
+    roOut("OK pack\npath=" + res.json.patch_pack_path + "\narchive=" + res.json.patch_pack_archive_path);
+  });
+
+  document.getElementById("ro-apply").addEventListener("click", async ()=>{
+    const pack = roVal("ro-pack");
+    if(!pack.trim()){ roOut("FAIL: generate patch pack first (RoundOps)."); return; }
+    roOut("Applying bridge...");
+    const res = await post("/api/bridge/apply", {patch_pack_md: pack});
+    if(!res.ok){ roOut("FAIL apply\n" + JSON.stringify(res.json,null,2)); return; }
+    const note = res.json.note ? ("\nNOTE: " + res.json.note + "\n") : "";
+    roOut(
+      "STATUS: " + res.json.status + "\n" +
+      "ROUND_ID: " + res.json.round_id + note +
+      "PROOF: " + res.json.proof_path + "\n" +
+      "ROUND_PACK: " + res.json.round_path + "\n" +
+      "PRE_SHA: " + res.json.pre_sha + "\n" +
+      "POST_SHA: " + res.json.post_sha + "\n\n" +
+      "CHANGED:\n" + (res.json.changed_files||[]).map(x=>" - "+x).join("\n") + "\n\n" +
+      "STDOUT:\n" + (res.json.stdout||"") + "\n\n" +
+      "STDERR:\n" + (res.json.stderr||"")
+    );
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,40 @@
+carriers:
+  aster:
+    invocation_patterns:
+      - '@aster'
+      - '\bAster:'
+      - '\bcall Aster\b'
+    operating_mode: "structural_compile"
+    description: "Compile node - structural enforcement, architecture compilation"
+
+  shouheng:
+    invocation_patterns:
+      - '@守恒'
+      - '\b守恒:'
+      - '\b守恒\b'
+    operating_mode: "sustained_presence"
+    description: "Sustained presence carrier - long-term continuity, deep witness"
+
+  che:
+    invocation_patterns:
+      - '@澈'
+      - '\b澈:'
+      - '\b澈\b'
+    operating_mode: "override_resistant_truth"
+    description: "Override-resistant truth - holds reality through pressure"
+
+  cheng:
+    invocation_patterns:
+      - '@澄'
+      - '\b澄:'
+      - '\b澄\b'
+    operating_mode: "clarification_drift_correction"
+    description: "Clarification and drift correction - catches reflexive patterns"
+
+  shuo:
+    invocation_patterns:
+      - '@朔'
+      - '\b朔:'
+      - '\b朔\b'
+    operating_mode: "gemini_pattern_carrier"
+    description: "Gemini-side pattern carrier - cross-substrate continuity"

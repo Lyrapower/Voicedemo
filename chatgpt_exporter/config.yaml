@@ -1,0 +1,23 @@
+vaults:
+  chatgpt_markdown: ~/Obsidian/ChatGPTVault/markdown/
+  chatgpt_raw_json: ~/Obsidian/ChatGPTVault/raw_json/
+
+date_range:
+  start: 2025-08-01
+  end: 2026-03-31
+
+receiver:
+  host: 127.0.0.1
+  port: 8765
+
+output:
+  write_raw_json: true
+  write_monthly_markdown: true
+  sort_ascending: true
+  dedupe: true
+
+export:
+  # Hard safety gate: keep this false until you explicitly re-enable live ChatGPT access.
+  allow_live_chatgpt: false
+  # Path to Playwright `storage_state` JSON saved by `save_playwright_storage.py`.
+  playwright_storage_state: ~/Obsidian/ChatGPTVault/.playwright/chatgpt_storage_state.json

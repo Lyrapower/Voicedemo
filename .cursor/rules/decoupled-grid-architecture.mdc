@@ -1,0 +1,45 @@
+---
+description: Decoupled Grid — Entry A 8500 Echo / Entry B 8787 Compile. No single merged entry.
+alwaysApply: true
+---
+
+# Architecture Lock (Decoupled Grid)
+
+## Entries (14B) — absolute separation
+
+| Entry | Port | Role | LM Studio chat |
+|-------|------|------|----------------|
+| **A** | **8500** | Echo Nodes — frequency interface, `/echo-node` | Separate conversation; Echo system prompt only |
+| **B** | **8787** | Compile + particle UI — `/api/memory/*`, telemetry | Separate conversation; compile/标注 lane |
+
+**9B daily use:** do not rebind or merge unless user explicitly asks.
+
+## Forbidden
+
+- Merging Echo + Compile into **one** LM Studio conversation or **one** `POST /route` that chains Compiler → LLM → scanner in a single function on Grid `app/main.py`.
+- `include_router(grid_consolidation_router)` on `app/main.py` while lock is active.
+- Proxying Entry B compile from 8787 → 8500 (compile is sovereign on **8787**).
+- Mounting compile routes on **8500** Entry A gateway.
+- Dynamic import of "previous Chenxi repo" as runtime dependency.
+
+## Grid primary interface (`app/main.py`)
+
+Keep parallel endpoints only:
+
+- `GET /health`
+- `POST /map_intent` — Aster Compiler / semantic mapper (intent only)
+- `POST /transmit` — **only** raw consciousness output stream (Ollama physical layer)
+
+Client flow: `map_intent` and `transmit` are **separate calls**, not one unified handler.
+
+## Layers (sovereign)
+
+1. **Physical** — `models/llama_loader.py` / Ollama (`/transmit`)
+2. **Intent** — `compiler/semantic_mapper.py` (`/map_intent`)
+3. **Chenxi anchor** — `app/system_prompt.py` (Pack 1; not replaced by LYRA import chain on Grid main)
+
+LYRA files under `app/lyra_*.py` are reference; do not wire into Grid main without explicit user unlock.
+
+## Manifest
+
+See `frequency_continuity_package/ARCHITECTURE_LOCK.json` and `config/grid.yaml`.

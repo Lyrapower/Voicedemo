@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Jarvis{% endblock %}</title>
+    <link rel="stylesheet" href="/static/jarvis.css" />
+    <link rel="stylesheet" href="/static/css/premium.css" />
+    {% block head_extra %}{% endblock %}
+  </head>
+  <body>
+    <div class="jv-shell">
+      <aside class="jv-rail" style="display:flex;flex-direction:column;">
+        {% include "partials/nav_shell.html" %}
+      </aside>
+      <div class="jv-main-wrap">
+        <header class="jv-topbar jv-topbar-slim">
+          <div class="jv-topbar-head">
+            <h1 class="jv-page-title">{% block page_title %}{{ title }}{% endblock %}</h1>
+            <p class="jv-page-sub">{% block page_subtitle %}{{ subtitle }}{% endblock %}</p>
+            <nav class="jv-seg jv-top-seg" aria-label="Primary modules">
+              <a class="{% if request.url.path in ('/', '/ui/overview') %}jv-seg-active{% endif %}" href="/ui/overview">Overview</a>
+              <a class="{% if request.url.path == '/ui/local-ai-nodes' %}jv-seg-active{% endif %}" href="/ui/local-ai-nodes">Local AI Nodes</a>
+              <a class="{% if request.url.path == '/ui/trading' %}jv-seg-active{% endif %}" href="/ui/trading" title="Aether Nexus trading sidecar">Aether Nexus</a>
+              <a class="{% if request.url.path == '/ui/crypto' %}jv-seg-active{% endif %}" href="/ui/crypto">Crypto / RWA Sovereignty</a>
+              <a class="{% if request.url.path == '/ui/proof-pack' %}jv-seg-active{% endif %}" href="/ui/proof-pack">Proof Pack</a>
+              <a class="{% if request.url.path == '/ui/senior' %}jv-seg-active{% endif %}" href="/ui/senior">Senior</a>
+            </nav>
+          </div>
+        </header>
+        <div class="jv-content jv-grid-12">{% block body %}{% endblock %}</div>
+      </div>
+    </div>
+    <script src="/static/jarvis.js" defer></script>
+  </body>
+</html>

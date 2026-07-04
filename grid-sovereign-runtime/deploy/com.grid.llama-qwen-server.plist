@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.grid.llama-qwen-server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/ciciwang/Desktop/demo/grid-sovereign-runtime/scripts/substrate/llama_qwen_server.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/grid-llama-qwen/stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/grid-llama-qwen/stderr.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>LLAMA_SERVER</key>
+    <string>/opt/llama.cpp/build/bin/llama-server</string>
+    <key>MODEL_FILE</key>
+    <string>/Volumes/2TB/models/qwen/Qwen3.5-9B-Q4_K_M.gguf</string>
+  </dict>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+</dict>
+</plist>

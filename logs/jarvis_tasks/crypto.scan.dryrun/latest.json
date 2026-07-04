@@ -1,0 +1,27 @@
+{
+  "run_id": "60b0cba3-c76c-4bad-9415-5ed3c3c867b7",
+  "task_id": "crypto.scan.dryrun",
+  "ts": "2026-07-02T03:59:20Z",
+  "status": "PASS",
+  "permission": "read_only",
+  "dry_run": true,
+  "artifacts": [
+    "logs/jarvis_tasks/proof_log.jsonl",
+    "deliver/crypto/scan_last_run.json"
+  ],
+  "detail": {
+    "exit_code": 0,
+    "stdout_tail": [
+      "    },",
+      "    {",
+      "      \"id\": \"ev-005\",",
+      "      \"outcome\": \"dry-run\",",
+      "      \"url\": \"https://www.nist.gov/cyberframework\"",
+      "    }",
+      "  ]",
+      "}"
+    ],
+    "stderr_tail": [],
+    "dry_run": true
+  }
+}

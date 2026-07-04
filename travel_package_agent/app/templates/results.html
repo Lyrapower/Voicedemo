@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#F6F3EE">
+  <title>TripPack AI — Your packages</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="results-shell">
+
+  <header class="r-nav">
+    <a href="/" class="brand" style="text-decoration:none;color:inherit;">TripPack AI</a>
+    <a href="/" class="nav-ghost" style="font-size:12px;">New request</a>
+  </header>
+
+  <div class="results-head">
+    <h1 class="r-title">Your ranked options ({{ result.top_packages | length }})</h1>
+    <p class="r-sub">Budget-aware packages with flight, hotel, car, fees, and buffer included where applicable.</p>
+    <p class="r-strip">
+      {{ result.request.origin }} &middot;
+      {{ result.request.earliest_departure | dateformat("%b %d") }} – {{ result.request.latest_return | dateformat("%b %d, %Y") }} &middot;
+      {{ result.request.travelers }} traveler{% if result.request.travelers != 1 %}s{% endif %}{% if result.request.rental_car_required %} &middot; Rental car{% endif %}{% if result.request.destination_preference != "Any" %} &middot; {{ result.request.destination_preference }}{% endif %} &middot; {{ result.request.style }}
+    </p>
+  </div>
+
+  <div class="r-bar">
+    <span style="font-size:12px;color:var(--text-3);">Ranked for your rules</span>
+    <a href="javascript:copySummary()">Copy summary</a>
+  </div>
+
+  <div class="pkg-list">
+    {% for pkg in result.top_packages %}
+    <article class="p-card" id="pkg-{{ loop.index0 }}">
+      <div class="p-viz {{ pkg.destination | dest_slug }}">
+        <div class="p-bad">
+          <span class="p-rank">#{{ loop.index }} {{ pkg.rank_label }}</span>
+          <span class="p-pass">BUDGET PASS</span>
+        </div>
+        <div>
+          <p class="p-name">{{ pkg.destination }}</p>
+          <p class="p-region">
+            {% if pkg.destination == "Maui" %}Hawaii
+            {% elif pkg.destination == "Seattle" %}Pacific Northwest
+            {% elif pkg.destination == "Denver" %}The Rockies
+            {% elif pkg.destination == "Cancun" %}Caribbean coast
+            {% elif pkg.destination == "New York" %}Metro
+            {% elif pkg.destination == "Vancouver" %}Coastal city
+            {% else %}{% endif %}
+          </p>
+        </div>
+      </div>
+      <div class="p-mid">
+        <div class="p-row">
+          <div>
+            <p class="p-dates">{{ pkg.departure_date | dateformat }} – {{ pkg.return_date | dateformat }}</p>
+            <p class="p-ni">{{ pkg.nights }} nights</p>
+          </div>
+          <div class="p-total">
+            <p class="p-price">{{ pkg.total_cost | money }}</p>
+            <p class="p-left">{{ pkg.budget_remaining | money }} remaining</p>
+          </div>
+        </div>
+        <div class="p-stack">
+          <div class="p-line">Flight <b>{{ pkg.flight_total | money }}</b></div>
+          <div class="p-line">Hotel <b>{{ pkg.hotel_total | money }}</b></div>
+          {% if pkg.car %}
+          <div class="p-line">Car <b>{{ pkg.car_total | money }}</b></div>
+          {% endif %}
+          <div class="p-line">Fees <b>{{ pkg.taxes_fees | money }}</b></div>
+          <div class="p-line">Buffer <b>{{ pkg.buffer | money }}</b></div>
+        </div>
+        <p class="p-why">{{ pkg.explanation }}</p>
+        <div class="p-acts">
+          <button type="button" class="btn-vp" onclick="openDetail({{ loop.index0 }})">View package</button>
+          <button type="button" class="btn-cp" onclick="copyPkg({{ loop.index0 }})">Copy</button>
+          <button type="button" class="btn-sv" id="save-btn-{{ loop.index0 }}" onclick="savePackage({{ loop.index0 }})">Save</button>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+
+  <div class="rej">
+    <details>
+      <summary>Rejected options <span style="color:var(--text-2); font-weight:500; font-size:12px; margin-left:4px">({{ result.rejected_packages | length }})</span><svg class="rej-chev" viewBox="0 0 20 20" fill="none"><path d="M5 7.5l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></summary>
+      <p class="rej-sub">Removed for budget, dates, or quality — not a chat opinion.</p>
+      {% for pkg in result.rejected_packages %}
+      <div class="rej-ln">
+        <span class="rej-dest">{{ pkg.destination }}</span>
+        <span class="rej-why">{{ pkg.fail_reason }}</span>
+        <span class="rej-amt">{{ pkg.total_cost | money }}</span>
+      </div>
+      {% endfor %}
+    </details>
+  </div>
+
+  <p class="d-strip">V0 uses deterministic demo data. Live provider prices and booking links come next. Prices are not final until a real partner confirms at checkout (future release).</p>
+
+  <div class="p-noti">
+    <div><p>Price drop alerts</p><small>Provider link coming in V1</small></div>
+    <button type="button" disabled style="height:30px; padding:0 12px; border-radius:100px; border:1px solid var(--border); background:var(--bg-mist); color:var(--text-3); font-size:12px; cursor:not-allowed;">Enable <span class="v1">V1</span></button>
+  </div>
+
+  <footer class="site-foot">
+    <a href="/privacy">Privacy</a>
+    <a href="/">New trip</a>
+    <p>Demo data only. No real booking or guaranteed prices yet.</p>
+  </footer>
+  <div style="height:20px"></div>
+</div>
+
+<div class="detail-overlay" id="overlay" onclick="closeDetail()"></div>
+
+{% for pkg in result.top_packages %}
+<div class="d-sheet" id="sheet-{{ loop.index0 }}">
+  <div class="d-grip"></div>
+  <div class="d-hero {{ pkg.destination | dest_slug }}">
+    <button class="d-x" type="button" onclick="closeDetail()" aria-label="Close">×</button>
+    <h2>{{ pkg.destination }}</h2>
+    <p style="color:rgba(255,255,255,0.88); font-size:13px; margin-top:4px;">{{ pkg.departure_date | dateformat }} – {{ pkg.return_date | dateformat }} · {{ pkg.nights }} nights</p>
+  </div>
+
+  <div class="d-sec" style="display:flex; justify-content:space-between; align-items:center;">
+    <div>
+      <p style="font-size:32px; font-weight:750; color:var(--navy); line-height:1;">{{ pkg.total_cost | money }}</p>
+      <p style="font-size:12px; font-weight:600; color:var(--success); margin-top:2px;">{{ pkg.budget_remaining | money }} remaining</p>
+    </div>
+    <span class="p-pass" style="font-size:9px; padding:5px 10px;">BUDGET PASS</span>
+  </div>
+
+  <div class="d-sec">
+    <h4>Flight</h4>
+    <div class="d-box">
+      <p style="font-weight:700; margin-bottom:6px; color:var(--navy);">{{ pkg.flight.airline }}</p>
+      <div class="d-row2"><span>Per person</span><span>{{ pkg.flight.price_per_person | money }}</span></div>
+      <div class="d-row2"><span>Quality</span><span>{{ pkg.flight.flight_quality_score }}/5</span></div>
+      <button type="button" class="mock-btn" onclick="showMockAlert('flight')">Mock flight link <span class="mock-t">V1</span></button>
+    </div>
+  </div>
+  <div class="d-sec">
+    <h4>Hotel</h4>
+    <div class="d-box">
+      <p style="font-weight:700; margin-bottom:6px; color:var(--navy);">{{ pkg.hotel.hotel_name }}</p>
+      <div class="d-row2"><span>Night</span><span>{{ pkg.hotel.nightly_rate | money }}</span></div>
+      <div class="d-row2"><span>Rating</span><span>{{ pkg.hotel.rating }}</span></div>
+      <button type="button" class="mock-btn" onclick="showMockAlert('hotel')">Mock hotel link <span class="mock-t">V1</span></button>
+    </div>
+  </div>
+  {% if pkg.car %}
+  <div class="d-sec">
+    <h4>Rental car</h4>
+    <div class="d-box">
+      <p style="font-weight:700; margin-bottom:6px; color:var(--navy);">{{ pkg.car.provider }}</p>
+      <div class="d-row2"><span>Per day</span><span>{{ pkg.car.daily_rate | money }}</span></div>
+      <button type="button" class="mock-btn" onclick="showMockAlert('car')">Mock car link <span class="mock-t">V1</span></button>
+    </div>
+  </div>
+  {% endif %}
+  <div class="d-sec">
+    <h4>Budget math</h4>
+    <div class="d-box">
+      <div class="d-row2"><span>Flight</span><span>{{ pkg.flight_total | money }}</span></div>
+      <div class="d-row2"><span>Hotel</span><span>{{ pkg.hotel_total | money }}</span></div>
+      {% if pkg.car %}<div class="d-row2"><span>Car</span><span>{{ pkg.car_total | money }}</span></div>{% endif %}
+      <div class="d-row2"><span>Fees (12%)</span><span>{{ pkg.taxes_fees | money }}</span></div>
+      <div class="d-row2"><span>Buffer</span><span>{{ pkg.buffer | money }}</span></div>
+      <div class="d-row2" style="font-weight:700; padding-top:6px; border-top:1px solid var(--border); margin-top:4px;"><span>Total</span><span>{{ pkg.total_cost | money }}</span></div>
+    </div>
+  </div>
+  <div class="d-sec" style="padding-bottom: 80px;">
+    <h4>Why ranked #{{ loop.index }}</h4>
+    <div class="d-box" style="font-size:15px; line-height:1.5; color:var(--text-2);">{{ pkg.explanation }}</div>
+  </div>
+  <div class="d-foot">
+    <button type="button" class="btn-cp" style="flex:1; min-height:48px" onclick="copyPkg({{ loop.index0 }})">Copy</button>
+    <button type="button" class="btn-vp" style="flex:1" onclick="closeDetail()">Back to results</button>
+  </div>
+</div>
+{% endfor %}
+
+<div id="mock-toast"></div>
+<script>
+const packages = [
+  {% for pkg in result.top_packages %}
+  {
+    destination: {{ pkg.destination | tojson | safe }},
+    rankLabel: {{ pkg.rank_label | tojson | safe }},
+    dates: {{ (pkg.departure_date | dateformat ~ " – " ~ (pkg.return_date | dateformat)) | tojson | safe }},
+    nights: {{ pkg.nights }},
+    totalCost: {{ (pkg.total_cost | money) | tojson | safe }},
+    budgetRemaining: {{ (pkg.budget_remaining | money) | tojson | safe }},
+    flight: {{ (pkg.flight.airline ~ " · " ~ (pkg.flight_total | money)) | tojson | safe }},
+    hotel: {{ (pkg.hotel.hotel_name ~ " · " ~ (pkg.hotel_total | money)) | tojson | safe }},
+    car: {% if pkg.car %}{{ (pkg.car.provider ~ " · " ~ (pkg.car_total | money)) | tojson | safe }}{% else %}null{% endif %},
+    taxesFees: {{ (pkg.taxes_fees | money) | tojson | safe }},
+    buffer: {{ (pkg.buffer | money) | tojson | safe }},
+    explanation: {{ pkg.explanation | tojson | safe }}
+  }{% if not loop.last %},{% endif %}
+  {% endfor %}
+];
+let tTimer = null;
+function showToast(m) { const t = document.getElementById('mock-toast'); t.textContent = m; t.classList.add('show'); clearTimeout(tTimer); tTimer = setTimeout(() => t.classList.remove('show'), 2800); }
+function showMockAlert(k) { showToast('Mock booking link. Provider path comes in V1.'); }
+let activeS = null;
+function openDetail(i) { document.getElementById('overlay').classList.add('on'); document.getElementById('sheet-'+i).classList.add('on'); document.body.style.overflow = 'hidden'; activeS = i; }
+function closeDetail() { document.getElementById('overlay').classList.remove('on'); if (activeS !== null) { document.getElementById('sheet-'+activeS).classList.remove('on'); activeS = null; } document.body.style.overflow = ''; }
+document.addEventListener('keydown', e => { if (e.key==='Escape') closeDetail(); });
+function copyPkg(i) { const p = packages[i]; let x = 'TripPack AI — ' + p.destination + ' · ' + p.totalCost + '\n' + p.dates + '\n' + p.flight + '\n' + p.hotel + '\n'; if (p.car) x += p.car + '\n'; x += 'Fees: ' + p.taxesFees + ' · Buffer: ' + p.buffer + '\n' + p.explanation; navigator.clipboard.writeText(x).catch(()=>{}); showToast('Copied.'); }
+function copySummary() { let t = 'TripPack AI — ' + packages.length + ' packages (demo data)\n'; packages.forEach((p, i) => t += (i+1) + ' ' + p.destination + ' ' + p.totalCost + '\n'); navigator.clipboard.writeText(t).catch(()=>{}); showToast('Summary copied.'); }
+function savePackage(i) { const p = packages[i]; let s = JSON.parse(localStorage.getItem('trippack_saved') || '[]'); if (!s.some(x => x.destination === p.destination && x.dates === p.dates)) s.push({...p, at: new Date().toISOString()}); localStorage.setItem('trippack_saved', JSON.stringify(s)); const b = document.getElementById('save-btn-'+i); if (b) { b.textContent = 'Saved'; b.classList.add('save-confirm'); } showToast('Saved in this browser.'); }
+(function(){ const s = JSON.parse(localStorage.getItem('trippack_saved')||'[]'); packages.forEach((p, i) => { if (s.some(x => x.destination === p.destination && x.dates === p.dates)) { const b = document.getElementById('save-btn-'+i); if (b) { b.textContent = 'Saved'; b.classList.add('save-confirm'); } } }); })();
+</script>
+</body>
+</html>

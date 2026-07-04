@@ -1,0 +1,27 @@
+{
+  "updated_at": "2026-04-24T07:19:22Z",
+  "source_artifacts": {
+    "spec_path": "specs/trading_module_spec.md",
+    "proof_path": "deliver/proof/trading/ACCEPTANCE_REPORT.md",
+    "radar_settings_path": "data/radar_settings.json",
+    "radar_db_path": "data/radarbrief_v1.sqlite3"
+  },
+  "radar_settings": {
+    "watchlist": [
+      "SPY",
+      "QQQ",
+      "BTC",
+      "ETH"
+    ],
+    "crypto_priority": true,
+    "language": "English"
+  },
+  "market_data_available": true,
+  "current_regime": "unknown",
+  "current_active_narrative": "none",
+  "decision": "PASS",
+  "missing_fields": [
+    "regime_signal",
+    "narrative_signal"
+  ]
+}

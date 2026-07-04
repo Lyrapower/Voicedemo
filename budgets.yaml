@@ -1,0 +1,5 @@
+budgets:
+  daily_usd_cap: 5
+  monthly_usd_cap: 50
+  per_call_usd_cap: 2
+  enforcement_point: "future external adapter usage"

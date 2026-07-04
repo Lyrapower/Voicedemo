@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="8">
+  <title>Trippack — Dev (visual proof)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; background: #f6f3ee; color: #101828; }
+    .banner { background: #082f49; color: #fff; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; }
+    .banner code { background: rgba(255,255,255,.15); padding: 2px 6px; border-radius: 4px; }
+    table { border-collapse: collapse; width: 100%; margin: 8px 0 20px; background: #fff; font-size: 13px; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; vertical-align: top; }
+    th { background: #082f49; color: #fff; }
+    section h2 { margin: 0 0 4px; font-size: 1.1rem; }
+    .sub { color: #475467; font-size: 12px; margin: 0 0 8px; }
+    button { padding: 8px 12px; margin: 4px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="banner">
+    <strong>Visual proof of record</strong> — Up to <strong>20</strong> newest rows per table. Timestamps use <strong>Updated Xm ago</strong> (from epoch ms). This page auto-refreshes every <strong>8s</strong>.
+  </div>
+  <h1>Trippack — Dev workbench</h1>
+  <section>
+    <h2>Health</h2>
+    <p class="sub">ok={{ health_ok }} · demo_mode={{ demo_mode }} · last worker {{ updated_phrase(last_run_ms) }} · next run {{ next_run_phrase }}</p>
+  </section>
+  <section>
+    <h2>Provider (logical)</h2>
+    <p class="sub">Call <code>GET /provider-status</code> for <code>demo_mode</code> and flight/stay/car.</p>
+  </section>
+  <section>
+    <h2>Active trip goals</h2>
+    <p class="sub">Showing up to 50 (newest by <code>updated_at_ms</code>)</p>
+    <table>
+      <tr><th>id (short)</th><th>dest</th><th>status</th><th>Updated</th></tr>
+      {% for g in goals %}
+      <tr><td>{{ g.id[:8] }}…</td><td>{{ g.destination }}</td><td>{{ g.status }}</td><td>{{ updated_phrase(g.updated_at_ms) }}</td></tr>
+      {% else %}<tr><td colspan="4">none</td></tr>{% endfor %}
+    </table>
+  </section>
+  <section>
+    <h2>Latest 20 quotes</h2>
+    <p class="sub">Rows: {{ quotes|length }} (max 20) · goal id + component + <strong>Updated</strong> from <code>fetched_at_ms</code></p>
+    <table>
+      <tr><th>goal</th><th>provider</th><th>type</th><th>title</th><th>price</th><th>status</th><th>Updated</th></tr>
+      {% for q in quotes %}
+      <tr>
+        <td>{{ (q.trip_goal_id or '')[:8] }}…</td>
+        <td>{{ q.provider }}</td>
+        <td>{{ q.component_type }}</td>
+        <td>{{ (q.title or '')|truncate(48) }}</td>
+        <td>{% if q.price is not none %}{{ q.price }} {{ q.currency }}{% else %}—{% endif %}</td>
+        <td>{{ q.status }}</td>
+        <td>{{ updated_phrase(q.fetched_at_ms) }}</td>
+      </tr>
+      {% else %}<tr><td colspan="7">none (empty DB or no fetches yet)</td></tr>{% endfor %}
+    </table>
+  </section>
+  <section>
+    <h2>Latest 20 snapshots</h2>
+    <p class="sub">Rows: {{ snaps|length }} (max 20) · <strong>Updated</strong> from <code>created_at_ms</code></p>
+    <table>
+      <tr><th>goal</th><th>total</th><th>gap</th><th>rec</th><th>Updated</th></tr>
+      {% for s in snaps %}
+      <tr>
+        <td>{{ (s.trip_goal_id or '')[:8] }}…</td>
+        <td>{{ s.total_estimate }}</td>
+        <td>{{ s.budget_gap }}</td>
+        <td>{{ s.recommendation }}</td>
+        <td>{{ updated_phrase(s.created_at_ms) }}</td>
+      </tr>
+      {% else %}<tr><td colspan="5">none</td></tr>{% endfor %}
+    </table>
+  </section>
+  <section>
+    <h2>Latest 20 alerts</h2>
+    <p class="sub">Rows: {{ alerts|length }} (max 20) · <strong>Updated</strong> from <code>created_at_ms</code></p>
+    <table>
+      <tr><th>goal</th><th>message</th><th>prices</th><th>Updated</th><th>link</th></tr>
+      {% for a in alerts %}
+      <tr>
+        <td>{{ (a.trip_goal_id or '')[:8] }}…</td>
+        <td>{{ (a.message or '')|truncate(100) }}</td>
+        <td>t {{ a.target_price }} / tr {{ a.triggered_price }}</td>
+        <td>{{ updated_phrase(a.created_at_ms) }}</td>
+        <td>{% if a.source_url %}<a href="{{ a.source_url }}">src</a>{% else %}—{% endif %}</td>
+      </tr>
+      {% else %}<tr><td colspan="5">none</td></tr>{% endfor %}
+    </table>
+  </section>
+  <section>
+    <h2>Actions (POST)</h2>
+    <p class="sub">DEMO only. Use iOS <strong>Seed demo + check</strong> to hit <code>POST /ui/dev/seed-and-check</code>.</p>
+    <form method="post" action="/ui/dev/seed-goal" style="display:inline"><button type="submit">Seed goal only</button></form>
+    <form method="post" action="/ui/dev/seed-and-check?redirect=1" style="display:inline"><button type="submit">Seed + check (one step)</button></form>
+    <form method="post" action="/ui/dev/run-all" style="display:inline"><button type="submit">Run check all (DEMO)</button></form>
+  </section>
+</body>
+</html>

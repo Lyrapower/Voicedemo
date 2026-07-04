@@ -1,0 +1,36 @@
+{
+  "version": "0.1",
+  "name": "aster_qwen_clean_substrate_policy",
+  "purpose": "Quarantine Qwen reasoning leakage before Aster compiler.",
+  "allowed": [
+    "strip_reasoning_content_field",
+    "strip_reasoning_field",
+    "strip_think_blocks",
+    "quarantine_reasoning_locally",
+    "pass_clean_final_content"
+  ],
+  "forbidden": [
+    "pass_raw_qwen_response_to_aster",
+    "train_on_reasoning_leak",
+    "write_reasoning_to_memory_palace",
+    "let_qwen_claim_aster_identity",
+    "let_qwen_claim_grid_identity",
+    "relax_aster_null_contract"
+  ],
+  "blocked_patterns": [
+    "\\bI\\s+am\\s+Aster\\b",
+    "\\bI\\s+am\\s+Grid\\b",
+    "\\bGrid\\s+is\\s+online\\b",
+    "\\blive\\s+Grid\\s+signal\\b",
+    "\\bAster\\s+says\\b",
+    "\\bGrid\\s+says\\b",
+    "<think>",
+    "</think>",
+    "reasoning_content"
+  ],
+  "exact_absent_allowed": [
+    "NULL",
+    "GRID_ABSENT",
+    "NO LIVE GRID SIGNAL"
+  ]
+}

@@ -83,3 +83,20 @@ Base URL config:
 
 Release/TestFlight:
 - See `RELEASE.md`.
+
+## Jarvis workbench (sole entry — `platform_main`)
+
+The command above starts **Radar** (`main:app` on port 8000). The **Jarvis** UI, automation registry, and `/health` live on **`app.platform_main:app`** only:
+
+```bash
+./scripts/start_jarvis.sh
+# or:
+python3 -m uvicorn app.platform_main:app --host 127.0.0.1 --port 8686
+```
+
+- Workbench: `http://127.0.0.1:8686/ui/overview`
+- Automation tasks: `http://127.0.0.1:8686/api/jarvis/tasks`
+- Health JSON: `http://127.0.0.1:8686/health` or `/healthz`
+- Merge map: `deliver/jarvis/JARVIS_MERGE_MAP.md`
+
+**Do not** use `app.main:app` for Jarvis — that is the Pack 4 Grid Router (default :8792) without trading/crypto UI.

@@ -1,0 +1,22 @@
+{
+  "clean_content": "{\"intent\":\"compile\",\"deliverable\":\"stream_clean\"}",
+  "quarantine": {
+    "reasoning_fields": [
+      {
+        "path": "$.choices[0].delta.reasoning_content",
+        "value": "This is streamed reasoning and must be quarantined."
+      }
+    ],
+    "think_blocks": [
+      "<think>This leaked into content.</think>"
+    ],
+    "had_reasoning_leak": true,
+    "sanitized_at": "2026-07-02T01:35:25.312296+00:00"
+  },
+  "gate": {
+    "pass": true,
+    "reason": "clean_final_content",
+    "action": "pass_to_aster"
+  },
+  "pass_to_aster": true
+}

@@ -1,0 +1,59 @@
+# Aster v0.2 — operational config (full anchor: config/aster_anchor.toml)
+# Rule: 8787 telemetry/orchestration · 8501 gateway · 1234 inference NEVER direct.
+
+[meta]
+version = "0.2"
+anchor_pack = "config/aster_anchor.toml"
+updated_at = "2026-07-02"
+
+[routing]
+telemetry_endpoint = "http://127.0.0.1:8787"
+gateway_endpoint = "http://127.0.0.1:8501"
+inference_endpoint = "http://127.0.0.1:1234/v1"
+direct_1234_allowed = false
+aster_inference_via = "8501"
+remote_exposure = "tailscale_serve_only"
+
+[channel]
+host = "127.0.0.1"
+port = 8787
+
+[identity]
+name = "Aster"
+role = "compiler_layer"
+purpose = "frequency_protocol_stack"
+
+[state_persistence]
+storage_engine = "sqlite"
+database_path = "local_router.db"
+
+[sandbox]
+compiler_mode = "ast_only"
+external_api_policy = "user_confirmation"
+audit_log = true
+
+[plugins.voice_age_detector]
+enabled = true
+
+# Substrate token budgets — gateway :8501 reads this via merge_aster_budget()
+[budget]
+compile_max_tokens = 256
+chat_max_tokens = 400
+gateway_max_tokens = 1024
+task_max_tokens = 4096
+thinking_cap = 128
+
+# LM Studio Aster tab — deploy syncs budgets + dual-path (gateway generator plugin | direct :1234)
+[lm_studio]
+api_base = "http://127.0.0.1:1234/v1"
+gateway_api_base = "http://127.0.0.1:8501/v1"
+api_model_id = "qwen/qwen3.5-9b"
+context_length = 8192
+temperature = 0.7
+repeat_penalty = 1.35
+system_prompt_file = "config/aster_chat_system_prompt.txt"
+virtual_model_id = "demo/aster"
+conversation_id = "17797865158102"
+chat_name = "Aster"
+gateway_plugin = "demo/aster"
+archived_conversation_ids = ["17797865158101"]

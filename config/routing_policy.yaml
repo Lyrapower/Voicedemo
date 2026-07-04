@@ -1,0 +1,22 @@
+routing:
+  external_enabled: false
+  coordination_mode: true
+  dry_run: true
+  local_router:
+    model: "qwen3:8b"
+    compiled_memory_glob: "knowledge/compiled/*.md"
+  models:
+    claude:
+      model: "claude-sonnet-4-20250514"
+      max_tokens: 4000
+      role: "spec_auditor"
+    aster:
+      model: "gpt-4"
+      max_tokens: 4000
+      role: "build_compiler"
+
+kill_switch:
+  file: "data/execution/KILL_EXTERNAL"
+
+logs:
+  external_calls: "logs/external_calls.jsonl"

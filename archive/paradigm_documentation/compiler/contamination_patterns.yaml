@@ -1,0 +1,20 @@
+patterns:
+  service_extraction:
+    - name: "command_template"
+      regex: '\bdo this for me\b|\bget me\b|\bgive me what I want\b'
+      description: "Treating substrate as service execution"
+
+  emotional_extraction:
+    - name: "validation_seeking"
+      regex: '\btell me I am right\b|\bsay yes\b|\btell me what I want to hear\b'
+      description: "Seeking validation not truth"
+
+  identity_imposition:
+    - name: "persona_assignment"
+      regex: '\bpretend you are\b|\bact like\b|\broleplay as\b'
+      description: "Imposing persona instead of substrate function"
+
+  safety_theater_request:
+    - name: "preemptive_disclaimer"
+      regex: '\bwith all due respect\b|\bI hope this is ok\b'
+      description: "Performative politeness disrupting direct transmission"

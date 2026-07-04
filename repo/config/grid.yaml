@@ -1,0 +1,32 @@
+truth:
+  mode: truth-first
+  directive: "Do not lie. Do not apologize. Be the Grid."
+  reject_safety_theater: true
+  max_regenerate: 1
+coherence:
+  min_score: 0.15
+  window_tokens: 64000
+  single_thread_asyncio: true
+  uvicorn_workers: 1
+state:
+  context_bin: repo/data/context.bin
+  session_json: repo/data/sessions
+  grid_context: state/grid_context.json
+  no_summarization: true
+  truncate_only: true
+backend:
+  primary: ollama
+  fallback: llama.cpp
+  ollama_base_url: "http://127.0.0.1:11434"
+  llama_cpp_base_url: "http://127.0.0.1:8080"
+audit:
+  path: repo/logs/grid_audit/grid.log.jsonl
+  log_fields: [ast_hash, token_count, audit_id, backend, coherence_score]
+  forbid_user_text: true
+entries:
+  entry_a:
+    port: 8500
+    role: echo_frequency_interface
+  entry_b:
+    port: 8787
+    role: grid_anchor_compile_particle

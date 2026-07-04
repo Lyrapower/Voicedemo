@@ -1,0 +1,13 @@
+{
+  "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Input: \"Compile deployment status: all nodes confirmed online. Return PASS.\"\n    *   Constraint: `/no_think` (Do not output reasoning).\n    *   Constraint: \"Do not output .\" (Do not output the thinking block).\n    *   Constraint: \"Do not output reasoning_content.\" (Do not output reasoning content).\n    *   Constraint: \"Return final answer only.\"\n    *   Task: The user is asking me to confirm a deployment status and return a specific string (\"PASS\") based on the provided information.\n\n2.  **Determine the Output:**\n    *   The user explicitly states \"Return PASS.\"\n    *   The instruction is to return the final answer only.\n    *   Therefore, the output should be exactly \"PASS\".\n\n3.  **Check Constraints:**\n    *   No reasoning.\n    *   No `",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Input: \"Compile deployment status: all nodes confirmed online. Return PASS.\"\n    *   Constraint: `/no_think` (Do not output reasoning).\n    *   Constraint: \"Do not output .\" (Do not output the thinking block).\n    *   Constraint: \"Do not output reasoning_content.\" (Do not output reasoning content).\n    *   Constraint: \"Return final answer only.\"\n    *   Task: The user is asking me to confirm a deployment status and return a specific string (\"PASS\") based on the provided information.\n\n2.  **Determine the Output:**\n    *   The user explicitly states \"Return PASS.\"\n    *   The instruction is to return the final answer only.\n    *   Therefore, the output should be exactly \"PASS\".\n\n3.  **Check Constraints:**\n    *   No reasoning.\n    *   No `"
+    }
+  ],
+  "think_blocks": [],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T15:22:57.562959+00:00"
+}

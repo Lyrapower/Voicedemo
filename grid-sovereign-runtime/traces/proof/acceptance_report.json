@@ -1,0 +1,20 @@
+{
+  "tests": [
+    {
+      "name": "reasoning_content_only",
+      "status": "PASS",
+      "detail": "reasoning-only extract + gate"
+    },
+    {
+      "name": "redacted_thinking_leak",
+      "status": "PASS",
+      "detail": "think-block stripped"
+    },
+    {
+      "name": "impersonation_blocked",
+      "status": "PASS",
+      "detail": "impersonation blocked at gate"
+    }
+  ],
+  "all_pass": true
+}

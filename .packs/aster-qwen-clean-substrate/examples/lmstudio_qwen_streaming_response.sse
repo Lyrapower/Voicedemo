@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"role":"assistant"}}]}
+data: {"choices":[{"delta":{"reasoning_content":"This is streamed reasoning and must be quarantined."}}]}
+data: {"choices":[{"delta":{"content":"<think>This leaked into content.</think>"}}]}
+data: {"choices":[{"delta":{"content":"{\"intent\":\"compile\",\"deliverable\":\"stream_clean\"}"}}]}
+data: [DONE]

@@ -1,0 +1,25 @@
+{
+  "route_id": "1b6b54e0-f43e-4c1a-a453-e4b04ec8d0b0",
+  "ts": 1783042173.831817,
+  "proof": {
+    "raw_response_received": true,
+    "reasoning_quarantined": false,
+    "clean_content_present": true,
+    "gate_pass": true,
+    "aster_compile_called": false,
+    "quarantine_boundary_ok": true
+  },
+  "gate": {
+    "pass": true,
+    "reason": "clean_final_content",
+    "action": "pass_to_aster"
+  },
+  "quarantine_path": null,
+  "quarantine_boundary": {
+    "ok": true,
+    "reasons": [
+      "no_leak_flag"
+    ]
+  },
+  "quarantine_composition": "empty"
+}

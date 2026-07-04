@@ -1,0 +1,18 @@
+{
+  "id": "ev-002",
+  "title": "BlackRock Corporate Website | BlackRock",
+  "section": "tokenized_rwa",
+  "source_url": "https://www.blackrock.com/corporate",
+  "risk_level": "medium",
+  "summary": "BlackRock invests on behalf of our clients, from institutions to individuals in any stage of life, who entrust their savings to us. Learn more about us.",
+  "needs_cheng_review": true,
+  "created_at": "2026-05-19",
+  "updated_at": "2026-05-20T03:03:44Z",
+  "scan": {
+    "method": "public_url_fetch",
+    "http_status": 200,
+    "scanned_at": "2026-05-20T03:03:44Z",
+    "content_hash": "192bc1fc0f32f566",
+    "error": null
+  }
+}

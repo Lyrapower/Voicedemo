@@ -1,0 +1,22 @@
+{
+  "clean_content": "{\n  \"intent\": \"确认连接状态\",\n  \"deliverable\": \"简短确认回应\",\n  \"boundary\": \"无\",\n  \"allowed\": [\"确认\", \"简短回应\"],\n  \"forbidden\": [\"长文本\", \"客服语气\", \"推理\"],\n  \"actions\": [\"确认能听到\"],\n  \"verification\": \"用户收到简短回应\",\n  \"unknowns\": [],\n  \"requires_confirmation\": false\n}\n---HUMAN_ECHO---\n能听到",
+  "quarantine": {
+    "reasoning_content": "用户问“能听到我吗”，这是一个简单的确认性问题。我需要：\n1. 用 JSON 格式输出，包含指定的键\n2. 输出分隔线 ---HUMAN_ECHO---\n3. 简短的人类回声，不带客服语气\n\n让我构建 JSON 响应：\n",
+    "reasoning": null,
+    "reasoning_fields": [
+      {
+        "path": "$.choices[0].message.reasoning_content",
+        "value": "用户问“能听到我吗”，这是一个简单的确认性问题。我需要：\n1. 用 JSON 格式输出，包含指定的键\n2. 输出分隔线 ---HUMAN_ECHO---\n3. 简短的人类回声，不带客服语气\n\n让我构建 JSON 响应：\n"
+      }
+    ],
+    "think_blocks": [],
+    "had_reasoning_leak": true,
+    "sanitized_at": "2026-07-02T01:35:25.185380+00:00"
+  },
+  "gate": {
+    "pass": true,
+    "reason": "clean_final_content",
+    "action": "pass_to_aster"
+  },
+  "pass_to_aster": true
+}

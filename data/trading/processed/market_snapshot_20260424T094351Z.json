@@ -1,0 +1,109 @@
+{
+  "rows": [
+    {
+      "ticker": "MU",
+      "timestamp": "2026-04-24T06:45:00Z",
+      "price": "128.40",
+      "vwap": "127.20",
+      "open_range_high": "128.10",
+      "volume": "42000000",
+      "avg_volume": "21000000",
+      "iv_rank": "48",
+      "entry_low": "128.20",
+      "entry_high": "128.60",
+      "sell_low": "130.00",
+      "sell_high": "131.20",
+      "stop": "127.30"
+    },
+    {
+      "ticker": "AMD",
+      "timestamp": "2026-04-24T06:45:00Z",
+      "price": "164.30",
+      "vwap": "165.10",
+      "open_range_high": "166.00",
+      "volume": "51000000",
+      "avg_volume": "39000000",
+      "iv_rank": "55",
+      "entry_low": "164.00",
+      "entry_high": "164.50",
+      "sell_low": "166.20",
+      "sell_high": "167.00",
+      "stop": "163.20"
+    },
+    {
+      "ticker": "IREN",
+      "timestamp": "2026-04-24T06:45:00Z",
+      "price": "8.72",
+      "vwap": "8.55",
+      "open_range_high": "8.68",
+      "volume": "33000000",
+      "avg_volume": "16000000",
+      "iv_rank": "68",
+      "entry_low": "8.68",
+      "entry_high": "8.78",
+      "sell_low": "9.05",
+      "sell_high": "9.25",
+      "stop": "8.48"
+    },
+    {
+      "ticker": "TSLA",
+      "timestamp": "2026-04-24T06:45:00Z",
+      "price": "245.00",
+      "vwap": "241.00",
+      "open_range_high": "244.00",
+      "volume": "90000000",
+      "avg_volume": "60000000",
+      "iv_rank": "91",
+      "entry_low": "244.50",
+      "entry_high": "245.50",
+      "sell_low": "250.00",
+      "sell_high": "252.00",
+      "stop": "240.00"
+    },
+    {
+      "ticker": "STM",
+      "timestamp": "2026-04-24T06:45:00Z",
+      "price": "41.20",
+      "vwap": "40.80",
+      "open_range_high": "41.50",
+      "volume": "8800000",
+      "avg_volume": "7000000",
+      "iv_rank": "35",
+      "entry_low": "",
+      "entry_high": "",
+      "sell_low": "",
+      "sell_high": "",
+      "stop": null
+    },
+    {
+      "ticker": "ON",
+      "timestamp": "2026-04-24T06:45:00Z",
+      "price": "68.10",
+      "vwap": "67.40",
+      "open_range_high": "68.30",
+      "volume": "9200000",
+      "avg_volume": "8500000",
+      "iv_rank": "39",
+      "entry_low": "",
+      "entry_high": "",
+      "sell_low": "",
+      "sell_high": "",
+      "stop": null
+    }
+  ],
+  "meta": {
+    "generated_at": "2026-04-24T09:43:51Z",
+    "rows_count": 6,
+    "tickers": [
+      "AMD",
+      "IREN",
+      "MU",
+      "ON",
+      "STM",
+      "TSLA"
+    ],
+    "source": "local_uploads_only",
+    "purpose": "premarket prep, post-trade review, build radar, proof archive",
+    "not_primary_opening_window_path": true
+  }
+}

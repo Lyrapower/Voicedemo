@@ -1,0 +1,816 @@
+{% extends "base_shell.html" %}
+{% import "partials/ui_macros.html" as ui %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block body %}
+{% if page_kind == "overview" %}
+<div class="jv-span-12 jv-command-bar">
+  <span class="jv-status-indicator"><span class="jv-status-dot jv-status-dot-pass" aria-hidden="true"></span>Local Only</span>
+  <span class="jv-status-indicator"><span class="jv-status-dot jv-status-dot-neutral" aria-hidden="true"></span>External Off</span>
+  <span class="jv-command-kv jv-round-id">Round <strong class="jv-mono">{{ current_round.round_id }}</strong></span>
+  <span class="jv-command-kv">System:
+    <span class="jv-status-indicator">
+      <span class="jv-status-dot {% if system_verdict == 'PASS' %}jv-status-dot-pass{% elif system_verdict in ('BLOCKED', 'REVIEW') %}jv-status-dot-warn{% else %}jv-status-dot-neutral{% endif %}" aria-hidden="true"></span>
+      {{ system_verdict }}
+    </span>
+  </span>
+  <span class="jv-command-kv jv-next-action">Next <strong>{{ next_action }}</strong></span>
+</div>
+<div class="jv-span-12 jv-module-grid">
+  {% for mod in module_cards %}
+  <div class="jv-module-card {% if mod['name'] == 'Private Local AI Nodes' %}jv-module-card--premium{% elif mod['name'] == 'Aether Nexus' %}jv-module-card--premium jv-module-card--trading{% endif %}">
+    <div class="jv-stage-row">
+      <h3 class="jv-module-card-title">{% if mod.get('module_href') %}<a class="jv-link-quiet" href="{{ mod['module_href'] }}">{{ mod["name"] }}</a>{% else %}{{ mod["name"] }}{% endif %}</h3>
+      <span class="jv-card-status-label">
+        <span class="jv-status-dot {% if mod['tone'] == 'pass' %}jv-status-dot-pass{% elif mod['tone'] == 'blocked' %}jv-status-dot-warn{% else %}jv-status-dot-neutral{% endif %}" aria-hidden="true"></span>
+        {{ mod["status"] }}
+      </span>
+    </div>
+    <div class="jv-module-row">
+      <div class="jv-label-mute">Proof path</div>
+      <div class="jv-kv-val-mono">
+        <span class="jv-path-clip" style="display:block;max-width:100%;" title="{{ mod['proof_path'] }}">{{ mod["proof_path"] }}</span>
+      </div>
+      <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ mod['proof_path'] }}">Copy</button>
+    </div>
+    <div class="jv-module-row">
+      <div class="jv-label-mute">Accept command</div>
+      <div class="jv-mono jv-command-inline">{{ mod["acceptance_cmd"] }}</div>
+    </div>
+    <div class="jv-module-row {% if mod['name'] in ('Aether Nexus', 'Private Local AI Nodes') %}jv-next-card-premium{% else %}jv-next-card{% endif %}">
+      {% if mod['name'] == 'Private Local AI Nodes' %}
+      <div class="jv-next-layout">
+        <div class="jv-next-icon" aria-hidden="true">→</div>
+        <div class="jv-next-copy">
+          <div class="jv-label-mute">Next action</div>
+          <div class="jv-next-description">{{ mod["next_action"] }}</div>
+        </div>
+      </div>
+      {% elif mod['name'] == 'Aether Nexus' %}
+      <div class="jv-next-layout">
+        <div class="jv-next-icon" aria-hidden="true">→</div>
+        <div class="jv-next-copy">
+          <div class="jv-label-mute">Next action</div>
+          <div class="jv-next-description">{{ mod["next_action"] }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="jv-label-mute">Next action</div>
+      <div>{{ mod["next_action"] }}</div>
+      {% endif %}
+    </div>
+    {% if mod.get("purpose") %}
+    <div class="jv-module-row">
+      <div class="jv-label-mute">Purpose</div>
+      <div class="jv-note-tiny">{{ mod["purpose"] }}</div>
+    </div>
+    {% endif %}
+    {% if mod.get("rwa_sections") %}
+    <div class="jv-module-row">
+      <div class="jv-label-mute">Coverage</div>
+      <ul class="jv-trading-bullets jv-note-tiny" style="margin:6px 0 0;padding-left:18px;">
+        {% for section in mod["rwa_sections"] %}
+        <li>{{ section.title }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    {% if mod.get("agent_role") %}
+    <div class="jv-module-row">
+      <div class="jv-label-mute">Agent role</div>
+      <ul class="jv-trading-bullets jv-note-tiny" style="margin:6px 0 0;padding-left:18px;">
+        {% for item in mod["agent_role"][:4] %}
+        <li>{{ item }}</li>
+        {% endfor %}
+        <li><a class="jv-link-quiet" href="/ui/crypto">Full role on module page</a></li>
+      </ul>
+    </div>
+    {% endif %}
+    {% if mod.get("risk_boundaries") %}
+    <div class="jv-module-row">
+      <div class="jv-label-mute">V1 boundary</div>
+      <div class="jv-chip-row" style="margin-top:6px;">
+        {% for boundary in mod["risk_boundaries"][:3] %}
+        <span class="jv-chip">{{ boundary }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% elif page_kind == "local_ai_nodes" %}
+<div class="jv-span-12 jv-metrics">
+  <div class="jv-metric">
+    <div class="jv-label-mute">Pack status</div>
+    <div class="jv-metric-value-soft">{% if pack_status.pack_complete %}complete{% else %}incomplete{% endif %}</div>
+    <p class="jv-note-tiny" style="margin-top:6px;">Updated: {{ pack_status.last_updated or 'never' }}</p>
+  </div>
+  <div class="jv-metric">
+    <div class="jv-label-mute">Last generated</div>
+    <div class="jv-metric-value-soft" style="font-size:12px;">{{ pack_status.last_generated_file or 'none' }}</div>
+    {% if pack_status.last_generated_file %}
+    <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ pack_status.last_generated_file }}">Copy path</button>
+    {% endif %}
+  </div>
+  <div class="jv-metric">
+    <div class="jv-label-mute">Output dir</div>
+    <div class="jv-metric-value-soft jv-mono" style="font-size:12px;">{{ output_dir }}</div>
+    <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ output_dir }}">Copy path</button>
+  </div>
+</div>
+
+{% if flash %}
+<div class="jv-span-12 jv-card jv-card-soft"><div class="jv-note">Generated: <strong>{{ flash }}</strong>{% if flash_file %} · {{ flash_file }}{% endif %}</div></div>
+{% endif %}
+{% if flash_error %}
+<div class="jv-span-12 jv-card jv-card-soft"><div class="jv-note" style="color:#b45309;">Blocker: {{ flash_error }}</div></div>
+{% endif %}
+{% if pack_status.blocker %}
+<div class="jv-span-12 jv-card jv-card-soft"><div class="jv-note" style="color:#b45309;">Blocker: {{ pack_status.blocker }}</div></div>
+{% endif %}
+
+<div class="jv-span-12 jv-stack">
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Module</div>
+    <h3 class="jv-section-title">Private Local AI Nodes</h3>
+    <p class="jv-note">{{ purpose }}</p>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Package tiers</div>
+    <table class="jv-kv jv-kv-tight"><tbody>
+      {% for tier in tiers %}
+      <tr>
+        <th scope="row">{{ tier.name }} · {{ tier.price_range }}</th>
+        <td>{{ tier.target }}<div class="jv-note-tiny" style="margin-top:4px;">{% for item in tier.includes %}{{ item }}{% if not loop.last %} · {% endif %}{% endfor %}</div></td>
+      </tr>
+      {% endfor %}
+    </tbody></table>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Customer fit</div>
+    <div class="jv-label-mute" style="margin-top:8px;">Best-fit</div>
+    <ul class="jv-trading-bullets">
+      {% for item in best_fit_customers %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+    <div class="jv-label-mute" style="margin-top:8px;">Not target</div>
+    <ul class="jv-trading-bullets">
+      {% for item in not_target_customers %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Intake &amp; actions</div>
+    <form class="jv-stack-tight" method="post" action="/ui/local-ai-nodes/action/export-pack" style="margin-top:8px;">
+      <table class="jv-kv jv-kv-tight"><tbody>
+        <tr><th scope="row">Customer type</th><td><input name="customer_type" value="{{ intake.customer_type }}" style="width:100%;padding:6px 8px;" /></td></tr>
+        <tr><th scope="row">Current device / hardware</th><td><input name="current_device" value="{{ intake.current_device }}" style="width:100%;padding:6px 8px;" /></td></tr>
+        <tr><th scope="row">Target use case</th><td><input name="target_use_case" value="{{ intake.target_use_case }}" style="width:100%;padding:6px 8px;" /></td></tr>
+        <tr><th scope="row">Privacy sensitivity</th><td><input name="privacy_sensitivity" value="{{ intake.privacy_sensitivity }}" style="width:100%;padding:6px 8px;" /></td></tr>
+        <tr><th scope="row">Desired local functions</th><td><input name="desired_local_functions" value="{{ intake.desired_local_functions }}" style="width:100%;padding:6px 8px;" /></td></tr>
+        <tr><th scope="row">Budget range</th><td><input name="budget_range" value="{{ intake.budget_range }}" style="width:100%;padding:6px 8px;" /></td></tr>
+      </tbody></table>
+      <div class="jv-chip-row" style="margin-top:12px;flex-wrap:wrap;">
+        <button type="submit" formaction="/ui/local-ai-nodes/action/pilot-brief" class="jv-btn-copy">Create Pilot Brief</button>
+        <button type="submit" formaction="/ui/local-ai-nodes/action/package-recommendation" class="jv-btn-copy">Generate Package Recommendation</button>
+        <button type="submit" formaction="/ui/local-ai-nodes/action/delivery-checklist" class="jv-btn-copy">Generate Delivery Checklist</button>
+        <button type="submit" formaction="/ui/local-ai-nodes/action/delivery-timeline" class="jv-btn-copy">Generate 4-Week Timeline</button>
+        <button type="submit" formaction="/ui/local-ai-nodes/action/agent-roles" class="jv-btn-copy">Generate Agent Roles Plan</button>
+        <button type="submit" formaction="/ui/local-ai-nodes/action/export-pack" class="jv-btn-copy">Export Local AI Node Pack</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Output status</div>
+    <table class="jv-kv jv-kv-tight"><tbody>
+      {% for row in pack_completeness %}
+      <tr><th scope="row">{{ row.label }}</th><td>{% if row.done %}written{% else %}missing{% endif %}</td></tr>
+      {% endfor %}
+      <tr><th scope="row">pack_status.json</th><td>{% if pack_status.last_updated %}written{% else %}missing{% endif %}</td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Agent work</div>
+    <ul class="jv-trading-bullets">{% for item in agent_work %}<li>{{ item }}</li>{% endfor %}</ul>
+    <div class="jv-label-mute" style="margin-top:10px;">Must not</div>
+    <ul class="jv-trading-bullets">{% for item in agent_bans %}<li>{{ item }}</li>{% endfor %}</ul>
+  </div>
+</div>
+
+{% elif page_kind == "aether_nexus" %}
+<div class="jv-span-12 jv-card jv-card-soft">
+  <div class="jv-label-mute">Trading module</div>
+  <p class="jv-note">Jarvis trading is served by <strong>Aether Nexus</strong> on <span class="jv-mono">:8510</span>. This page is a read-only bridge; execution stays in the sidecar.</p>
+  <p style="margin-top:12px;">
+    <a class="jv-btn-copy" href="{{ nexus_dashboard_url }}" target="_blank" rel="noopener noreferrer">Open Aether Nexus Dashboard →</a>
+  </p>
+</div>
+
+<div class="jv-span-12 jv-metrics">
+  <div class="jv-metric">
+    <div class="jv-label-mute">Sidecar</div>
+    <div class="jv-metric-value-soft">{% if nexus_available %}online (state on disk){% else %}not running{% endif %}</div>
+  </div>
+  <div class="jv-metric">
+    <div class="jv-label-mute">Daemon</div>
+    <div class="jv-metric-value-soft">{{ "connected" if daemon_connected else "disconnected" }}</div>
+  </div>
+  <div class="jv-metric">
+    <div class="jv-label-mute">Latest scan</div>
+    <div class="jv-metric-value-soft jv-mono" style="font-size:12px;">{{ latest_scan_time }}</div>
+  </div>
+  <div class="jv-metric">
+    <div class="jv-label-mute">Candidates</div>
+    <div class="jv-metric-value-soft">{{ candidate_count }}</div>
+  </div>
+</div>
+
+<div class="jv-span-12 jv-stack">
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">A. Dashboard</div>
+    <table class="jv-kv jv-kv-tight">
+      <tbody>
+        <tr><th scope="row">URL</th><td class="jv-kv-val-mono"><a href="{{ nexus_dashboard_url }}" target="_blank" rel="noopener noreferrer">{{ nexus_dashboard_url }}</a></td></tr>
+        <tr><th scope="row">Start</th><td class="jv-kv-val-mono">{{ nexus_start_cmd }}</td></tr>
+        <tr><th scope="row">Jarvis snapshot task</th><td class="jv-kv-val-mono">{{ jarvis_snapshot_task }}</td></tr>
+        <tr><th scope="row">Automation API</th><td class="jv-kv-val-mono">{{ jarvis_automation_api }}</td></tr>
+        <tr><th scope="row">Live trading</th><td>{{ "enabled" if live_trading_enabled else "disabled (sidecar policy)" }}</td></tr>
+        <tr><th scope="row">Jarvis execution</th><td>blocked — read-only adapter</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">B. Read-only snapshot</div>
+    <table class="jv-kv jv-kv-tight">
+      <tbody>
+        <tr><th scope="row">Status</th><td>{{ status_message }}</td></tr>
+        <tr><th scope="row">Top pick</th><td>{{ top_pick }}</td></tr>
+        <tr><th scope="row">Top symbols</th><td>{{ top_symbols | join(", ") if top_symbols else "—" }}</td></tr>
+        <tr><th scope="row">Signal rounds</th><td>{{ signal_count }}</td></tr>
+        {% if not nexus_available and nexus_reason %}
+        <tr><th scope="row">Note</th><td>{{ nexus_reason }}</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">C. Sidecar ports (unchanged)</div>
+    <table class="jv-kv jv-kv-tight">
+      <tbody>
+        {% for sc in sidecar_ports %}
+        <tr><th scope="row">{{ sc.label }} :{{ sc.port }}</th><td>{{ sc.role }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% elif page_kind == "crypto" %}
+<div class="jv-span-12 jv-metrics">
+  <div class="jv-metric">
+    <div class="jv-label-mute">Pack status</div>
+    <div class="jv-metric-value-soft">{% if pack_status.pack_complete %}complete{% else %}incomplete{% endif %}</div>
+    <p class="jv-note-tiny" style="margin-top:6px;">Updated: {{ pack_status.last_updated or 'never' }}</p>
+  </div>
+  <div class="jv-metric">
+    <div class="jv-label-mute">Last generated</div>
+    <div class="jv-metric-value-soft" style="font-size:12px;">{{ pack_status.last_generated_file or 'none' }}</div>
+    {% if pack_status.last_generated_file %}
+    <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ pack_status.last_generated_file }}">Copy path</button>
+    {% endif %}
+  </div>
+  <div class="jv-metric">
+    <div class="jv-label-mute">Evidence on disk</div>
+    <div class="jv-metric-value-soft">{{ quick_status.evidence_count }}</div>
+    <p class="jv-note-tiny" style="margin-top:6px;">澄 review: {{ quick_status.review_count }}</p>
+  </div>
+</div>
+
+{% if flash %}
+<div class="jv-span-12 jv-card jv-card-soft"><div class="jv-note">Generated: <strong>{{ flash }}</strong>{% if flash_file %} · {{ flash_file }}{% endif %}</div></div>
+{% endif %}
+{% if flash_error %}
+<div class="jv-span-12 jv-card jv-card-soft"><div class="jv-note" style="color:#b45309;">Blocker: {{ flash_error }}</div></div>
+{% endif %}
+{% if pack_status.blocker and pack_status.blocker != 'NONE' %}
+<div class="jv-span-12 jv-card jv-card-soft"><div class="jv-note" style="color:#b45309;">Blocker: {{ pack_status.blocker }}</div></div>
+{% endif %}
+
+<div class="jv-span-12 jv-stack">
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Module</div>
+    <h3 class="jv-section-title">Crypto / RWA Sovereignty</h3>
+    <p class="jv-note">{{ purpose }}</p>
+    <p class="jv-note-tiny">Output dir: {{ output_dir }}
+      <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ output_dir }}">Copy path</button>
+    </p>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Coverage (7 sections)</div>
+    <table class="jv-kv jv-kv-tight"><tbody>
+      {% for section in rwa_sections %}
+      <tr>
+        <th scope="row">{{ section.title }}</th>
+        <td>{{ section.summary }} · {{ section.card_count }} card(s) · {{ section.status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody></table>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Research actions (writes local files)</div>
+    <form method="post" action="/ui/crypto/action/export-pack" style="margin-top:8px;">
+      <table class="jv-kv jv-kv-tight"><tbody>
+        <tr><th scope="row">Protocol name (optional)</th><td><input name="protocol_name" value="{{ crypto_intake.protocol_name }}" style="width:100%;padding:6px 8px;" placeholder="e.g. USDC" /></td></tr>
+        <tr><th scope="row">Asset name (optional)</th><td><input name="asset_name" value="{{ crypto_intake.asset_name }}" style="width:100%;padding:6px 8px;" placeholder="e.g. USD stablecoin" /></td></tr>
+        <tr><th scope="row">Use case (optional)</th><td><input name="use_case" value="{{ crypto_intake.use_case }}" style="width:100%;padding:6px 8px;" placeholder="e.g. treasury settlement rail" /></td></tr>
+        <tr><th scope="row">Focus section</th><td><input name="focus_section" value="{{ crypto_intake.focus_section }}" style="width:100%;padding:6px 8px;" /></td></tr>
+      </tbody></table>
+      <div class="jv-chip-row" style="margin-top:12px;flex-wrap:wrap;">
+        <button type="submit" formaction="/ui/crypto/action/infrastructure-map" class="jv-btn-copy">Generate RWA Infrastructure Map</button>
+        <button type="submit" formaction="/ui/crypto/action/stablecoin-evidence" class="jv-btn-copy">Generate Stablecoin Evidence Card</button>
+        <button type="submit" formaction="/ui/crypto/action/agent-payment-risk" class="jv-btn-copy">Generate Agent Payment Risk Note</button>
+        <button type="submit" formaction="/ui/crypto/action/proof-pack-candidate" class="jv-btn-copy">Generate RWA Proof Pack Candidate</button>
+        <button type="submit" formaction="/ui/crypto/action/export-pack" class="jv-btn-copy">Export Crypto/RWA Pack</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Output status</div>
+    <table class="jv-kv jv-kv-tight"><tbody>
+      {% for row in pack_completeness %}
+      <tr><th scope="row">{{ row.label }}</th><td>{% if row.done %}written{% else %}missing{% endif %}</td></tr>
+      {% endfor %}
+      <tr><th scope="row">crypto_rwa_pack_status.json</th><td>{% if pack_status.last_updated %}written{% else %}missing{% endif %}</td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Agent role</div>
+    <ul class="jv-trading-bullets">{% for item in agent_role %}<li>{{ item }}</li>{% endfor %}</ul>
+    <div class="jv-label-mute" style="margin-top:10px;">Cannot</div>
+    <ul class="jv-trading-bullets">{% for item in agent_cannot %}<li>{{ item }}</li>{% endfor %}</ul>
+    <div class="jv-chip-row" style="margin-top:10px;">
+      {% for boundary in risk_boundaries %}<span class="jv-chip">{{ boundary }}</span>{% endfor %}
+    </div>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Optional public URL scan (no API keys)</div>
+    <table class="jv-kv jv-kv-tight">
+      <tbody>
+        <tr><th scope="row">Command</th><td class="jv-kv-val-mono">{{ scan_status.command }} <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ scan_status.command }}">Copy</button></td></tr>
+        <tr><th scope="row">Sources file</th><td class="jv-kv-val-mono">{{ scan_status.sources_path }} <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ scan_status.sources_path }}">Copy path</button></td></tr>
+        <tr><th scope="row">Last run</th><td>{% if scan_status.has_run %}{{ scan_status.ran_at }} · ok {{ scan_status.ok }} · warn {{ scan_status.warn }} · fail {{ scan_status.fail }}{% else %}No scan yet. Run the command above from repo root.{% endif %}</td></tr>
+        <tr><th scope="row">澄 review queue</th><td>{{ quick_status.review_count }} item(s)</td></tr>
+      </tbody>
+    </table>
+    {% if scan_status.results %}
+    <div class="jv-label-mute" style="margin-top:12px;">Latest scan results</div>
+    <table class="jv-kv jv-kv-tight"><tbody>
+      {% for row in scan_status.results %}
+      <tr>
+        <th scope="row">{{ row.id }}</th>
+        <td>{{ row.outcome }}{% if row.http_status %} · HTTP {{ row.http_status }}{% endif %}{% if row.path %} · {{ row.path }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody></table>
+    {% endif %}
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Section registry detail</div>
+    <table class="jv-kv jv-kv-tight">
+      <tbody>
+      {% for section in rwa_sections %}
+        <tr>
+          <th scope="row">{{ section.title }}</th>
+          <td>
+            <div><strong>{{ section.status }}</strong> · {{ section.card_count }} evidence card(s)</div>
+            <div class="jv-note-tiny" style="margin-top:4px;">{{ section.summary }}</div>
+            {% if section.registry_path %}
+            <div class="jv-kv-val-mono jv-note-tiny" style="margin-top:6px;">
+              <span class="jv-path-clip" style="display:block;max-width:100%;" title="{{ section.registry_path }}">{{ section.registry_path }}{% if not section.registry_exists %} (missing){% endif %}</span>
+              <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ section.registry_path }}" style="margin-top:6px;">Copy path</button>
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Evidence cards (from {{ evidence_dir }}/*.json)</div>
+    {% if evidence_cards %}
+    <table class="jv-kv jv-kv-tight">
+      <tbody>
+      {% for card in evidence_cards %}
+        <tr>
+          <th scope="row">{{ card.id }} · {{ card.title }}</th>
+          <td>
+            <div>Section: {{ card.section }} · Risk: {{ card.risk_level }}{% if card.scan and card.scan.scanned_at %} · scanned {{ card.scan.scanned_at }}{% endif %}</div>
+            <div class="jv-note-tiny" style="margin-top:4px;">{{ card.summary }}</div>
+            {% if card.source_url %}
+            <div class="jv-note-tiny" style="margin-top:4px;"><a class="jv-link-quiet" href="{{ card.source_url }}" target="_blank" rel="noopener noreferrer">{{ card.source_url }}</a></div>
+            {% endif %}
+            <div class="jv-kv-val-mono jv-note-tiny" style="margin-top:6px;">
+              {{ card.file_path }}
+              <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ card.file_path }}" style="margin-top:6px;">Copy path</button>
+            </div>
+            {% if card.needs_cheng_review %}
+            <span class="jv-chip" style="margin-top:6px;">Needs 澄 review</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="jv-note">No evidence cards on disk. Run <span class="jv-mono">{{ scan_status.command }}</span> or add JSON under <span class="jv-mono">{{ evidence_dir }}/</span>.</p>
+    {% endif %}
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">澄 review queue</div>
+    {% if review_queue %}
+    <table class="jv-kv jv-kv-tight"><tbody>
+      {% for card in review_queue %}
+      <tr>
+        <th scope="row">{{ card.id }}</th>
+        <td>{{ card.title }} · {{ card.risk_level }} · {{ card.section }}</td>
+      </tr>
+      {% endfor %}
+    </tbody></table>
+    {% else %}
+    <p class="jv-note">No items flagged for 澄 review. Set <span class="jv-mono">needs_cheng_review: true</span> on an evidence card to queue it.</p>
+    {% endif %}
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Proof-pack candidates (deliver/crypto/proof_candidates.json)</div>
+    {% if proof_candidates %}
+    <table class="jv-kv jv-kv-tight"><tbody>
+      {% for item in proof_candidates %}
+      <tr>
+        <th scope="row" class="jv-kv-val-mono">
+          {{ item.path }}{% if not item.exists %} (missing){% endif %}
+          <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ item.path }}" style="margin-top:6px;">Copy path</button>
+        </th>
+        <td>{{ item.reason }} · section {{ item.section }}</td>
+      </tr>
+      {% endfor %}
+    </tbody></table>
+    {% else %}
+    <p class="jv-note">No proof-pack candidates listed. Edit <span class="jv-mono">deliver/crypto/proof_candidates.json</span>.</p>
+    {% endif %}
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Reference artifacts</div>
+    <table class="jv-kv jv-kv-tight"><tbody>
+      {% for row in artifacts %}
+      <tr>
+        <th scope="row" class="jv-kv-val-mono">
+          {{ row.path }}{% if not row.exists %} (missing){% endif %}
+          <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ row.path }}" style="margin-top:6px;">Copy path</button>
+        </th>
+        <td>{{ row.description }}</td>
+      </tr>
+      {% endfor %}
+    </tbody></table>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Agent role (V1 = manual file updates)</div>
+    <ul class="jv-trading-bullets" style="margin-top:8px;">
+      {% for item in agent_role %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">V1 risk boundary</div>
+    <div class="jv-chip-row" style="margin-top:8px;">
+      {% for boundary in risk_boundaries %}
+      <span class="jv-chip">{{ boundary }}</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Proof &amp; Acceptance</div>
+    <div class="jv-mono" style="font-size:12px;">{{ proof_acceptance.command }}</div>
+    <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ proof_acceptance.command }}">Copy</button>
+    <div class="jv-mono" style="font-size:12px;margin-top:10px;">{{ proof_acceptance.report_path }}</div>
+    <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ proof_acceptance.report_path }}">Copy</button>
+  </div>
+</div>
+
+{% elif page_kind == "proof_pack" %}
+<div class="jv-span-12 jv-metrics">
+  <div class="jv-metric">
+    <div class="jv-label-mute">Verdict</div>
+    <div class="jv-metric-value-soft"><span class="jv-pill jv-pill-quiet {% if verdict_tone == 'pass' %}jv-pill-pass{% elif verdict_tone == 'blocked' %}jv-pill-warn{% else %}jv-pill-miss{% endif %}">{{ verdict }}</span></div>
+  </div>
+  <div class="jv-metric">
+    <div class="jv-label-mute">Accept</div>
+    <div class="jv-metric-value-soft jv-mono" style="font-size:12px;">{{ acceptance_cmd }}</div>
+  </div>
+  <div class="jv-metric">
+    <div class="jv-label-mute">Next</div>
+    <div class="jv-metric-value-soft">{{ next_action }}</div>
+  </div>
+</div>
+<div class="jv-span-12 jv-grid-2">
+  <div class="jv-stack">
+    <div class="jv-card jv-card-soft">
+      <div class="jv-label-mute">Pricing Tiers</div>
+      <table class="jv-kv jv-kv-tight" style="margin-top:8px;">
+        <tbody>
+          {% for tier in pricing %}
+          <tr>
+            <th scope="row">{{ tier["tier"] }}</th>
+            <td>{{ tier["price"] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="jv-card jv-card-soft">
+      <div class="jv-label-mute">Build Status</div>
+      <table class="jv-kv jv-kv-tight" style="margin-top:8px;">
+        <tbody>
+          {% for item in build_status %}
+          <tr>
+            <th scope="row">{{ item["label"] }}</th>
+            <td style="text-align:right;">
+              <span class="jv-pill jv-pill-quiet {% if item['done'] %}jv-pill-pass{% else %}jv-pill-miss{% endif %}">{% if item["done"] %}Done{% else %}Pending{% endif %}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="jv-stack">
+    <div class="jv-card jv-card-soft">
+      <div class="jv-label-mute">Required Artifacts</div>
+      <table class="jv-kv jv-kv-tight" style="margin-top:8px;">
+        <tbody>
+          {% for art in artifacts %}
+          <tr>
+            <th scope="row">{{ art["label"] }}</th>
+            <td style="text-align:right;">
+              <span class="jv-pill jv-pill-quiet {% if art['status'] == 'pass' %}jv-pill-pass{% else %}jv-pill-warn{% endif %}">{{ art["status"]|title }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="jv-card jv-card-soft">
+      <div class="jv-label-mute">Acceptance</div>
+      <div class="jv-mono" style="margin-top:8px;font-size:12px;padding:10px 12px;background:rgba(0,0,0,0.03);border-radius:6px;">
+        {{ acceptance_cmd }}
+        <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ acceptance_cmd }}" style="margin-left:8px;">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% elif page_kind == "senior" %}
+<div class="jv-span-12 jv-metrics">
+  {% for card in cards[:4] %}
+    {% include "partials/stat_card.html" %}
+  {% endfor %}
+</div>
+<div class="jv-span-12 jv-grid-2">
+  <div class="jv-stack">
+    <div class="jv-card jv-card-soft">
+      <div class="jv-label-mute">V1 Hard Gates <span class="jv-note-tiny">(file-backed grep)</span></div>
+      <table class="jv-kv jv-kv-tight" style="margin-top:8px;">
+        <tbody>
+          {% for item in senior_checklist %}
+          <tr>
+            <th scope="row">{{ ui.lbl(item.label) }}</th>
+            <td style="text-align:right;">
+              <span class="jv-pill jv-pill-quiet {% if item.status == 'pass' %}jv-pill-pass{% elif item.status == 'blocked' or item.status == 'fail' %}jv-pill-warn{% else %}jv-pill-miss{% endif %}">{{ item.status|title }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="jv-card jv-card-soft">
+      <div class="jv-label-mute">Flutter Client Files</div>
+      <table class="jv-kv jv-kv-tight" style="margin-top:8px;">
+        <tbody>
+          {% for f in senior_flutter_files %}
+          <tr>
+            <th scope="row" class="jv-kv-val-mono" style="font-size:11px;">{{ f.label }}</th>
+            <td style="text-align:right;">
+              <span class="jv-pill jv-pill-quiet {% if f.status == 'pass' %}jv-pill-pass{% else %}jv-pill-warn{% endif %}">{% if f.status == 'pass' %}Present{% else %}Missing{% endif %}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="jv-card jv-card-soft">
+      <div class="jv-label-mute">Flutter Home IA</div>
+      <p class="jv-note-tiny" style="margin-top:6px;">Home hierarchy (local read).</p>
+      {% for group in senior_ia_groups %}
+      <div class="jv-ia-block">
+        <div class="jv-label-mute jv-ia-block-label">{{ group["title"] }}</div>
+        <div class="jv-chip-row" style="margin-top:0;">
+          {% for item in group["items"] %}
+          <span class="jv-chip">{{ item }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <details class="jv-disclosure-soft jv-card jv-card-soft">
+      <summary class="jv-label-mute">Audit log snapshot</summary>
+      <div class="jv-audit-lines jv-mono jv-note-tiny" style="margin-top:8px;max-height:10em;">
+        {% for line in senior_log_lines %}
+        <div>{{ ui.v(line) }}</div>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
+  <div class="jv-stack">
+    <div class="jv-card jv-card-soft">
+      <div class="jv-label-mute">Proof Paths</div>
+      <table class="jv-kv jv-kv-tight" style="margin-top:8px;">
+        <tbody>
+          {% for row in senior_paths %}
+          <tr>
+            <th scope="row">{{ ui.lbl(row.label) }}</th>
+            <td class="jv-kv-val-mono">
+              <span class="jv-path-clip" style="display:block;max-width:100%;" title="{{ row.full }}">{{ row.short }}</span>
+              <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ row.full }}">Copy</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="jv-card jv-card-soft">
+      <div class="jv-label-mute">Acceptance</div>
+      <div class="jv-mono" style="margin-top:8px;font-size:12px;padding:10px 12px;background:rgba(0,0,0,0.03);border-radius:6px;">
+        {{ acceptance_cmd }}
+        <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ acceptance_cmd }}" style="margin-left:8px;">Copy</button>
+      </div>
+      <p class="jv-note-tiny" style="margin-top:8px;">{{ rule_note }}</p>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<div class="jv-span-12 jv-metrics">
+  {% for card in cards %}
+    {% include "partials/stat_card.html" %}
+  {% endfor %}
+</div>
+<div class="jv-span-12 jv-grid-2">
+  <main class="jv-stack">
+    {% for section in sections %}
+    <div class="jv-card jv-card-soft">
+      <div class="jv-label-mute">{{ section.title }}</div>
+      {% if section.kind == "rows" %}
+      <table class="jv-kv jv-kv-tight" style="margin-top:8px;">
+        <tbody>
+          {% for row in section["items"] %}
+          <tr>
+            <th scope="row">{{ ui.lbl(row.label) }}</th>
+            <td class="{% if row.mono %}jv-kv-val-mono {% endif %}{% if row.tone == 'pass' or row.tone == 'ready' %}status-pass{% elif row.tone == 'blocked' or row.tone == 'fail' %}status-blocked{% else %}status-neutral{% endif %}">{{ ui.v(row.value) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% elif section.kind == "decision" %}
+      <table class="jv-kv jv-kv-tight" style="margin-top:8px;">
+        <tbody>
+          {% for row in section["items"] %}
+          <tr>
+            <th scope="row">{{ ui.lbl(row.label) }}</th>
+            <td>
+              <span class="jv-pill jv-pill-quiet {% if row.tone == 'pass' or row.tone == 'ready' %}jv-pill-pass{% elif row.tone == 'blocked' or row.tone == 'fail' %}jv-pill-warn{% else %}jv-pill-miss{% endif %}">{{ ui.v(row.value) }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% elif section.kind == "group_grid" %}
+      <div class="jv-stack" style="margin-top:10px;">
+        {% for group in section["groups"] %}
+        <div class="jv-ia-block">
+          <div class="jv-label-mute jv-ia-block-label">{{ group.title }}</div>
+          <div class="jv-chip-row" style="margin-top:0;">
+            {% for item in group["items"] %}
+            <span class="jv-chip">{{ ui.v(item) }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% elif section.kind == "chips" %}
+      <div class="jv-chip-row" style="margin-top:10px;">
+        {% for item in section["items"] %}
+        <span class="jv-chip">{{ ui.v(item) }}</span>
+        {% endfor %}
+      </div>
+      {% elif section.kind == "checklist" %}
+      <table class="jv-kv jv-kv-tight" style="margin-top:8px;">
+        <tbody>
+          {% for item in section["items"] %}
+          <tr>
+            <th scope="row">{{ ui.lbl(item.label) }}</th>
+            <td style="text-align:right;">
+              <span class="jv-pill jv-pill-quiet {% if item.status == 'pass' or item.status == 'ready' %}jv-pill-pass{% elif item.status == 'fail' or item.status == 'blocked' %}jv-pill-warn{% else %}jv-pill-miss{% endif %}">{{ item.status|title }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% elif section.kind == "activity" %}
+      <div class="jv-audit-lines jv-note-tiny" style="margin-top:10px;">
+        {% for item in section["items"] %}
+        <div style="margin-bottom:8px;">{{ ui.v(item) }}</div>
+        {% endfor %}
+      </div>
+      {% elif section.kind == "task_cards" %}
+      <div class="jv-stack" style="margin-top:10px;">
+        {% for task in section["items"] %}
+        <div class="jv-card-quiet">
+          <div class="jv-label-mute">{{ ui.lbl(task.title) }}</div>
+          <span class="jv-pill jv-pill-quiet jv-pill-miss" style="margin-top:8px;">{{ task.status|title }}</span>
+          <p class="jv-note-tiny">{{ ui.v(task.note) }}</p>
+        </div>
+        {% endfor %}
+      </div>
+      {% elif section.kind == "hierarchy" %}
+      <div class="jv-stack" style="margin-top:10px;">
+        {% for group in section["groups"] %}
+        <div class="jv-ia-block">
+          <div class="jv-label-mute jv-ia-block-label">{{ group.title }}</div>
+          <div class="jv-chip-row" style="margin-top:0;">
+            {% for item in group["items"] %}
+            <span class="jv-chip">{{ ui.v(item) }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% elif section.kind == "paths" %}
+      <table class="jv-kv jv-kv-tight" style="margin-top:8px;">
+        <tbody>
+          {% for item in section["items"] %}
+          <tr>
+            <th scope="row">{{ ui.lbl(item.label) }}</th>
+            <td class="jv-kv-val-mono">
+              <span class="jv-path-clip" style="display:block;max-width:100%;" title="{{ item.value }}">{{ item.value }}</span>
+              <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ item.value }}">Copy</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% elif section.kind == "cta" %}
+      <div style="margin-top:10px;">
+        <a href="{{ section.primary_href }}" class="jv-btn-copy" style="display:inline-block;padding:10px 16px;font-weight:600;">{{ section.primary_label }}</a>
+      </div>
+      {% if section.secondary_links %}
+      <div class="jv-note-tiny" style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap;">
+        {% for link in section.secondary_links %}
+        <a class="jv-link-quiet" href="{{ link.href }}">{{ link.label }}</a>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% else %}
+      <pre class="jv-pre jv-pre-tight jv-mono">{{ ui.v(section.body) }}</pre>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </main>
+  <aside class="jv-stack">
+    {% for item in side_panel %}
+      {% include "partials/detail_card.html" %}
+    {% endfor %}
+  </aside>
+</div>
+{% endif %}
+{% endblock %}

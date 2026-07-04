@@ -1,7 +1,6 @@
 # Garden (Sound-Lab internal) — live particle audio UI
 
-**Status:** Phase-1 prototype spec  
-**Last updated:** 2026-04-28
+**Status:** Phase-1 prototype spec (historical). Live UI is `scripts/sound_lab_fallback.py` on **5173**; legacy `ui/sound-lab/` (5200) removed.
 
 *Spec drafted 2026-04-27.*
 
@@ -12,23 +11,22 @@
 | | |
 |--|--|
 | **User-facing name** | Garden |
-| **Internal repo dir / code refs** | `sound-lab` (`ui/sound-lab/`) |
+| **Internal repo dir / code refs** | `scripts/sound_lab_fallback.py` (FastAPI + Three.js on **5173**) |
 | **Goal** | Show mic voice + AI telemetry (`aiFreq`, `aiAmplitude` / `aiAmp`) as a 3-D particle flow driven by coherence and audio energy. |
 
 ---
 
 ## 2 · Tech stack
 
-- **three.js** r165 (vanilla TypeScript, no React)
-- **lil-gui** (parameter sliders)
-- **Vite** + **npm** (dev server; `scripts/start_sound_lab.sh` uses `npm` + `npx vite`)
-- **Aster Router** (`repo/`, port **8787**) reverse-proxies browser traffic to Vite (**5173**) so **`http://127.0.0.1:8787/`** serves the particle UI.
+- **FastAPI** + embedded HTML/JS (`scripts/sound_lab_fallback.py`, port **5173**)
+- **Aster Router** (`repo/`, port **8787**) reverse-proxies browser traffic to **5173** so **`http://127.0.0.1:8787/`** serves the particle UI.
 
 ---
 
 ## 3 · Data packet (telemetry)
 
 **Endpoint (FastAPI stub, 方案 A):** `http://127.0.0.1:<TELEMETRY_PORT>/api/telemetry` — default **`8788`** (Aster stays on **8787**).  
+**Telemetry stub ➜ 8788**  
 **Method:** `GET`  
 **Shape (JSON):**
 
@@ -98,7 +96,7 @@ repo/app/main.py    # Aster :8787 — middleware proxies GET/HEAD to Vite :5173
 
 ```bash
 bash scripts/kill_sound_lab_dev.sh   # optional
-bash scripts/start_telemetry.sh      # 8788
+bash scripts/start_telemetry_8788.sh # 8788
 bash scripts/start_sound_lab.sh      # 5173
 cd repo && ./scripts/run.sh          # 8787 Aster + proxy
 ```

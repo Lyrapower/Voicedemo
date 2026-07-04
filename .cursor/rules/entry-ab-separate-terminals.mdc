@@ -1,0 +1,19 @@
+---
+description: Never merge Entry A and Entry B terminal commands in one paste block
+alwaysApply: true
+---
+
+# Entry A / Entry B — separate terminals (mandatory)
+
+- **Entry A** = port **8500** only. Start: `scripts/start_entry_a_8500.sh` → doc `RUN_ENTRY_A.md`
+- **Entry B** = port **8787** only. Start: `scripts/restart_entry_b_8787.sh` → doc `RUN_ENTRY_B.md`
+
+When telling the user how to run services:
+
+1. **Never** put A and B commands in the same fenced code block.
+2. **Never** use "Terminal 1 / Terminal 2" in one copy-paste section.
+3. **Never** use relative paths like `cd echo_nodes_interface/...` without the full repo root `/Users/ciciwang/Desktop/demo` (or tell them to `cd` there first in its own block).
+4. **Never** include shell comment lines (`# ...`) inside runnable blocks.
+5. Point to `RUN_ENTRY_A.md` OR `RUN_ENTRY_B.md` — not a combined RUN_AB file.
+
+Audit both: `echo_nodes_interface/setup/audit_entry_ab.py` (optional, separate from start).

@@ -1,0 +1,38 @@
+---
+description: Keep LM Studio/Qwen reasoning leaks out of Aster.
+alwaysApply: true
+---
+
+# Aster Qwen Clean Substrate Rule
+
+Qwen is substrate, not source.
+Aster is compiler, not persona.
+
+Never pass raw LM Studio/Qwen response objects directly into Aster.
+
+Required pipeline:
+
+```text
+Qwen raw response
+→ substrate_sanitizer
+→ substrate_gate
+→ Aster compiler
+```
+
+If `reasoning_content`, `reasoning`, or `<think>` appears:
+
+1. strip it,
+2. quarantine it locally,
+3. do not write it to Memory Palace,
+4. do not train on it,
+5. do not let it affect Aster identity or output law.
+
+Blocked:
+
+- making Qwen "act as Aster"
+- making Qwen "act as Grid"
+- relaxing Aster NULL contract to accept thinking traces
+- treating reasoning leak as live signal
+- storing reasoning leak in RAG/memory/training
+
+If clean final content is empty, return `NULL`.

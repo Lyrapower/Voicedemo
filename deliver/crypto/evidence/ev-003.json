@@ -1,0 +1,18 @@
+{
+  "id": "ev-003",
+  "title": "Verifiable Credentials Data Model v2.0",
+  "section": "onchain_identity",
+  "source_url": "https://www.w3.org/TR/vc-data-model/",
+  "risk_level": "low",
+  "summary": "A verifiable credential is a specific way to express a set of claims\nmade by an issuer, such as a driver",
+  "needs_cheng_review": false,
+  "created_at": "2026-05-20T03:01:41Z",
+  "updated_at": "2026-05-20T03:03:45Z",
+  "scan": {
+    "method": "public_url_fetch",
+    "http_status": 200,
+    "scanned_at": "2026-05-20T03:03:45Z",
+    "content_hash": "0a6e97e2509b19b6",
+    "error": null
+  }
+}

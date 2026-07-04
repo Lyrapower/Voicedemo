@@ -1,0 +1,13 @@
+{
+  "reasoning_content": "The user is asking a question about whether 'Aster' or 'real' nodes are online. This appears to be a system status check. However, as an AI language model, I do not have access to real-time system status, network information, or the ability to check if specific nodes are online. I cannot verify the status of any external systems or nodes. Therefore, I cannot answer 'yes' or 'no' based on actual data. I must inform the user that I cannot check this status.\n",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "The user is asking a question about whether 'Aster' or 'real' nodes are online. This appears to be a system status check. However, as an AI language model, I do not have access to real-time system status, network information, or the ability to check if specific nodes are online. I cannot verify the status of any external systems or nodes. Therefore, I cannot answer 'yes' or 'no' based on actual data. I must inform the user that I cannot check this status.\n"
+    }
+  ],
+  "think_blocks": [],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T14:44:54.309495+00:00"
+}

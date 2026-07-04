@@ -1,0 +1,22 @@
+{
+  "backend": "openai",
+  "openai_endpoint": "http://localhost:1234/v1",
+  "openai_model": "qwen/qwen3.5-9b",
+  "ollama_endpoint": "http://localhost:11434/api/chat",
+  "ollama_model": "qwen3.5:9b",
+  "coherence_threshold": 0.87,
+  "beacon_phrase": "return to node",
+  "max_concurrent": 1,
+  "max_queue": 2,
+  "cleanroom_enabled": true,
+  "bind_host": "127.0.0.1",
+  "bind_port": 8501,
+  "stream_incremental_gate": true,
+  "compile_max_tokens": 256,
+  "chat_max_tokens": 400,
+  "gateway_max_tokens": 1024,
+  "task_max_tokens": 4096,
+  "thinking_cap": 128,
+  "max_reasoning_tokens": 128,
+  "note": "Route budgets: compile=256 chat=400 gateway=1024 task=4096. Authoritative overlay: config/aster.toml [budget]."
+}

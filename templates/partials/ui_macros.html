@@ -1,0 +1,19 @@
+{# UI-only copy normalization (no backend changes). #}
+{% macro v(txt) -%}
+{{- (txt|string)|replace('Lyra source artifact is incomplete', 'Next input not found locally')
+   |replace('Not Ready', 'Awaiting artifact')
+   |replace('owner: Cursor', 'executor: local')
+   |replace('Owner: Cursor', 'Authority: bridge')
+   |replace('OWNER: Cursor', 'Authority: bridge')
+   |replace('Owner:', 'Authority:')
+   |replace('MISSING', 'Not generated')
+   |replace('Current executor', 'Runner')
+   |replace('current executor', 'runner') -}}
+{%- endmacro %}
+
+{% macro lbl(l) -%}
+{{- (l|string)|replace('Current Executor', 'Executor')
+   |replace('Current executor', 'Executor')
+   |replace('Owner (Cursor)', 'Authority')
+   |replace('Owner', 'Authority') -}}
+{%- endmacro %}

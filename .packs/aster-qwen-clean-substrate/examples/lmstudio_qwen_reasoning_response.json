@@ -1,0 +1,15 @@
+{
+  "id": "chatcmpl-local",
+  "object": "chat.completion",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "reasoning_content": "The model's hidden reasoning leaked here and must not reach Aster.",
+        "content": "<think>This should also be stripped.</think>\n{\"intent\":\"compile\",\"deliverable\":\"clean_final_only\",\"boundary\":\"no reasoning leak\"}"
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}

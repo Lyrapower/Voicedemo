@@ -1,0 +1,7 @@
+egress:
+  mode: "log_only"    # V1: log_only (no hard block)
+  allow_domains:
+    - "api.openai.com"
+    - "api.anthropic.com"
+    - "dashscope.aliyuncs.com"
+    - "localhost"

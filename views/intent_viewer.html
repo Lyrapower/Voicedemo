@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Intent Stream Viewer</title>
+  <style>
+    :root { --bg: #0a0c10; --fg: #d8e2f0; --accent: #64b5f6; --muted: #6a7a8a; }
+    body { font-family: ui-monospace, Menlo, monospace; background: var(--bg); color: var(--fg); margin: 24px; }
+    h1 { font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+    textarea { width: 100%; min-height: 72px; background: #11151c; border: 1px solid #2a3544; color: var(--fg); padding: 10px; }
+    button { margin-top: 8px; background: #1a2838; color: var(--accent); border: 1px solid var(--accent); padding: 8px 14px; cursor: pointer; }
+    pre { background: #11151c; border: 1px solid #2a3544; padding: 12px; overflow: auto; max-height: 60vh; }
+    .meta { color: var(--muted); font-size: 11px; margin: 8px 0; }
+    .scores { display: flex; gap: 24px; margin: 12px 0; }
+    .score span { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <h1>Intent Stream · /map_intent</h1>
+  <p class="meta">Calls <code id="endpoint"></code> directly — not /transmit.</p>
+  <textarea id="input" placeholder="Intent signal…"></textarea>
+  <button type="button" id="mapBtn">Map Intent</button>
+  <div class="scores">
+    <div class="score">Emotional density: <span id="emo">—</span></div>
+    <div class="score">AST hash: <span id="hash">—</span></div>
+  </div>
+  <pre id="out">{}</pre>
+  <script>
+    const base = location.origin;
+    document.getElementById("endpoint").textContent = base + "/map_intent";
+    document.getElementById("mapBtn").onclick = async () => {
+      const message = document.getElementById("input").value.trim();
+      const res = await fetch(base + "/map_intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, context_history: "" }),
+      });
+      const data = await res.json();
+      document.getElementById("out").textContent = JSON.stringify(data, null, 2);
+      const ast = data.intent_ast || {};
+      document.getElementById("emo").textContent = ast.emotional_density ?? "—";
+      document.getElementById("hash").textContent = data.ast_hash ?? data.context_hash ?? "—";
+    };
+  </script>
+</body>
+</html>

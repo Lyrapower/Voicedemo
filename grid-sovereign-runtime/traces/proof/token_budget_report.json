@@ -1,0 +1,94 @@
+{
+  "generated_at": "2026-07-03T00:09:27.049081+00:00",
+  "budget_config": {
+    "compile_max_tokens": 256,
+    "chat_max_tokens": 400,
+    "gateway_max_tokens": 1024,
+    "task_max_tokens": 4096,
+    "thinking_cap": 128
+  },
+  "before_baseline": [
+    {
+      "route": "chat",
+      "max_tokens": 128,
+      "reasoning_tokens": 127,
+      "content_tokens": 0,
+      "finish_reason": "length",
+      "note": "LM Studio tab pre-deploy"
+    },
+    {
+      "route": "chat",
+      "max_tokens": 128,
+      "reasoning_tokens": 127,
+      "content_tokens": 0,
+      "finish_reason": "length",
+      "note": "LM Studio tab pre-deploy"
+    },
+    {
+      "route": "gateway",
+      "max_tokens": 2048,
+      "reasoning_tokens": 511,
+      "content_tokens": 12,
+      "finish_reason": "length",
+      "note": "gateway pre-V4.11"
+    },
+    {
+      "route": "compile",
+      "max_tokens": 256,
+      "reasoning_tokens": 200,
+      "content_tokens": 0,
+      "finish_reason": "length",
+      "note": "compile NULL era"
+    },
+    {
+      "route": "chat",
+      "max_tokens": 2048,
+      "reasoning_tokens": 1800,
+      "content_tokens": 200,
+      "finish_reason": "stop",
+      "note": "白皮书化 — budget too high"
+    }
+  ],
+  "after_samples": [
+    {
+      "route": "compile",
+      "max_tokens": null,
+      "reasoning_tokens": 0,
+      "content_tokens": 110,
+      "finish_reason": "stop",
+      "truncated": false
+    },
+    {
+      "route": "compile",
+      "max_tokens": null,
+      "reasoning_tokens": 0,
+      "content_tokens": 166,
+      "finish_reason": "stop",
+      "truncated": false
+    },
+    {
+      "route": "gateway",
+      "max_tokens": null,
+      "reasoning_tokens": 0,
+      "content_tokens": 44,
+      "finish_reason": "stop",
+      "truncated": false
+    },
+    {
+      "route": "chat",
+      "max_tokens": 400,
+      "reasoning_tokens": 0,
+      "content_tokens": 65,
+      "finish_reason": "stop",
+      "truncated": false
+    },
+    {
+      "route": "chat",
+      "max_tokens": 400,
+      "reasoning_tokens": 0,
+      "content_tokens": 4,
+      "finish_reason": "stop",
+      "truncated": false
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{% import "partials/ui_macros.html" as ui %}
+<div class="jv-card jv-card-soft">
+  <div class="jv-label-mute">{{ ui.lbl(item.title) }}</div>
+  {% if item.kind == "rows" %}
+    <table class="jv-kv jv-kv-tight" style="margin-top:8px;">
+      <tbody>
+        {% for row in item["items"] %}
+        <tr>
+          <th scope="row">{{ ui.lbl(row.label) }}</th>
+          <td class="{% if row.mono %}jv-kv-val-mono {% endif %}{% if row.tone == 'pass' or row.tone == 'ready' %}status-pass{% elif row.tone == 'blocked' or row.tone == 'fail' %}status-blocked{% else %}status-neutral{% endif %}">{{ ui.v(row.value) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% elif item.kind == "paths" %}
+    <table class="jv-kv jv-kv-tight" style="margin-top:8px;">
+      <tbody>
+        {% for row in item["items"] %}
+        <tr>
+          <th scope="row">{{ ui.lbl(row.label) }}</th>
+          <td class="jv-kv-val-mono">
+            <span class="jv-mono jv-path-clip" style="display:block;max-width:100%;" title="{{ row.value }}" id="dc-path-{{ loop.index0 }}">{{ row.value }}</span>
+            <button type="button" class="jv-btn-copy jv-btn-copy-tiny" data-copy-text="{{ row.value }}">Copy</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% elif item.kind == "chips" %}
+    <div class="jv-chip-row" style="margin-top:10px;">
+      {% for chip in item["items"] %}
+      <span class="jv-chip">{{ ui.v(chip) }}</span>
+      {% endfor %}
+    </div>
+  {% elif item.kind == "activity" %}
+    <div class="jv-audit-lines jv-note-tiny" style="max-height:none;margin-top:8px;">
+      {% for line in item["items"] %}
+      <div style="margin-bottom:6px;">{{ ui.v(line) }}</div>
+      {% endfor %}
+    </div>
+  {% elif item.kind == "text" %}
+    <pre class="jv-pre jv-pre-tight jv-mono">{{ ui.v(item.body) }}</pre>
+  {% else %}
+    <pre class="jv-pre jv-pre-tight jv-mono">{{ item.body }}</pre>
+  {% endif %}
+</div>

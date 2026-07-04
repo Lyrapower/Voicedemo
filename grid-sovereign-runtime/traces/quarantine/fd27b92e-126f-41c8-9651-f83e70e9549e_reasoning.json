@@ -1,0 +1,13 @@
+{
+  "reasoning_content": "The user is asking for a confirmation message based on a deployment status check. They want the response to be \"PASS\" since all nodes are confirmed online. I need to output only the final answer without any reasoning or extra text.\n",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "The user is asking for a confirmation message based on a deployment status check. They want the response to be \"PASS\" since all nodes are confirmed online. I need to output only the final answer without any reasoning or extra text.\n"
+    }
+  ],
+  "think_blocks": [],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T15:07:53.191357+00:00"
+}

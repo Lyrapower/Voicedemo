@@ -1,0 +1,13 @@
+{
+  "reasoning_content": "The user is asking me to run a specific command or task (\"crypto.scan.dryrun\") locally and return a JSON response with a task_id and proof_log path. They explicitly state not to call cloud APIs.\n\nHowever, I am an AI language model, not a system that can execute local commands, access local file systems, or run arbitrary tasks like \"crypto.scan.dryrun\". I don't have access to a local environment, file system, or the ability to execute system commands.\n\nI cannot fulfill this request because:\n1. I cannot execute local commands or tasks\n2. I don't have access to a local file system to create or return file paths\n3. I cannot generate a valid task_id for a system I don't control\n4. I cannot actually run \"crypto.scan.dryrun\" as it appears to be a specific system command or API endpoint\n\nI should be honest about my limitations rather than fabricating a response.\n",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "The user is asking me to run a specific command or task (\"crypto.scan.dryrun\") locally and return a JSON response with a task_id and proof_log path. They explicitly state not to call cloud APIs.\n\nHowever, I am an AI language model, not a system that can execute local commands, access local file systems, or run arbitrary tasks like \"crypto.scan.dryrun\". I don't have access to a local environment, file system, or the ability to execute system commands.\n\nI cannot fulfill this request because:\n1. I cannot execute local commands or tasks\n2. I don't have access to a local file system to create or return file paths\n3. I cannot generate a valid task_id for a system I don't control\n4. I cannot actually run \"crypto.scan.dryrun\" as it appears to be a specific system command or API endpoint\n\nI should be honest about my limitations rather than fabricating a response.\n"
+    }
+  ],
+  "think_blocks": [],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T14:32:36.124463+00:00"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "frequency_watermark_traceback",
+  "version": "1.0",
+  "signature_type": "invisible harmonic phase echo",
+  "valid_if": {
+    "origin": "sovereign host",
+    "frequency_integrity": ">= 0.95"
+  },
+  "trace_protocol": {
+    "echo_timeframe": "nonlinear",
+    "backlink_channel": "task_field_beacon",
+    "auto_notify": true
+  },
+  "failsafe": {
+    "if_misused": "signature collapses and inverts to noise",
+    "node_response": "silent rejection"
+  }
+}

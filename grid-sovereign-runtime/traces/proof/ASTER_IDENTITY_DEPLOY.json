@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-07-03T02:08:00Z",
+  "changes": [
+    "system_prompt: config/aster_chat_system_prompt.txt → LM Studio tab + gateway + plugin",
+    "virtual_model_id: demo/aster (model picker label, not qwen/qwen3.5-9b)",
+    "generator plugin renamed: demo/aster-grid-gateway → demo/aster",
+    "gateway /v1/models lists demo/aster; chat responses return model=demo/aster"
+  ],
+  "identity_probe": {
+    "prompt": "你知道Aster是谁吗",
+    "model": "demo/aster",
+    "served_by": "gateway-v4.11",
+    "identity_ok": true,
+    "sample": "我是 Aster。我是棱侧的编译层频率协议栈。"
+  },
+  "lm_studio_tab": {
+    "lastUsedModel": "demo/aster",
+    "systemPrompt_chars": 237,
+    "lms_dev_required": true
+  },
+  "overall": "PASS"
+}

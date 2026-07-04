@@ -1,0 +1,18 @@
+{
+  "id": "ev-005",
+  "title": "Cybersecurity Framework | NIST",
+  "section": "ai_agent_rails",
+  "source_url": "https://www.nist.gov/cyberframework",
+  "risk_level": "medium",
+  "summary": "Helping organizations to better understand and improve their management of cybersecurity risk",
+  "needs_cheng_review": false,
+  "created_at": "2026-05-20T03:01:41Z",
+  "updated_at": "2026-05-20T03:03:47Z",
+  "scan": {
+    "method": "public_url_fetch",
+    "http_status": 200,
+    "scanned_at": "2026-05-20T03:03:47Z",
+    "content_hash": "923929c1da927d70",
+    "error": null
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "reasoning_content": null,
+  "reasoning": null,
+  "reasoning_fields": [],
+  "think_blocks": [
+    "<think>\n\n</think>"
+  ],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T12:42:27.826487+00:00"
+}

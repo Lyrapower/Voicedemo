@@ -1,0 +1,17 @@
+{
+  "route_id": "b924c36b-64b2-4561-8fd7-8139c1f5936d",
+  "ts": 1782997504.654294,
+  "proof": {
+    "raw_response_received": true,
+    "reasoning_quarantined": true,
+    "clean_content_present": true,
+    "gate_pass": true,
+    "aster_compile_called": false
+  },
+  "gate": {
+    "pass": true,
+    "reason": "clean_final_content",
+    "action": "pass_to_aster"
+  },
+  "quarantine_path": "/Users/ciciwang/Desktop/demo/grid-sovereign-runtime/traces/quarantine/b924c36b-64b2-4561-8fd7-8139c1f5936d_reasoning.json"
+}

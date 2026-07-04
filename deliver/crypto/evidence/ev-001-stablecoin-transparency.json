@@ -1,0 +1,18 @@
+{
+  "id": "ev-001",
+  "title": "Transparency & Stability | Circle",
+  "section": "stablecoins",
+  "source_url": "https://www.circle.com/en/transparency",
+  "risk_level": "low",
+  "summary": "Transparency & Stability | Circle Home Platform Back Stablecoins USDC The leading digital dollar USDC EURC The leading digital euro EURC Tokenized Funds USYC Not available in the US A tokenized money market fund USYC LIQUIDITY Services Mint Access and distribute USDC liquidity Mint StableFX Access 24/7 stablecoin FX StableFX Payments Circle Payments Network Connect with financial institutions globally for real-time s",
+  "needs_cheng_review": false,
+  "created_at": "2026-05-19",
+  "updated_at": "2026-05-20T03:03:43Z",
+  "scan": {
+    "method": "public_url_fetch",
+    "http_status": 200,
+    "scanned_at": "2026-05-20T03:03:43Z",
+    "content_hash": "2fe38eb959a2fdaf",
+    "error": null
+  }
+}

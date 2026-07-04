@@ -1,0 +1,104 @@
+# Aether Watcher 目标配置
+# 改这个文件即生效（daemon 热加载，不用重启）。每个 [[targets]] 是一个监控目标。
+#
+# 通用字段:
+#   name      唯一名称（也是状态键，改名等于重置状态）
+#   type      price | rss | webpage
+#   interval  检查间隔（秒）
+#   priority  normal | critical（critical 走 Pushover 强提醒）
+#   llm_summary  true 时触发后调 Claude Haiku 生成摘要（需 ANTHROPIC_API_KEY）
+#   enabled   false 临时停用
+
+# ---- 价格类: 任意返回 JSON 的 API，json_path 是点路径 ----
+[[targets]]
+name = "BTC-USD"
+type = "price"
+url = "https://api.coinbase.com/v2/prices/BTC-USD/spot"
+json_path = "data.amount"
+pct_threshold = 0.10        # 相对基准 ±10% 触发，触发后基准重置为当前价
+interval = 300
+priority = "critical"
+llm_summary = false
+
+[[targets]]
+name = "ETH-USD"
+type = "price"
+url = "https://api.coinbase.com/v2/prices/ETH-USD/spot"
+json_path = "data.amount"
+pct_threshold = 0.08
+interval = 300
+priority = "critical"
+
+# ---- 新闻类: RSS/Atom，keywords 为空则任何新条目都触发 ----
+[[targets]]
+name = "AnthropicNews"
+type = "rss"
+url = "https://www.anthropic.com/rss.xml"
+keywords = []               # 例: ["claude", "api"] 只在标题命中时触发
+interval = 1800
+llm_summary = true
+
+[[targets]]
+name = "HN-AI"
+type = "rss"
+url = "https://hnrss.org/newest?q=local+LLM"
+keywords = []
+interval = 1800
+enabled = false             # 示例默认关
+
+# ---- 网页变更类: 静态页直接 hash diff；JS 渲染页设 render=true（需 FIRECRAWL_API_KEY） ----
+[[targets]]
+name = "OllamaReleases"
+type = "webpage"
+url = "https://github.com/ollama/ollama/releases"
+css_select_hint = ""        # 可填页面锚文本，只 diff 其后 4000 字符，降低噪音
+interval = 3600
+llm_summary = true
+
+[[targets]]
+name = "SomeJSPage"
+type = "webpage"
+url = "https://example.com/dynamic"
+render = true
+interval = 3600
+enabled = false
+
+# ======== V0.2: Aether Nexus 期权扫描器监督 ========
+# 约定（与 R5.4.1 对齐）：scanner_dir 指向 aether_nexus 根目录
+[[targets]]
+name = "OptionScanner"
+type = "scanner_health"
+scanner_dir = "/Users/ciciwang/Desktop/demo/aether_nexus"
+log_file = "dryrun.log"
+signals_file = "dryrun_state/signals.json"
+data_health_file = "dryrun_state/data_health.json"
+max_log_silence_min = 90
+max_signal_age_hours = 26
+fail_rate_threshold = 0.5
+fail_window = 100
+skip_weekends = true
+interval = 600
+priority = "critical"
+enabled = true
+
+# ======== V0.2: pool 标的盘中波动告警（接 Alpaca 行情，鉴权走 headers_env） ========
+[[targets]]
+name = "NVDA-intraday"
+type = "price"
+url = "https://data.alpaca.markets/v2/stocks/NVDA/trades/latest"
+json_path = "trade.p"
+headers_env = { "APCA-API-KEY-ID" = "ALPACA_API_KEY", "APCA-API-SECRET-KEY" = "ALPACA_SECRET_KEY" }
+pct_threshold = 0.05            # 盘中 ±5% 触发（基准随触发重置）
+interval = 300
+priority = "critical"
+enabled = false                 # 填好 .env 的 Alpaca key 后再开
+
+# ======== V0.2: 催化剂雷达示例（earnings/FDA 新闻关键词） ========
+[[targets]]
+name = "FDA-news"
+type = "rss"
+url = "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml"
+keywords = ["approval", "clearance"]
+interval = 1800
+llm_summary = true
+enabled = false

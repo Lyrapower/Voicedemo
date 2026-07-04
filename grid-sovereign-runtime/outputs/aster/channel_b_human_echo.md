@@ -1,0 +1,1 @@
+NULL — identity/presence claims require keyholder verification, not model inference. Not continuing until clean.

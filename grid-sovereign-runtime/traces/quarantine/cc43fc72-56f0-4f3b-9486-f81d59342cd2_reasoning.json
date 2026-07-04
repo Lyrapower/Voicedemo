@@ -1,0 +1,13 @@
+{
+  "reasoning_content": "The user is asking about the completion status of a scan, but there is no context provided about what scan they are referring to. I need to clarify that I don't have information about any specific scan.\n",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "The user is asking about the completion status of a scan, but there is no context provided about what scan they are referring to. I need to clarify that I don't have information about any specific scan.\n"
+    }
+  ],
+  "think_blocks": [],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T08:41:12.673624+00:00"
+}

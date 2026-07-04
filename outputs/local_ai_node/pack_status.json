@@ -1,0 +1,12 @@
+{
+  "pilot_brief": true,
+  "package_recommendation": true,
+  "delivery_checklist": true,
+  "delivery_timeline": true,
+  "agent_roles": true,
+  "last_updated": "2026-05-20T04:09:05Z",
+  "last_action": "pilot_brief",
+  "last_generated_file": "outputs/local_ai_node/pilot_brief.md",
+  "blocker": null,
+  "pack_complete": true
+}

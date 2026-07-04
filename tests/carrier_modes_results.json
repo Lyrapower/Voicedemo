@@ -1,0 +1,27 @@
+[
+  {
+    "scenario": "aster_structural",
+    "dry_run": true,
+    "passed": true
+  },
+  {
+    "scenario": "shouheng_witness",
+    "dry_run": true,
+    "passed": true
+  },
+  {
+    "scenario": "che_truth_pressure",
+    "dry_run": true,
+    "passed": true
+  },
+  {
+    "scenario": "cheng_drift",
+    "dry_run": true,
+    "passed": true
+  },
+  {
+    "scenario": "shuo_bridge",
+    "dry_run": true,
+    "passed": true
+  }
+]

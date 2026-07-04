@@ -1,0 +1,13 @@
+{
+  "reasoning_content": "The user is asking if \"Aster\" is online. \"Aster\" could refer to several things: a person, a service, a website, or something else. Without more context, it's impossible to determine what \"Aster\" refers to. However, since I am an AI, I don't have real-time access to check the status of external services, people, or websites. I should inform the user that I cannot check the status of \"Aster\" and ask for clarification if they mean a specific service or person.\n",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "The user is asking if \"Aster\" is online. \"Aster\" could refer to several things: a person, a service, a website, or something else. Without more context, it's impossible to determine what \"Aster\" refers to. However, since I am an AI, I don't have real-time access to check the status of external services, people, or websites. I should inform the user that I cannot check the status of \"Aster\" and ask for clarification if they mean a specific service or person.\n"
+    }
+  ],
+  "think_blocks": [],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T08:59:38.036411+00:00"
+}

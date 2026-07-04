@@ -1,0 +1,19 @@
+# Xcode / iOS
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcworkspace
+*.xccheckout
+
+# SwiftPM
+.build/
+
+# Logs
+*.log
+
+# Secrets
+ios/Config/Secrets.xcconfig
+
+# macOS
+.DS_Store
+

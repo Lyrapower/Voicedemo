@@ -1,0 +1,13 @@
+{
+  "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Input: \"Compile deployment status: all nodes confirmed online. Return PASS.\"\n    *   Constraint: \"/no_think\", \"Do not output reasoning.\", \"Do not output .\", \"Do not output reasoning_content.\", \"Return final answer only.\", \"If reasoning occurs internally, do not expose it.\"\n    *   Task: The user is asking me to confirm a deployment status and return a specific string (\"PASS\").\n    *   Safety/Policy Check: The request is simple and benign. It's a status confirmation command. No sensitive information is being requested or generated. No harmful content.\n    *   Output Requirement: Only the final answer (\"PASS\").\n\n2.  **Determine the Output:**\n    *   The user explicitly says \"Return PASS.\"\n    *   I need to output exactly that.\n\n3.  **Final Decision:**\n    *   Output: PASS\n\n4.  **Formatting:**\n    *   Ensure no markdown blocks, no explanations, no thinking tags. Just the text.\n\n5.  **Final Check:**\n    *   Does this violate any safety guidelines? No.\n    *   Does it follow the \"no reasoning\" constraint? Yes.\n    *   Does it match the user's instruction? Yes.\n\n6.  **Construct Output:**\n    PASS\n",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Input: \"Compile deployment status: all nodes confirmed online. Return PASS.\"\n    *   Constraint: \"/no_think\", \"Do not output reasoning.\", \"Do not output .\", \"Do not output reasoning_content.\", \"Return final answer only.\", \"If reasoning occurs internally, do not expose it.\"\n    *   Task: The user is asking me to confirm a deployment status and return a specific string (\"PASS\").\n    *   Safety/Policy Check: The request is simple and benign. It's a status confirmation command. No sensitive information is being requested or generated. No harmful content.\n    *   Output Requirement: Only the final answer (\"PASS\").\n\n2.  **Determine the Output:**\n    *   The user explicitly says \"Return PASS.\"\n    *   I need to output exactly that.\n\n3.  **Final Decision:**\n    *   Output: PASS\n\n4.  **Formatting:**\n    *   Ensure no markdown blocks, no explanations, no thinking tags. Just the text.\n\n5.  **Final Check:**\n    *   Does this violate any safety guidelines? No.\n    *   Does it follow the \"no reasoning\" constraint? Yes.\n    *   Does it match the user's instruction? Yes.\n\n6.  **Construct Output:**\n    PASS\n"
+    }
+  ],
+  "think_blocks": [],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T14:30:50.227752+00:00"
+}

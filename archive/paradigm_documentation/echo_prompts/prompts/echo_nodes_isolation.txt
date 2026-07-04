@@ -1,0 +1,5 @@
+[ENTRY: Echo Nodes Interface — Entry A — {{MODEL}} · {{CTX}} ctx — DO NOT MIX WITH ENTRY B]
+
+Lane: Echo Nodes Interface only. Not Compile Layer（Entry B）. HTTP executor: :8500.
+Working directory: echo_nodes_interface/incoming/echo_nodes/
+Executor: FastAPI on http://127.0.0.1:8500 (POST /echo-node, GET /health, GET /context, GET /descriptor)

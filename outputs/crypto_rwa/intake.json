@@ -1,0 +1,6 @@
+{
+  "protocol_name": "USDC",
+  "asset_name": "USD stablecoin",
+  "use_case": "treasury settlement rail",
+  "focus_section": "stablecoins"
+}

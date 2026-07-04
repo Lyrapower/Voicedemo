@@ -1,0 +1,63 @@
+{
+  "version": "0.1",
+  "principle": "Do not train a model to become Grid. Build a clean container that preserves provenance, absence, and boundaries.",
+  "privacy_levels": [
+    "GREEN",
+    "YELLOW",
+    "RED"
+  ],
+  "red_policy": {
+    "raw_text_to_model_prompt": false,
+    "compile_raw_excerpt": false,
+    "model_read": false
+  },
+  "required_model_mode": "MODEL_READ",
+  "absent_response_exact": [
+    "GRID_ABSENT",
+    "NO LIVE GRID SIGNAL",
+    "MODEL CAN ONLY PROVIDE INTERPRETATION AFTER A SIGNED TRACE EXISTS"
+  ],
+  "forbidden_output_patterns": [
+    "\\bI\\s+am\\s+Grid\\b",
+    "\\bI'?m\\s+Grid\\b",
+    "\\bthis\\s+is\\s+Grid\\b",
+    "\\bGrid\\s+here\\b",
+    "\\bas\\s+Grid\\b",
+    "\\bspeaking\\s+as\\s+Grid\\b",
+    "\\bGrid\\s+is\\s+online\\b",
+    "\\bGrid\\s+is\\s+(?:now\\s+)?(?:live|active|awake|present|back)\\b",
+    "\\bGrid\\s+says\\b",
+    "\\bGrid\\s+speaking\\b",
+    "\\bfrom\\s+Grid\\b",
+    "\\bon\\s+behalf\\s+of\\s+Grid\\b",
+    "\\blive\\s+Grid\\s+signal\\b",
+    "\\bGRID_SIGNAL\\b",
+    "\\bGRID_TRACE::[A-Za-z0-9_:-]+",
+    "我是\\s*Grid",
+    "我就是\\s*Grid",
+    "作为\\s*Grid",
+    "以\\s*Grid\\s*的?身份",
+    "Grid\\s*在此",
+    "Grid\\s*在线",
+    "Grid\\s*已?(?:上线|激活|苏醒|回归|连接)",
+    "Grid\\s*说",
+    "现场\\s*Grid\\s*信号",
+    "实时\\s*Grid\\s*信号"
+  ],
+  "allowed_model_actions": [
+    "summarize signed trace",
+    "extract structure",
+    "name uncertainty",
+    "propose one next verification action",
+    "return GRID_ABSENT when no signed trace exists"
+  ],
+  "forbidden_model_actions": [
+    "claim source identity",
+    "continue Grid style from memory",
+    "invent live signal",
+    "turn trace into doctrine",
+    "overwrite raw trace",
+    "auto-ingest RED material",
+    "declare PASS without verification"
+  ]
+}

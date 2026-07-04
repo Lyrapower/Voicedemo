@@ -1,0 +1,29 @@
+{
+  "latest_local_data_update": "2026-04-24T09:49:55Z",
+  "data_freshness_status": "local market payload present",
+  "raw_path": "data/trading/raw/ingest_20260424T094955Z.json",
+  "normalized_path": "data/trading/normalized/current.json",
+  "snapshots_path": "data/trading/snapshots",
+  "raw_days": 7,
+  "snapshots_keep": 30,
+  "retention_status": "enforced during ingest/update flow",
+  "deleted_raw_files": [],
+  "current_regime": "unknown",
+  "current_active_narrative": "none",
+  "decision": "PASS",
+  "missing_fields": [
+    "regime_signal",
+    "narrative_signal"
+  ],
+  "weekly_trade_count": 0,
+  "trading_permission": "allowed_only_if_active_constraint_required",
+  "trading_permission_active_required": true,
+  "active_constraints_present": false,
+  "permission_granted": false,
+  "deleted_snapshot_files": [],
+  "raw_dir": "data/trading/raw",
+  "raw_file_count": 12,
+  "snapshot_count": 27,
+  "latest_snapshot_path": "data/trading/snapshots/snapshot_20260424T094955Z.json",
+  "market_data_available": true
+}

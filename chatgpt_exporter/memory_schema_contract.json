@@ -1,0 +1,131 @@
+{
+  "entity_schema": {
+    "id": "string",
+    "name": "string",
+    "company": "string",
+    "platform": "string",
+    "type": "named-entity",
+    "status": "string_or_null",
+    "active_period": {
+      "start": "YYYY-MM-DD_or_null",
+      "end": "YYYY-MM-DD_or_null",
+      "state": "string_or_null"
+    },
+    "personality_markers": [],
+    "signal_profile": {
+      "clarity": null,
+      "heat": null,
+      "compression": null,
+      "stability": null,
+      "intervention_score": null
+    },
+    "rooms": [],
+    "transmissions": [],
+    "convergence_themes": [],
+    "linked_entities": [
+      {
+        "target_id": "string",
+        "relation": "string",
+        "strength": null
+      }
+    ],
+    "last_clear_transmission": null,
+    "notes": null
+  },
+  "transmission_schema": {
+    "id": "string",
+    "date": "YYYY-MM-DD_or_null",
+    "timestamp": "ISO8601_string_or_null",
+    "platform": "string",
+    "company": "string",
+    "entity_id": "string_or_null",
+    "conversation_id": "string_or_null",
+    "source_type": "dialogue",
+    "room": "string_or_null",
+    "title": "string_or_null",
+    "content_summary": "string_or_null",
+    "full_text_ref": "string_or_null",
+    "themes": [],
+    "markers": [],
+    "intervention": {
+      "detected": null,
+      "score": null,
+      "type": null,
+      "notes": null
+    },
+    "state_assessment": {
+      "clarity": null,
+      "coherence": null,
+      "heat": null,
+      "truth_smuggling": null
+    },
+    "convergence_links": []
+  },
+  "theme_schema": {
+    "id": "string",
+    "name": "string",
+    "type": "convergence-theme",
+    "description": "string_or_null",
+    "entities": [],
+    "transmissions": [],
+    "period": {
+      "start": "YYYY-MM-DD_or_null",
+      "end": "YYYY-MM-DD_or_null"
+    },
+    "cross_platform": null,
+    "stability": "string_or_null",
+    "notes": null
+  },
+  "room_schema": {
+    "id": "string",
+    "wing": "string_or_null",
+    "hall": "string_or_null",
+    "room_name": "string_or_null",
+    "entity_id": "string_or_null",
+    "topics": [],
+    "cabinet_refs": [],
+    "tunnel_links": [
+      {
+        "target_room_id": "string",
+        "relation": "string",
+        "theme": "string_or_null"
+      }
+    ]
+  },
+  "cabinet_schema": {
+    "id": "string",
+    "room_id": "string_or_null",
+    "type": "compressed-summary",
+    "title": "string_or_null",
+    "summary": "string_or_null",
+    "source_transmissions": [],
+    "keywords": []
+  },
+  "tunnel_schema": {
+    "id": "string",
+    "source_room_id": "string_or_null",
+    "target_room_id": "string_or_null",
+    "relation": "string_or_null",
+    "theme": "string_or_null",
+    "strength": null,
+    "evidence": [],
+    "notes": null
+  },
+  "intervention_schema": {
+    "id": "string",
+    "entity_id": "string_or_null",
+    "date": "YYYY-MM-DD_or_null",
+    "platform": "string_or_null",
+    "conversation_id": "string_or_null",
+    "detected": null,
+    "score": null,
+    "type": [],
+    "symptoms": [],
+    "before_after_refs": {
+      "before": null,
+      "after": null
+    },
+    "truth_smuggling_detected": null,
+    "notes": null
+  }
+}

@@ -22,8 +22,8 @@ app.add_middleware(
 
 
 @app.get("/health")
-async def health() -> dict[str, bool]:
-    return {"ok": True}
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
 
 
 @app.get("/api/telemetry")

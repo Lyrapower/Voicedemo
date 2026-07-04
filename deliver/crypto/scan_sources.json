@@ -1,0 +1,46 @@
+{
+  "schema": "crypto_rwa_scan_v1",
+  "notes": "Public URLs only. Edit this file to add sources; run ./scripts/scan_crypto_rwa_public.sh",
+  "sources": [
+    {
+      "id": "ev-001",
+      "section": "stablecoins",
+      "url": "https://www.circle.com/en/transparency",
+      "title_hint": "USDC public transparency page",
+      "default_risk_level": "low",
+      "force_cheng_review": false
+    },
+    {
+      "id": "ev-002",
+      "section": "tokenized_rwa",
+      "url": "https://www.blackrock.com/corporate",
+      "title_hint": "BlackRock corporate disclosures hub",
+      "default_risk_level": "medium",
+      "force_cheng_review": true
+    },
+    {
+      "id": "ev-003",
+      "section": "onchain_identity",
+      "url": "https://www.w3.org/TR/vc-data-model/",
+      "title_hint": "W3C Verifiable Credentials data model",
+      "default_risk_level": "low",
+      "force_cheng_review": false
+    },
+    {
+      "id": "ev-004",
+      "section": "programmable_payments",
+      "url": "https://ethereum.org/en/developers/docs/accounts/",
+      "title_hint": "Ethereum account abstraction docs",
+      "default_risk_level": "low",
+      "force_cheng_review": false
+    },
+    {
+      "id": "ev-005",
+      "section": "ai_agent_rails",
+      "url": "https://www.nist.gov/cyberframework",
+      "title_hint": "NIST Cybersecurity Framework (agent gate reference)",
+      "default_risk_level": "medium",
+      "force_cheng_review": false
+    }
+  ]
+}

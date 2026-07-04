@@ -1,0 +1,8 @@
+{
+  "customer_type": "AI-heavy solo founder",
+  "current_device": "MacBook Pro M3, 36GB RAM",
+  "target_use_case": "Private client research notes + OCR pipeline",
+  "privacy_sensitivity": "high privacy",
+  "desired_local_functions": "OCR, Obsidian RAG, local Qwen, FastAPI router",
+  "budget_range": "$4,000-$5,000"
+}

@@ -1,0 +1,13 @@
+{
+  "architecture": "aster_compile",
+  "channel": "aster_compile",
+  "config": "aster/config/compile.json",
+  "local_models": "aster/config/local_models.json",
+  "config_toml": "aster/Config.toml",
+  "start_script": "scripts/start_aster_compile.sh",
+  "rules": {
+    "local_models_only": true,
+    "no_external_ssd": true,
+    "daily_9b_tab_untouchable": "qwen/qwen3.5-9b"
+  }
+}

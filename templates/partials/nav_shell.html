@@ -1,0 +1,26 @@
+<div class="jv-brand">Jarvis</div>
+
+<div class="jv-rail-section-title jv-rail-muted">Main</div>
+<div class="jv-stack jv-nav-list">
+  <a class="jv-nav-link {% if request.url.path in ('/', '/ui/overview') %}jv-active{% endif %}" href="/ui/overview">Overview</a>
+  <a class="jv-nav-link {% if request.url.path == '/ui/local-ai-nodes' %}jv-active{% endif %}" href="/ui/local-ai-nodes">Private Local AI Nodes</a>
+  <a class="jv-nav-link {% if request.url.path == '/ui/trading' %}jv-active{% endif %}" href="/ui/trading">Aether Nexus</a>
+  <a class="jv-nav-link {% if request.url.path == '/ui/crypto' %}jv-active{% endif %}" href="/ui/crypto">Crypto / RWA Sovereignty</a>
+  <a class="jv-nav-link {% if request.url.path == '/ui/proof-pack' %}jv-active{% endif %}" href="/ui/proof-pack">Proof Pack</a>
+  <a class="jv-nav-link {% if request.url.path == '/ui/senior' %}jv-active{% endif %}" href="/ui/senior">Senior</a>
+</div>
+
+<div class="jv-rail-section-title jv-rail-muted">System</div>
+<div class="jv-stack jv-nav-list">
+  <a class="jv-nav-link {% if request.url.path in ('/ui/desk', '/ui/workbench') %}jv-active{% endif %}" href="/ui/desk">Desk</a>
+  <a class="jv-nav-link {% if request.url.path in ('/ui/proof', '/ui/proofpack') %}jv-active{% endif %}" href="/ui/proof">Proof</a>
+  <a class="jv-nav-link {% if request.url.path == '/ui/audit' %}jv-active{% endif %}" href="/ui/audit">Audit</a>
+  <a class="jv-nav-link {% if request.url.path in ('/ui/archive', '/ui/workbench/rounds', '/ui/rounds') %}jv-active{% endif %}" href="/ui/archive">Archive</a>
+</div>
+
+<div class="jv-rail-footer">
+  <div class="jv-pill-row">
+    <span class="jv-pill jv-pill-quiet">Local-first</span>
+    <span class="jv-pill jv-pill-quiet">External off</span>
+  </div>
+</div>

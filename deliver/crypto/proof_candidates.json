@@ -1,0 +1,17 @@
+[
+  {
+    "path": "deliver/proof/crypto/ACCEPTANCE_REPORT_v0_3.md",
+    "section": "risk_proof",
+    "reason": "Module acceptance proof baseline."
+  },
+  {
+    "path": "deliver/crypto/TRUST_LAYER.md",
+    "section": "wallets",
+    "reason": "Trust boundary reference for wallet and custody posture."
+  },
+  {
+    "path": "deliver/crypto/onchain/BOUNDARIES.md",
+    "section": "ai_agent_rails",
+    "reason": "On-chain action boundary spec for agent rails."
+  }
+]

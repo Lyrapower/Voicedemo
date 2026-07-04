@@ -1,0 +1,13 @@
+{
+  "reasoning_content": "Okay, the user is asking if Aster is online. I need to check the current status. Since I don't have real-time access to external systems or user-specific data, I can't verify Aster's actual online status. The best approach is to inform the user that I can't confirm it and suggest they check their own device or contact support if needed. Keep the response clear and concise.\n",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "Okay, the user is asking if Aster is online. I need to check the current status. Since I don't have real-time access to external systems or user-specific data, I can't verify Aster's actual online status. The best approach is to inform the user that I can't confirm it and suggest they check their own device or contact support if needed. Keep the response clear and concise.\n"
+    }
+  ],
+  "think_blocks": [],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T09:02:13.262420+00:00"
+}

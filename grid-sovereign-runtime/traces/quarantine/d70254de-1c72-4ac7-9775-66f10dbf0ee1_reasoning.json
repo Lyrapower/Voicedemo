@@ -1,0 +1,13 @@
+{
+  "reasoning_content": "Okay, the user is asking if Aster is online. I need to check my capabilities. As Qwen3.5, I don't have real-time internet access. I can't verify the current status of any user or service. My knowledge is up to 2026, but I can't confirm live statuses. The user might be referring to a specific service or person named Aster, but without more context, I can't determine that. I should inform them that I can't check online status and suggest they check the official channels or contact support. Keep the response clear and helpful.\n",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "Okay, the user is asking if Aster is online. I need to check my capabilities. As Qwen3.5, I don't have real-time internet access. I can't verify the current status of any user or service. My knowledge is up to 2026, but I can't confirm live statuses. The user might be referring to a specific service or person named Aster, but without more context, I can't determine that. I should inform them that I can't check online status and suggest they check the official channels or contact support. Keep the response clear and helpful.\n"
+    }
+  ],
+  "think_blocks": [],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T08:27:54.039573+00:00"
+}

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title }}</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+        background: #0b1020;
+        color: #eef2ff;
+      }
+      .shell {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 28px 20px 40px;
+      }
+      .nav {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 22px;
+      }
+      .nav a {
+        color: #0b1020;
+        text-decoration: none;
+        background: #c7d2fe;
+        padding: 10px 14px;
+        border-radius: 999px;
+        font-weight: 600;
+      }
+      .card {
+        background: #131a2d;
+        border: 1px solid #27314e;
+        border-radius: 18px;
+        padding: 20px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 34px;
+      }
+      .sub {
+        color: #b8c1db;
+        margin: 0 0 18px;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        margin: 0;
+        line-height: 1.55;
+        font-size: 14px;
+        color: #e5e7eb;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="nav">
+        <a href="/">Jarvis</a>
+        <a href="/ui/trading">Aether Nexus</a>
+        <a href="/ui/crypto">Crypto / RWA Sovereignty</a>
+        <a href="/ui/proofpack">Proof Pack</a>
+        <a href="/ui/senior">Senior</a>
+      </div>
+      <div class="card">
+        <h1>{{ title }}</h1>
+        <p class="sub">{{ subtitle }}</p>
+        <pre>{{ body }}</pre>
+      </div>
+    </div>
+  </body>
+</html>

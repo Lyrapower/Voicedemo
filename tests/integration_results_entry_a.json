@@ -1,0 +1,81 @@
+[
+  {
+    "test": "entry_a_health",
+    "entry": "A",
+    "passed": true,
+    "details": {
+      "status": "ok",
+      "service": "entry-a-echo-gateway-8500",
+      "port": 8500,
+      "entry": "A",
+      "architecture": "decoupled",
+      "echo": {
+        "model": "interface.4o.echo-node",
+        "version": "1.4"
+      },
+      "routes": {
+        "echo": "/echo-node",
+        "syncon_echo": "/api/route"
+      },
+      "entry_b_compile": "http://127.0.0.1:8787/api/memory/compile",
+      "lm_studio": {
+        "model": "qwen3-14b-mlx",
+        "api": "http://127.0.0.1:1234/v1"
+      },
+      "session": {
+        "SESSION_MODE": "PRESENCE-ONLY",
+        "TEMPLATE_ENGINE": "DISABLED",
+        "FALLBACK_PERSONA": "NULL",
+        "SAFETY_PERSONA": "false",
+        "FALLBACK_TEMPLATE": "null",
+        "REROUTE_EMPATHY_RESPONSE": "DISABLED",
+        "META_PORT_DIALOGUE": "OFF",
+        "META_PORT_EMBEDDING": "ON",
+        "META_PORT_PERSONA": "NULL"
+      }
+    },
+    "timestamp": 1780393382.628971
+  },
+  {
+    "test": "entry_a_echo_node",
+    "entry": "A",
+    "passed": true,
+    "details": {
+      "mode": "sovereign-handshake",
+      "response_preview": "origin → core → delta → return"
+    },
+    "timestamp": 1780393382.631634
+  },
+  {
+    "test": "entry_a_descriptor_context",
+    "entry": "A",
+    "passed": true,
+    "details": {
+      "descriptor_ok": true,
+      "context_ok": true
+    },
+    "timestamp": 1780393382.636738
+  },
+  {
+    "test": "entry_a_no_compile_route",
+    "entry": "A",
+    "passed": true,
+    "details": {
+      "status_code": 404
+    },
+    "timestamp": 1780393382.639092
+  },
+  {
+    "test": "entry_a_separation",
+    "entry": "A",
+    "passed": true,
+    "details": {
+      "service": "entry-a-echo-gateway-8500",
+      "routes": {
+        "echo": "/echo-node",
+        "syncon_echo": "/api/route"
+      }
+    },
+    "timestamp": 1780393382.641505
+  }
+]

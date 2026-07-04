@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Trippack Dev — database needed</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; max-width: 720px; line-height: 1.45; color: #101828; background: #f6f3ee; }
+    code, pre { background: #fff; border: 1px solid #ddd; padding: 2px 6px; border-radius: 4px; }
+    pre { padding: 12px; overflow: auto; }
+    a { color: #082f49; }
+  </style>
+</head>
+<body>
+  <h1>Trippack — Dev workbench could not load</h1>
+  <p>Usually the <strong>SQLite file is not migrated or not writable</strong> (see below), or a DB query failed. Default dev DB: <code>trippack_api/data/dev.db</code>.</p>
+  <h2>Fix</h2>
+  <ol>
+    <li>From <code>trippack_api/</code>: <code>mkdir -p data</code> and <code>alembic upgrade head</code></li>
+    <li>Default (no <code>DATABASE_URL</code>): <code>sqlite:///data/dev.db</code> when started from <code>trippack_api/</code></li>
+    <li>Restart the API: <code>bash scripts/run_dev.sh</code> (from repo root)</li>
+  </ol>
+  <p><a href="/health">GET /health</a> (no database required) should return JSON <code>{"ok": true, ...}</code>.</p>
+  <p>Then reload this page.</p>
+  {% if err %}<h2>Technical detail</h2><pre>{{ err|e }}</pre>{% endif %}
+</body>
+</html>

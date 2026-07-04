@@ -1,0 +1,113 @@
+{
+ "symbols": {
+  "^SOX": {
+   "rows": 1255,
+   "start": "2021-07-02",
+   "end": "2026-07-02",
+   "missing_open_close_rows": 0,
+   "degenerate_opens_pct": 0.0008,
+   "extreme_gaps_excluded": [],
+   "suspected_corp_actions": []
+  },
+  "SMH": {
+   "rows": 1255,
+   "start": "2021-07-02",
+   "end": "2026-07-02",
+   "missing_open_close_rows": 0,
+   "degenerate_opens_pct": 0.0,
+   "extreme_gaps_excluded": [],
+   "suspected_corp_actions": []
+  },
+  "ENTG": {
+   "rows": 1255,
+   "start": "2021-07-02",
+   "end": "2026-07-02",
+   "missing_open_close_rows": 0,
+   "degenerate_opens_pct": 0.0,
+   "extreme_gaps_excluded": [],
+   "suspected_corp_actions": []
+  },
+  "MKSI": {
+   "rows": 1255,
+   "start": "2021-07-02",
+   "end": "2026-07-02",
+   "missing_open_close_rows": 0,
+   "degenerate_opens_pct": 0.0016,
+   "extreme_gaps_excluded": [],
+   "suspected_corp_actions": []
+  },
+  "ONTO": {
+   "rows": 1255,
+   "start": "2021-07-02",
+   "end": "2026-07-02",
+   "missing_open_close_rows": 0,
+   "degenerate_opens_pct": 0.0016,
+   "extreme_gaps_excluded": [
+    {
+     "date": "2025-05-09",
+     "gap": -0.2122
+    }
+   ],
+   "suspected_corp_actions": [
+    {
+     "date": "2025-05-09",
+     "cc_ret": -0.3021
+    }
+   ]
+  },
+  "AMKR": {
+   "rows": 1255,
+   "start": "2021-07-02",
+   "end": "2026-07-02",
+   "missing_open_close_rows": 0,
+   "degenerate_opens_pct": 0.0088,
+   "extreme_gaps_excluded": [
+    {
+     "date": "2024-10-29",
+     "gap": -0.1537
+    },
+    {
+     "date": "2025-07-29",
+     "gap": 0.155
+    }
+   ],
+   "suspected_corp_actions": []
+  },
+  "POWI": {
+   "rows": 1255,
+   "start": "2021-07-02",
+   "end": "2026-07-02",
+   "missing_open_close_rows": 0,
+   "degenerate_opens_pct": 0.0056,
+   "extreme_gaps_excluded": [],
+   "suspected_corp_actions": []
+  },
+  "NOVT": {
+   "rows": 1255,
+   "start": "2021-07-02",
+   "end": "2026-07-02",
+   "missing_open_close_rows": 0,
+   "degenerate_opens_pct": 0.0016,
+   "extreme_gaps_excluded": [
+    {
+     "date": "2025-05-06",
+     "gap": -0.1745
+    }
+   ],
+   "suspected_corp_actions": []
+  },
+  "WTS": {
+   "rows": 1255,
+   "start": "2021-07-02",
+   "end": "2026-07-02",
+   "missing_open_close_rows": 0,
+   "degenerate_opens_pct": 0.0016,
+   "extreme_gaps_excluded": [],
+   "suspected_corp_actions": []
+  }
+ },
+ "skipped": [
+  "CSWI"
+ ],
+ "sox_status": "ok"
+}

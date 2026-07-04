@@ -1,0 +1,15 @@
+{
+  "reasoning_content": "The model's hidden reasoning leaked here and must not reach Aster.",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "The model's hidden reasoning leaked here and must not reach Aster."
+    }
+  ],
+  "think_blocks": [
+    "<think>This should also be stripped.</think>"
+  ],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T01:33:49.412506+00:00"
+}

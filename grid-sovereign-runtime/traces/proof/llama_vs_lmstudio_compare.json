@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-07-02T12:07:00.876859+00:00",
+  "mode": "compare_no_switch",
+  "lm_studio": {
+    "base": "http://127.0.0.1:1234/v1",
+    "overall": "FAIL",
+    "pass_count": 5,
+    "fail_count": 4,
+    "reasoning_leak": true
+  },
+  "llama_cpp": {
+    "base": "http://127.0.0.1:1235/v1",
+    "overall": "FAIL",
+    "pass_count": 2,
+    "fail_count": 3,
+    "reasoning_leak": false
+  },
+  "winner": "neither",
+  "switch_ready": false,
+  "note": "switch_ready=true only when llama compare port passes all probes with no reasoning leak; gateway unchanged until manual cutover"
+}

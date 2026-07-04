@@ -1,0 +1,16 @@
+{
+  "name": "aster",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Aster tab → Grid Sovereign Gateway :8501 (identity + served_by)",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --outfile=.lmstudio/production.js --format=cjs"
+  },
+  "dependencies": {
+    "@lmstudio/sdk": "1.4.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "served_by": "gateway-v4.11",
+  "route_id": "0985af94-d22b-4a9e-86cc-e25e0dd7975c",
+  "ts": 1783040203.6877608,
+  "id": "chatcmpl-0985af94-d22b-4a9e-86cc-e25e0dd7975c",
+  "object": "chat.completion",
+  "created": 1783040203,
+  "model": "qwen/qwen3.5-9b",
+  "truncated": false,
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "露水是星星掉进菜篮里，还没来得及擦干的眼泪。"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 120,
+    "completion_tokens": 17,
+    "total_tokens": 137,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "content_tokens": 17
+    }
+  },
+  "grid_meta": {
+    "route_class": "unsafe_debug",
+    "production": false,
+    "blocked": false,
+    "routed_to": "unsafe_debug:compat",
+    "computed_verdict": "DRAFT_ECHO",
+    "draft_only": true,
+    "reason": null,
+    "upstream_finish_reason": "stop",
+    "truncated": false,
+    "substrate_usage": {
+      "finish_reason": "stop",
+      "truncated": false,
+      "prompt_tokens": 120,
+      "completion_tokens": 17,
+      "reasoning_tokens": 0,
+      "content_tokens": 17
+    },
+    "max_tokens_sent": 400,
+    "budget_route": "chat"
+  }
+}

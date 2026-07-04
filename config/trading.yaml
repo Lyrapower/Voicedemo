@@ -1,0 +1,29 @@
+external_signals_enabled: false
+tradingview_webhook_enabled: false
+tradingview_shared_secret_env: JARVIS_TV_WEBHOOK_SECRET
+public_webhook_url: ""
+
+core_pool:
+  - MU
+  - AMD
+  - IREN
+
+excluded:
+  - TSLA
+
+replacement_watchlist:
+  - NBIS
+  - PR
+  - APLD
+  - LITE
+
+build_radar:
+  - STM
+  - ON
+
+rvol_min: 1.5
+iv_rank_max: 75
+max_trades_per_week: 3
+upload_retention_hours: 72
+manual_execution_only: true
+broker_execution: false

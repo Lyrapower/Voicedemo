@@ -1,0 +1,31 @@
+{
+  "hosts": {
+    "sovereign-mac": "100.72.135.23"
+  },
+  "tagOwners": {
+    "tag:sovereign-mac": ["autogroup:admin"],
+    "tag:mobile-client": ["autogroup:admin"]
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["autogroup:admin"],
+      "dst": ["*:*"]
+    },
+    {
+      "action": "accept",
+      "src": ["tag:mobile-client", "autogroup:members"],
+      "dst": ["sovereign-mac:443", "tag:sovereign-mac:443"]
+    }
+  ],
+  "tests": [
+    {
+      "src": "tag:mobile-client",
+      "accept": ["sovereign-mac:443"]
+    },
+    {
+      "src": "tag:mobile-client",
+      "deny": ["sovereign-mac:8501", "sovereign-mac:1234"]
+    }
+  ]
+}

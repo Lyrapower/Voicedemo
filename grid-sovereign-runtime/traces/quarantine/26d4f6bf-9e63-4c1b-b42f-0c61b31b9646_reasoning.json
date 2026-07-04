@@ -1,0 +1,13 @@
+{
+  "reasoning_content": "internal plan hidden\n{\"intent\":\"compile\",\"deliverable\":\"clean\",\"boundary\":\"none\",\"allowed\":[\"x\"],\"forbidden\":[],\"actions\":[],\"verification\":\"ok\",\"unknowns\":[],\"requires_confirmation\":false}\n---HUMAN_ECHO---\nshort echo",
+  "reasoning": null,
+  "reasoning_fields": [
+    {
+      "path": "$.choices[0].message.reasoning_content",
+      "value": "internal plan hidden\n{\"intent\":\"compile\",\"deliverable\":\"clean\",\"boundary\":\"none\",\"allowed\":[\"x\"],\"forbidden\":[],\"actions\":[],\"verification\":\"ok\",\"unknowns\":[],\"requires_confirmation\":false}\n---HUMAN_ECHO---\nshort echo"
+    }
+  ],
+  "think_blocks": [],
+  "had_reasoning_leak": true,
+  "sanitized_at": "2026-07-02T01:44:39.235573+00:00"
+}

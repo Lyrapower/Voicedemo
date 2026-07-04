@@ -1,0 +1,60 @@
+{
+  "run_id": "2d9a5dcb-6f77-4691-b808-545ecd0cd445",
+  "task_id": "aether.snapshot.readonly",
+  "ts": "2026-07-02T03:59:20Z",
+  "status": "PASS",
+  "permission": "signal_only",
+  "dry_run": true,
+  "artifacts": [
+    "logs/jarvis_tasks/proof_log.jsonl",
+    "deliver/proof/jarvis/aether_snapshot_latest.json"
+  ],
+  "detail": {
+    "snapshot": {
+      "available": true,
+      "read_only": true,
+      "execution_blocked": true,
+      "ib_auto_execution": false,
+      "commands_dir_write": false,
+      "ts": "2026-07-02T03:59:20Z",
+      "aether_version_hint": "R5.4.1",
+      "status": {
+        "connected": false,
+        "is_live": false,
+        "live_trading_enabled": false,
+        "heartbeat": "2026-07-01T23:59:19.408166-04:00",
+        "pid": 72077
+      },
+      "candidates": {
+        "scan_timestamp": "2026-07-01T15:30:19.810150-04:00",
+        "source": "dryrun_bfs",
+        "row_count": 0,
+        "symbols": []
+      },
+      "dryrun_signals": {
+        "count": 23,
+        "latest_scan_time": "2026-07-01T15:30:19.810150-04:00",
+        "candidate_count": 0,
+        "top_symbols": [],
+        "top_pick": null
+      },
+      "pool_signals_meta": {
+        "count": 18,
+        "latest_scan_time": "2026-07-01T15:21:17.966751-04:00",
+        "candidate_count": 0,
+        "top_symbols": [],
+        "top_pick": null
+      },
+      "data_health": {},
+      "validation": {
+        "daemon_connected": false,
+        "live_trading_enabled": false,
+        "jarvis_merged_execution": false,
+        "policy": "signal_only — manual execution on Jarvis; no IB orders from platform_main"
+      },
+      "sidecar_note": "Aether daemon/dashboard remain sidecar processes (:8510). Jarvis reads JSON only."
+    },
+    "artifact": "deliver/proof/jarvis/aether_snapshot_latest.json",
+    "dry_run": true
+  }
+}

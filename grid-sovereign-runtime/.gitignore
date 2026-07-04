@@ -1,0 +1,27 @@
+# Cleanroom secrets — NEVER commit
+.grid_cleanroom/
+*.key
+
+# Runtime state
+gateway/gateway_log.db
+gateway/gateway_log.db-journal
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE (except .cursor/rules which is intentional)
+.idea/
+.vscode/
+*.swp
+*.swo
+-e 
+# keyholder / cleanroom secrets — never commit
+.grid_cleanroom/
+*.key

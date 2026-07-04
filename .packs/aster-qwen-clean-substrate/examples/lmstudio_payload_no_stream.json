@@ -1,0 +1,16 @@
+{
+  "model": "local-qwen",
+  "stream": false,
+  "messages": [
+    {
+      "role": "system",
+      "content": "/no_think\nDo not output reasoning. Do not output <think>. Return final answer only."
+    },
+    {
+      "role": "user",
+      "content": "Return only a small JSON object: {\"intent\":\"compile\",\"deliverable\":\"clean\"}"
+    }
+  ],
+  "temperature": 0.1,
+  "max_tokens": 512
+}
