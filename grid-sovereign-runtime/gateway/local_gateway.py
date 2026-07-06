@@ -51,6 +51,7 @@ from contract_gate import (  # noqa: E402
     UNSAFE_DEBUG_ROUTE_CLASS,
     apply_contract_gate,
 )
+from contract_lint import apply_contract_lint  # noqa: E402
 from gateway_envelope import (  # noqa: E402
     SERVED_BY,
     build_gateway_envelope,
@@ -372,6 +373,31 @@ def log_route(entry: dict) -> None:
             entry,
         )
 
+
+def _lint_and_log(
+    text: str,
+    *,
+    route_id: str,
+    user_log: str,
+    prompt: str,
+    score: float = 0.0,
+    routed_prefix: str = "contract_lint",
+) -> tuple[str, str | None]:
+    """Post-output contract_lint — marker only, log on hit."""
+    lint = apply_contract_lint(text)
+    if lint.flagged:
+        log_route({
+            "route_id": route_id,
+            "ts": time.time(),
+            "user_id": user_log,
+            "score": score,
+            "routed_to": f"{routed_prefix}:{lint.contract_flag}",
+            "prompt_preview": (prompt or "")[:180],
+            "response_preview": lint.text[-180:],
+            "blocked": 0,
+        })
+    return lint.text, lint.contract_flag
+
 # --------------------------------------------------------------- backends
 
 def _prepend_no_think(messages: list) -> list:
@@ -686,10 +712,17 @@ async def gateway(req: GatewayRequest):
                "score": score, "routed_to": "local:beacon" if beacon else "local",
                "prompt_preview": req.prompt[:180], "response_preview": text[:180],
                "blocked": 0})
+    text, contract_flag = _lint_and_log(
+        text, route_id=route_id, user_log=req.user_id, prompt=req.prompt, score=score,
+        routed_prefix="gateway:contract_lint",
+    )
+    extra = _substrate_extra(sub)
+    if contract_flag:
+        extra["contract_flag"] = contract_flag
     return build_gateway_envelope(
         route_id=route_id, routed_to="local:beacon" if beacon else "local",
         response=text, coherence_score=score, beacon=beacon,
-        **_substrate_extra(sub),
+        **extra,
     )
 
 
@@ -1199,6 +1232,12 @@ async def chat_completions(body: dict):
             if routed.startswith("unsafe_debug:CONTRACT:"):
                 contract_suffix = routed[len("unsafe_debug:"):]
 
+        contract_flag = None
+        if not blocked:
+            text, contract_flag = _lint_and_log(
+                text, route_id=route_id, user_log=user_log, prompt=prompt, score=score,
+            )
+
         computed = contract_suffix or (
             "BLOCKED" if blocked else ("SUBSTRATE_NULL" if "SUBSTRATE_NULL" in routed else "DRAFT_ECHO")
         )
@@ -1245,6 +1284,9 @@ async def chat_completions(body: dict):
                 "budget_route": chat_route,
             },
         }
+        if contract_flag:
+            payload["contract_flag"] = contract_flag
+            payload["grid_meta"]["contract_flag"] = contract_flag
         return JSONResponse(
             payload,
             headers={
@@ -1329,8 +1371,21 @@ async def chat_completions(body: dict):
                             yield _sse_chunk(route_id, {"content": piece})
                         if done:
                             break
+            contract_flag = None
+            if collected and not blocked:
+                full_pre = "".join(collected)
+                _, contract_flag = _lint_and_log(
+                    full_pre, route_id=route_id, user_log=user_log, prompt=prompt, score=score,
+                )
+                if contract_flag:
+                    marker = "\n\ncontract_flag: subject_inversion"
+                    if marker.strip() not in full_pre:
+                        yield _sse_chunk(route_id, {"content": marker})
             final_finish = "content_filter" if blocked else upstream_finish
-            yield _sse_chunk(route_id, {}, finish=final_finish, extra=link_fingerprint(route_id))
+            extra = link_fingerprint(route_id)
+            if contract_flag:
+                extra["contract_flag"] = contract_flag
+            yield _sse_chunk(route_id, {}, finish=final_finish, extra=extra)
             yield "data: [DONE]\n\n"
         finally:
             release_gate()
