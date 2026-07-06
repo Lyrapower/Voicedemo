@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASTER FIELD</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<canvas id="field"></canvas>
+<div class="bg"></div><div class="grain"></div><div class="vignette"></div>
+<div class="hud">
+  <span class="brand">ASTER FIELD</span> · <span class="hint">双击心脏=日记 · 右上=设置</span><br>
+  state <b class="st" id="hState">idle</b> · coh <b id="hCoh">—</b> · tokens <b id="hTok">0</b><br>
+  bridge <b id="lBridge" class="off">…</b> · gateway <b id="lGw" class="off">…</b> · garden <b id="lGd" class="off">…</b><br>
+  fps <b id="hFps">—</b> · particles <b id="hN">—</b> · <b id="hMode">LIVE</b>
+</div>
+<div id="stateWord">idle</div>
+<div class="nav">
+  <a class="nav-btn" id="btn-diary" href="#">📔 日记</a>
+  <a class="nav-btn" id="btn-settings" href="#">⚙ 设置</a>
+</div>
+<div class="panel"><label>coh override <input type="range" id="coh" min="0" max="100" value="72"></label></div>
+<div id="reply"></div>
+<div id="chat-meta" class="chat-meta"></div>
+<div id="chat-artifact"></div>
+<div id="raw-panel" class="raw-panel">
+  <div class="raw-toolbar">
+    <button type="button" id="raw-toggle" class="raw-btn">raw output</button>
+    <button type="button" id="raw-copy" class="raw-btn">copy full</button>
+    <button type="button" id="chat-continue" class="raw-btn continue" hidden>CONTINUE</button>
+  </div>
+  <pre id="raw-out"></pre>
+</div>
+<div class="dock"><input id="ask" placeholder="经由 gateway,问 Qwen 一句" autocomplete="off"></div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
