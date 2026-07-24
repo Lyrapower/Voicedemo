@@ -1,0 +1,2007 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#06070E">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>AETHER</title>
+<!--
+V2 变更 (相对 V1):
+  [1] lastId 从"全部返回事件"推进(不再只看过滤后的 aether 事件) — 修复混源 store 下的
+      重复拉取与 limit 窗口饿死。同时请求带 ?source=aether, daemon 支持则服务端过滤省流量,
+      不支持则忽略, 客户端过滤仍在, 双保险。
+  [2] cache 合并按 id 去重。
+  [3] 401 与断网区分: token 无效不再伪装成 offline。
+  [4] esc() 补引号转义(" ') — 云端 offpool 文本进 DOM 的唯一路径彻底焊死, 入渲染留硬边。
+  [5] 日期本地化: 简报缺省日期与场外日期改用本地时区, 修复盘后简报 UTC 跳日。
+  [6] stamp 长按(800ms)清空本地缓存并从 id=0 重拉 — 应对 daemon 换库/id 归零。
+  [7] V2.1: 空扫描不再隐身。rows 为空时渲染状态行: 校验失败(status!=ok)或
+      universe=0 显示琥珀, 健康零命中显示灰色。配套 daemon 侧契约扩展:
+      空结果也 emit aether_scan, payload 带 universe_size 与 status("ok"/"integrity_fail")。
+  [8] V2.2: 双对比落地。offpool 标的自动对照 grid 侧(最新 scan rows + 盘前 brief items),
+      重合的 sym 打紫色 ×grid 收敛标(跨基底收敛信号); daemon 标记 in_pool:true 的
+      漏网标的打红色 pool! 标。隔离仍是硬的: 只做标记, 账本与信号路径零合并。
+  [10] V2.4: 场外 CC CLI — sonnet-4.6 单 lane aether_offpool（opus 已移除）。
+  [11] V2.7: TRADING / CRYPTO 双 Tab — 分区渲染, compactCache 按 kind 保留,
+      避免 paper_wallet 心跳挤掉 scan/brief。
+  [12] V2.7.1 CRYPTO patch — cli 未初始化统一显示; bg 锚定 BTC B&H;
+      A/B 契约/差异标注; FILTER fmtNum; crypto tab 复用 offpool 纪律。
+  [13] V2.7.2 — 默认 TRADING tab; hash 路由; poll 始终 render; 缺 scan/brief 强制回填。
+
+  Tab TRADING: 异动 · 简报 · SCAN · FILTER · 场外 · equity paper mock
+  Tab CRYPTO:  crypto_rules/cli paper · A/B · PAPER DAILY
+
+═══ daemon 侧 offpool 管线 SPEC (Cursor 实现, 页面接收端已全部就绪) ═══
+  目标: CC CLI 调 Sonnet 每日 screen top 3 场外候选, 严格 pool 外, 双重排除。
+  管线: cron(盘前) → 组装 prompt → CC CLI 调 Sonnet/Fable
+        → 后置过滤 → emit aether_offpool → 页面渲染。
+  1. prompt 侧排除(软): prompt 中注入当前 pool 完整清单, 要求候选不得与之重合,
+     每个候选给"为什么今天+风险一句", 输出 JSON 数组 [{sym,value,note,dir}]。
+  2. 后置过滤(硬边界, 不可省): 拿到结果后逐个对照 pool 集合。
+     - 命中 pool → 二选一: 丢弃, 或保留但打 in_pool:true 发出(页面亮红 pool! 标,
+       留作 Sonnet 服从性的观察数据)。推荐后者, 漏网率本身是信号。
+     - prompt 是请求, 过滤才是边界。只靠 1 不算隔离。
+  3. 出网: CC CLI only (`claude -p`), CC_CLI_EXECUTION_FROZEN=1, 无 :8503 egress。
+  4. emit 契约: {"source":"aether","kind":"aether_offpool","payload":{
+       "model":"sonnet-5","items":[{"sym":"XYZ","value":"多·[试探性]",
+         "note":"理由+风险","dir":1,"in_pool":false}]}}
+  5. 不变量: offpool 结果永不写入 pool、永不进 scan 信号路径、账本独立统计。
+     页面侧 ×grid 收敛标只是视觉对照, 不构成任何数据合并。
+═══════════════════════════════════════════════════════════════════
+
+事件契约 (daemon 侧 emit 到 /store/events):
+  盘后简报: {"source":"aether","kind":"aether_brief","payload":{
+    "date":"2026-07-07","title":"盘后摘要",
+    "body":"多行文本…",
+    "items":[{"sym":"NVDA","label":"gamma/theta","value":"3.2","note":"财报前","dir":1}]}}
+  扫描命中: {"source":"aether","kind":"aether_scan","payload":{
+    "rows":[{"sym":"ASML","score":8.4,"note":"perilla·供应瓶颈","dir":-1,
+             "flag":true,"src":"ind"}]}}
+  过滤摘要 (R5.4.x logging-first, RejectionLogger.summary() 直投):
+    {"source":"aether","kind":"aether_filter","payload":{
+      "kill_counts":{"spread":41,"iv_pctile":17},
+      "near_miss_top":[{"symbol":"AMD","score":52.1,"kill_rule":"theta_band",
+                        "kill_value":0.034,"threshold_at_kill":0.03,
+                        "quote_source":"indicative"}]}}
+  异动 (momentum watcher, 只报异动不报建仓):
+    {"source":"aether","kind":"aether_momentum","payload":{
+      "rows":[{"sym":"SMCI","note":"放量3.2x·价破20d·期权异动","dir":1}]}}
+  场外候选 (CC CLI/Sonnet 每日top3, off-pool, 与Grid编译严格隔离):
+    {"source":"aether","kind":"aether_offpool","payload":{
+      "model":"sonnet-5","items":[{"sym":"XYZ","value":"多·[试探性]",
+        "note":"为什么今天+风险一句","dir":1}]}}
+    · 账本永不与Grid合并统计 · 只report不入信号路径 · CC CLI 留 cost 审计
+  Paper 虚拟钱包 (Grid/Aster scan → mock enter, 与 IB 隔离):
+    {"source":"aether","kind":"aether_paper_wallet","payload":{
+      "label":"PAPER · $1000 mock","cash":751.58,"equity":1000,"start_equity":1000,
+      "return_pct_background":0,"exposure_pct":0.25,"broker_execution":false,
+      "positions":[{"sym":"TSLA","qty":1.2,"entry":393,"mark":395,"stop":334,"upnl":2.4}]}}
+    {"source":"aether","kind":"aether_paper_fill","payload":{
+      "action":"enter","symbol":"TSLA","allowed":true,"broker_execution":false,
+      "want_pct":0.15,"risk_note":"ok","reason":"grid_scan:sp500:..."}}
+  行字段: dir 1涨(绿)/-1跌(红)/缺省中性 · flag true=偏离带内被标记未杀(琥珀)
+          src "rt"成交源/"ind"指示报价 — greek 证据等级一眼可辨
+页面只读 store, 不直连任何行情源 — 数据的事实源是 daemon。
+-->
+<style>
+:root{
+  --mo:#06070E; --wen:#E3E5F2; --hui:#9BA0BC; --an:#7A7F9E;
+  --muted:#B4B8D4; --subtle:#8E93B0;
+  --jie:rgba(140,138,200,.14); --zi:#9B9ED0;
+  --up:#5AD19A; --dn:#CF6B6B;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --sans:-apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--mo);color:var(--wen);
+  font:15px/1.75 var(--sans);-webkit-font-smoothing:antialiased}
+body{background-image:radial-gradient(130% 40% at 50% -8%,#141534 0%,rgba(20,21,52,0) 60%)}
+#app{max-width:680px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;
+  padding:calc(12px + env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom))}
+
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;gap:8px}
+#status-compact{font:10.5px var(--mono);color:var(--hui);letter-spacing:.03em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;cursor:pointer}
+#status-compact .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin:0 3px 0 1px;vertical-align:1px}
+#status-compact .dot.ok{background:#5AD19A}
+#status-compact .dot.stale{background:#CF8B6B}
+#status-compact .dot.off{background:#4A4E6A}
+#mark{display:none}
+#stamp{font:10.5px var(--mono);color:var(--an);letter-spacing:.05em;cursor:pointer;
+  user-select:none;-webkit-user-select:none}
+#conn{max-height:0;overflow:hidden;transition:max-height .25s}
+#conn.open{max-height:60px}
+#conn input{display:block;width:100%;background:none;border:none;outline:none;
+  color:var(--hui);font:11px var(--mono);padding:3px 0}
+
+/* 简报 */
+.brief{margin:22px 0 8px}
+.bdate{font:10.5px var(--mono);color:var(--an);letter-spacing:.12em}
+.bdate .block-ts{float:right;margin-left:8px;color:var(--subtle);letter-spacing:.04em}
+.btitle{font:500 17px var(--sans);letter-spacing:.02em;margin:2px 0 10px;
+  text-shadow:0 0 20px rgba(180,183,235,.25)}
+.bbody{white-space:pre-wrap;word-break:break-word;color:#D8DBEF;font-size:14.5px}
+
+/* 数据行: 报纸行情感, 等宽数字 */
+table{width:100%;border-collapse:collapse;margin:8px 0 2px;font-variant-numeric:tabular-nums}
+table.compact td{padding:4px 8px 4px 0;font-size:12.5px;line-height:1.35}
+table.compact th{padding:0 8px 4px 0}
+th{font:10px var(--mono);color:var(--subtle);letter-spacing:.1em;text-align:left;
+  font-weight:500;padding:0 8px 6px 0;border-bottom:1px solid var(--jie)}
+td{padding:5px 8px 5px 0;border-bottom:1px solid rgba(140,138,200,.07);
+  font-size:13px;vertical-align:top;color:var(--wen)}
+td.sym{font:500 14px var(--mono);letter-spacing:.03em;white-space:nowrap}
+td.val{font:13.5px var(--mono);white-space:nowrap}
+td.note{color:var(--muted);font-size:12.5px}
+td.notice{font:12px var(--mono);color:#CF8B6B;white-space:pre-wrap;
+  word-break:break-word;padding:8px 0}
+.up{color:var(--up)} .dn{color:var(--dn)} .fl{color:#E0B453}
+.tag{display:inline-block;font:9px var(--mono);color:var(--an);
+  border:1px solid var(--jie);border-radius:4px;padding:0 4px;
+  margin-left:6px;vertical-align:1px;letter-spacing:.05em}
+.tag.rt{color:#5AD19A;border-color:rgba(90,209,154,.3)}
+.tag.cloud{color:#E0B453;border-color:rgba(224,180,83,.35)}
+.tag.conv{color:#9B9ED0;border-color:rgba(155,158,208,.4)}     /* 跨基底收敛 */
+.tag.warn{color:#CF6B6B;border-color:rgba(207,107,107,.4)}     /* in-pool 漏网 */
+
+/* Paper 钱包: 青绿左界 — mock 账本, 与真实 IB 永不等价 */
+.paper{border-left:2px solid rgba(90,209,154,.35);padding-left:12px;margin-top:8px}
+.paper .bdate{color:#5AD19A}
+.paper-meta{font:11px var(--mono);color:var(--hui);margin:4px 0 8px}
+.paper-meta b{color:#5AD19A;font-weight:500}
+.paper-lane-mismatch{border-top:1px dashed rgba(224,180,83,.45);padding-top:6px;margin-top:10px}
+.paper-lane-age{font:10px var(--mono);color:#E0B453;margin:0 0 6px;letter-spacing:.04em}
+.paper.lane-age-split{border-left-color:rgba(224,180,83,.55)}
+
+/* 场外区: 琥珀左界硬隔离 — 云端发现与本地编译, 视觉上永不混淆 */
+.offpool{border-left:2px solid rgba(224,180,83,.4);padding-left:12px}
+.offpool .bdate{color:#B08A45}
+.offpool-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0 4px}
+.offpool-col{min-width:0}
+.day-section{margin:16px 0 10px}
+.day-section.stale-day{opacity:.72}
+.section-head{font:10.5px var(--mono);color:var(--zi);letter-spacing:.14em;margin:0 0 8px;padding-bottom:6px;border-bottom:1px solid var(--jie)}
+.day-section.stale-day .section-head{color:var(--an)}
+.e4b-line{font:11px var(--mono);color:var(--muted);letter-spacing:.03em;margin:8px 0 2px;line-height:1.55}
+.e4b-line.e4b-insufficient{color:#CF8B6B}
+.e4b-line.e4b-insufficient .e4b-dim{color:var(--muted);opacity:.55}
+.offpool-col .lane-meta{font:10px var(--mono);color:var(--muted);margin:4px 0 6px;letter-spacing:.04em}
+.offpool-col .lane-meta b{color:#8B8FB8;font-weight:500}
+.stale-banner{font:11px var(--mono);color:#CF8B6B;background:rgba(207,139,107,.12);
+  border:1px solid rgba(207,139,107,.35);border-radius:6px;padding:8px 10px;margin:0 0 10px}
+.crossday-warn{font:11px var(--mono);color:#E0B453;background:rgba(224,180,83,.1);
+  border:1px solid rgba(224,180,83,.35);border-radius:6px;padding:8px 10px;margin:0 0 10px}
+.brief.data-stale,.offpool-col.data-stale{opacity:.45}
+.no-factor{font:9px var(--mono);color:var(--muted);opacity:.72;margin-left:6px;letter-spacing:.02em}
+.trading-block.stale-fold{margin:0 0 12px}
+.trading-block.stale-fold summary{font:11px var(--mono);color:var(--muted);cursor:pointer;padding:8px 10px;
+  border:1px solid rgba(139,143,184,.28);border-radius:6px;list-style:none}
+.trading-block.stale-fold[open] summary{margin-bottom:8px;border-color:rgba(139,143,184,.4)}
+@media(max-width:640px){
+  .offpool-row{flex-direction:column;gap:14px}
+}
+#pipe-bar{font:10px var(--mono);color:var(--hui);margin:4px 0 6px;letter-spacing:.04em;line-height:1.5}
+#pipe-bar.stale{color:#CF8B6B}
+.pipe-fold{margin:0 0 6px}
+.pipe-fold summary{font:9.5px var(--mono);color:var(--an);cursor:pointer;letter-spacing:.06em}
+.block-ts{font:10px var(--mono);color:var(--an);letter-spacing:.04em;white-space:nowrap}
+.paper-log summary{font:10px var(--mono);color:var(--an);cursor:pointer;margin:4px 0}
+.tag.w8520{color:#8FD8E8;border-color:rgba(143,216,232,.35)}
+#tabs button[data-tab="watcher"].active{background:rgba(143,216,232,.12);color:#8FD8E8}
+.watcher-head{font:11px var(--mono);letter-spacing:.06em;padding:10px 12px;margin:0 0 12px;
+  border:1px solid var(--jie);border-radius:8px;color:var(--hui)}
+.watcher-head.ok{color:#8FD8E8;border-color:rgba(143,216,232,.35);background:rgba(143,216,232,.06)}
+.watcher-head.warn{color:#E0B453;border-color:rgba(224,180,83,.35);background:rgba(224,180,83,.08)}
+.watcher-head.bad{color:#CF8B6B;border-color:rgba(207,107,107,.35);background:rgba(207,107,107,.08)}
+.watcher-card{font:12px var(--sans);border-left:2px solid rgba(143,216,232,.35);padding:8px 0 8px 12px;margin:0 0 10px}
+.watcher-card.warn{border-left-color:rgba(224,180,83,.55)}
+.watcher-card.bad{border-left-color:rgba(207,107,107,.55)}
+.watcher-card .wh{font:10px var(--mono);color:var(--an);margin-bottom:4px}
+.watcher-card .wb{white-space:pre-wrap;line-height:1.5;color:var(--wen)}
+.watcher-hint{font:11px var(--mono);color:var(--an);margin:18vh auto 0;text-align:center}
+.trace-chip{font:10px var(--mono);color:#8B8FB8;cursor:pointer;border-bottom:1px dashed var(--jie);
+  word-break:break-all;display:inline-block;margin-top:6px}
+.tag.cached{color:#E0B453;border-color:rgba(224,180,83,.35)}
+.tag.consensus{color:#9ED7B2;border-color:rgba(158,215,178,.45)}
+.not-selected{opacity:.62}
+#dry-toggle{font:10px var(--mono);color:var(--hui);margin-left:8px;cursor:pointer;user-select:none}
+#brief-modal{position:fixed;inset:0;background:rgba(6,7,14,.92);z-index:99;display:none;
+  flex-direction:column;padding:calc(12px + env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom))}
+#brief-modal.open{display:flex}
+#brief-modal .close{align-self:flex-end;font:11px var(--mono);color:var(--hui);cursor:pointer;margin-bottom:8px}
+#brief-modal .btitle{font:500 18px var(--sans);margin-bottom:12px}
+#brief-modal .bbody{flex:1;overflow:auto;white-space:pre-wrap;font-size:15px;line-height:1.7}
+@media (max-width:640px){.offpool-row{grid-template-columns:1fr}}
+
+/* 过滤分布: 一行式计数 */
+.kills{font:11px var(--mono);color:var(--muted);letter-spacing:.04em;margin:6px 0 2px}
+.earnings{border-left:2px solid rgba(155,158,208,.55);padding-left:12px;margin:14px 0}
+.earnings .bdate{color:#9B9ED0}
+.earnings-warn{font:11px var(--mono);color:#CF6B6B;background:rgba(207,107,107,.14);
+  border:1px solid rgba(207,107,107,.45);border-radius:6px;padding:8px 10px;margin:0 0 10px}
+.layer-evidence,.layer-diag{margin:10px 0}
+.layer-evidence summary,.layer-diag summary{color:var(--subtle)}
+.diag-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#CF6B6B;
+  margin-left:6px;vertical-align:middle}
+.kills b{color:#8B8FB8;font-weight:500}
+
+/* 异动: 时效流 */
+.mmt td{padding:6px 8px 6px 0}
+.mtime{font:10px var(--mono);color:var(--an)}
+
+/* 折叠的历史 */
+details{margin-top:18px;border-top:1px solid var(--jie);padding-top:10px}
+summary{font:10.5px var(--mono);color:var(--an);letter-spacing:.12em;cursor:pointer;
+  list-style:none;-webkit-user-select:none}
+summary::-webkit-details-marker{display:none}
+.old{margin:14px 0;color:var(--hui);font-size:13px}
+.old .bdate{margin-bottom:2px}
+
+#empty{margin:26vh auto 0;text-align:center;color:var(--an);font-size:13px}
+#empty code{display:block;font:10.5px var(--mono);color:#565A7C;margin-top:14px;
+  text-align:left;white-space:pre-wrap;background:rgba(18,19,40,.5);
+  border:1px solid var(--jie);border-radius:10px;padding:12px}
+
+/* V2.7: TRADING / CRYPTO tabs */
+#tabs{display:flex;margin:10px 0 6px;border:1px solid var(--jie);border-radius:10px;overflow:hidden}
+#tabs button{flex:1;font:11.5px var(--mono);letter-spacing:.14em;padding:11px 6px;
+  background:transparent;color:var(--hui);border:none;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;transition:background .15s,color .15s}
+#tabs button.active{background:rgba(155,158,208,.14);color:var(--wen)}
+#tabs button[data-tab="crypto"].active{background:rgba(90,209,154,.12);color:#5AD19A}
+.tab-hint{font:10px var(--mono);color:var(--an);letter-spacing:.06em;margin:0 0 10px}
+
+footer{margin-top:auto;padding-top:26px;font:10px var(--mono);color:var(--an);
+  letter-spacing:.06em;text-align:center}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span id="status-compact" title="点按 gateway 设置">—</span>
+    <span id="stamp" title="点按同步 · 长按清缓存重拉">↻</span>
+  </header>
+  <details class="pipe-fold" id="pipe-fold">
+    <summary>pipeline 详情</summary>
+    <div id="pipe-bar">pipeline · …</div>
+  </details>
+  <div id="conn">
+    <input id="gw" spellcheck="false" autocapitalize="off" placeholder="gateway · http://…:8501">
+    <input id="tk" type="password" spellcheck="false" autocapitalize="off" autocomplete="new-password" placeholder="store token (可选 · 仅请求头)">
+  </div>
+  <nav id="tabs" aria-label="Aether views">
+    <button type="button" data-tab="trading" class="active">TRADING</button>
+    <button type="button" data-tab="watcher">WATCHER</button>
+    <button type="button" data-tab="crypto">CRYPTO</button>
+  </nav>
+  <div id="body"></div>
+  <footer>只读 store · 事实源 daemon · v<span id="page-ver">—</span> · <span id="tab-foot">TRADING</span>
+    <span id="dry-toggle" title="切换 DRY-RUN 简报可见性">DRY-RUN: off</span></footer>
+</div>
+<div id="brief-modal" aria-hidden="true">
+  <span class="close" id="brief-close">关闭 ✕</span>
+  <div class="btitle" id="brief-modal-title"></div>
+  <div class="bbody" id="brief-modal-body"></div>
+  <div class="trace-chip" id="brief-modal-trace"></div>
+</div>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s);
+let mem={};
+const st={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return mem[k]??null}},
+          set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){mem[k]=v}},
+          del(k){try{localStorage.removeItem(k)}catch(e){delete mem[k]}}};
+
+function defaultAgw(){
+  const o=location.origin;
+  if(o&&o!=="null"&&!o.startsWith("file:")) return o.replace(/\/+$/,"");
+  return "http://127.0.0.1:8501";
+}
+function isLocalHost(h){
+  return !h||h==="127.0.0.1"||h==="localhost"||h==="::1";
+}
+function resolveAgw(){
+  const def=defaultAgw();
+  if(location.hostname.endsWith(".ts.net")) return def;
+  const saved=st.get("agw");
+  if(!saved) return def;
+  try{
+    const u=new URL(saved, location.href);
+    if(isLocalHost(u.hostname)&&!isLocalHost(location.hostname)) return def;
+    return saved.replace(/\/+$/,"");
+  }catch(e){ return def; }
+}
+let gw=resolveAgw();
+let tk=st.get("atk")||"";
+$("#gw").value=gw; $("#tk").value=tk;
+$("#status-compact")?.addEventListener("click",()=>$("#conn").classList.toggle("open"));
+$("#gw").onchange=e=>{gw=e.target.value.trim().replace(/\/+$/,"");st.set("agw",gw)};
+$("#tk").onchange=e=>{tk=e.target.value.trim();st.set("atk",tk)};
+
+const PAGE_VER="3.8.2-ui-cleanup";
+/* sync with scripts/grid/pipeline_doctor.py FACTOR_WORDS */
+const TRADING_FACTOR_WORDS=["gamma","iv","delta","score","spread","点差","过滤","passing","filtered"];
+const GRID_LANE_WHITELIST=new Set(["grid_cc_scan","aether_scan"]);
+const TRADING_STALE_COLLAPSE_HOURS=6;
+const SERVER_LANE_KINDS=["aether_premarket_deepseek","aether_scan","aether_offpool"];
+let serverLaneSnap=[];
+let watcherSnap=null;
+function laneSnapshotFromBoot(){
+  if(!Array.isArray(window.__AETHER_BOOT__)) return [];
+  const best=new Map();
+  for(const e of window.__AETHER_BOOT__){
+    if(!SERVER_LANE_KINDS.includes(e.kind)) continue;
+    const prev=best.get(e.kind);
+    if(!prev||e.id>prev.id) best.set(e.kind,e);
+  }
+  return [...best.values()];
+}
+function applyServerLanes(events,serverLanes){
+  const lanes=serverLanes&&serverLanes.length?serverLanes:laneSnapshotFromBoot();
+  if(!lanes.length) return events;
+  const drop=new Set(SERVER_LANE_KINDS);
+  const rest=events.filter(e=>!drop.has(e.kind));
+  const seen=new Set();
+  return [...lanes,...rest].filter(e=>!seen.has(e.id)&&seen.add(e.id));
+}
+function laneSyms(ev){
+  const syms=(ev?.payload?.items||ev?.payload?.rows||[]).map(r=>r.sym).filter(Boolean);
+  return syms.slice(0,4).join(",")||"—";
+}
+function laneStampLine(ev){
+  const bfs=pickLatestScan(scansByLabel(ev.scans,"BFS sp500"));
+  const snOp=latestOffpoolByLane(ev.opool,"deepseek-v4");
+  const dsPre=(ev.premarketDeepseek||[]).find(e=>(e.payload?.date||locDateEt(e.ts))===tradeDateEt());
+  const parts=[];
+  if(dsPre) parts.push(`DSpre#${dsPre.id}·${dsPre.payload?.window||"?"}`);
+  if(bfs) parts.push(`BFS#${bfs.id}·${scanDateForEvent(bfs)}·${scanWindowForEvent(bfs)}`);
+  else if(ev.scans[0]) parts.push(`Sc#${ev.scans[0].id}·${laneSyms(ev.scans[0])}`);
+  if(snOp) parts.push(`OpDS#${snOp.id}·${laneSyms(snOp)}`);
+  return parts.join(" · ");
+}
+function tradingEventTs(ev){ return Number(ev?.ts)||0; }
+function tradingAgeHours(ev){ return (Date.now()/1000-tradingEventTs(ev))/3600; }
+function normalizeFactorText(text){
+  return String(text||"")
+    .replace(/[Δδ]/g,"delta")
+    .toLowerCase();
+}
+function textHasTradingFactors(text){
+  const low=normalizeFactorText(text);
+  return TRADING_FACTOR_WORDS.some(w=>low.includes(String(w).toLowerCase()));
+}
+function gridCcVerified(ev){
+  const m=ev?.payload?.manifest||{};
+  return m.data_caveat!=="UNVERIFIED_NO_MARKET_DATA" && ev?.payload?.ok!==false;
+}
+function pickGridCcEvent(arr, scanKind){
+  let src=arr||[];
+  if(scanKind){
+    src=src.filter(e=>String(e.payload?.scan_kind||"pool")===scanKind);
+  }
+  const verified=src.filter(gridCcVerified);
+  const pool=verified.length?verified:src;
+  return pool.sort((a,b)=>b.id-a.id)[0];
+}
+function gridCcAuditMeta(p){
+  const st=p.stats||{};
+  const m=p.manifest||{};
+  const cost=st.cost_usd??m.cost_usd;
+  const parts=[];
+  if(cost!=null) parts.push(`$${Number(cost).toFixed(3)}`);
+  const dur=st.duration_ms??m.duration_ms;
+  if(dur!=null) parts.push(`${Math.round(Number(dur))}ms`);
+  const models=st.resolved_models??m.resolved_models;
+  if(Array.isArray(models)&&models.length) parts.push(models.slice(0,2).join("+"));
+  return parts.length?` · ${parts.join(" · ")}`:"";
+}
+function sonnetCcAuditMeta(p){
+  const st=p.stats||{};
+  const cost=st.cost_usd??p.cost_usd;
+  if(cost==null) return "";
+  return ` · $${Number(cost).toFixed(3)}`;
+}
+const ET_TZ="America/New_York";
+function locDateEt(ts){
+  return new Intl.DateTimeFormat("en-CA",{timeZone:ET_TZ,year:"numeric",month:"2-digit",day:"2-digit"})
+    .format(new Date(Number(ts)*1000));
+}
+function tradeDateEt(){
+  return locDateEt(Date.now()/1000);
+}
+function etHour(ts){
+  const parts=new Intl.DateTimeFormat("en-US",{timeZone:ET_TZ,hour:"numeric",hour12:false})
+    .formatToParts(new Date(Number(ts)*1000));
+  const h=parts.find(p=>p.type==="hour");
+  return h?Number(h.value):0;
+}
+function scanDateForEvent(ev){
+  if(!ev) return "";
+  const p=ev.payload||{};
+  return p.date||locDateEt(ev.ts);
+}
+function scanWindowForEvent(ev){
+  const p=ev.payload||{};
+  const w=String(p.window||"").toUpperCase();
+  if(w==="AM"||w==="PM") return w;
+  return etHour(ev.ts)<12?"AM":"PM";
+}
+function scansByLabel(scans,label){
+  return (scans||[]).filter(e=>String(e.payload?.label||"")===label);
+}
+function scansByOtherLabels(scans){
+  const known=new Set(["BFS sp500","Pool scan"]);
+  const m=new Map();
+  for(const e of scans||[]){
+    const lb=String(e.payload?.label||"").trim();
+    if(!lb||known.has(lb)) continue;
+    if(!m.has(lb)) m.set(lb,[]);
+    m.get(lb).push(e);
+  }
+  return m;
+}
+function pickLatestScan(arr){
+  if(!arr?.length) return null;
+  return [...arr].sort((a,b)=>b.id-a.id)[0];
+}
+const TRADING_BLOCK_ORDER={
+  aether_scan_bfs:-1,
+  aether_premarket_deepseek:2,
+  aether_scan_pool:3,
+  aether_scan_other:4,
+  aether_offpool:8,
+};
+function renderNoFactorBadge(text){
+  return textHasTradingFactors(text)?"":" <span class=\"no-factor\">[no-factor]</span>";
+}
+function gridDisplayAllowed(kind){ return GRID_LANE_WHITELIST.has(kind); }
+function guardGridTitle(title,kind){
+  if(/\bGRID\b/i.test(title)&&!gridDisplayAllowed(kind)) return title.replace(/\bGRID\b/gi,"BLOCKED");
+  return title;
+}
+function wrapTradingBlock(html,ev,meta){
+  if(!html||!String(html).trim()) return "";
+  const age=tradingAgeHours(ev);
+  if(age<=TRADING_STALE_COLLAPSE_HOURS) return html;
+  const title=esc(meta?.title||"lane");
+  const t=ev?fmtEventTs(ev.ts):"—";
+  const id=ev?.id||"?";
+  const badge=meta?.noFactor?" <span class=\"no-factor\">[no-factor]</span>":"";
+  return `<details class="trading-block stale-fold"><summary>${title} · ${t} · #${id}${badge} · ${age.toFixed(1)}h前 · 点击展开</summary>${html}</details>`;
+}
+const WATCHER_KINDS=["watcher_momentum","watcher_health","watcher_alert"];
+const HISTORY_KINDS=["aether_brief","aether_brief_dryrun","aether_premarket","aether_premarket_grid","aether_premarket_deepseek","aether_scan","aether_offpool","aether_filter","aether_momentum","grid_cc_scan"];
+const TRADING_KINDS=["aether_brief","aether_brief_dryrun","aether_scan","aether_filter","aether_momentum","aether_offpool","aether_premarket","aether_premarket_grid","aether_premarket_deepseek"];
+const TRADING_LANE_KINDS=["aether_premarket_deepseek","aether_scan","aether_offpool"];
+const TRADING_BACKFILL_REQUIRED=["aether_scan"];
+let showDryRun=st.get("aether_show_dryrun")===true;
+function updateDryToggle(){
+  const el=$("#dry-toggle");
+  if(el) el.textContent=`DRY-RUN: ${showDryRun?"on":"off"}`;
+}
+updateDryToggle();
+$("#dry-toggle")?.addEventListener("click",()=>{
+  showDryRun=!showDryRun;
+  st.set("aether_show_dryrun",showDryRun);
+  updateDryToggle();
+  render();
+});
+
+function compactCache(raw){
+  const all=[...raw].sort((a,b)=>b.id-a.id);
+  const keep=new Map();
+  const push=e=>{if(e) keep.set(e.id,e);};
+  for(const k of["aether_brief","aether_brief_dryrun","aether_scan","aether_filter","aether_momentum",
+    "aether_offpool","aether_premarket","aether_premarket_grid","aether_premarket_deepseek",
+    "aether_crypto_paper_ab","grid_cc_scan"]){
+    all.filter(e=>e.kind===k).slice(0,8).forEach(push);
+  }
+  for(const k of WATCHER_KINDS){
+    all.filter(e=>e.source==="watcher"&&e.kind===k).slice(0,10).forEach(push);
+  }
+  for(const lane of["equity","crypto_rules"]){
+    push(all.find(e=>e.kind==="aether_paper_wallet"&&(e.payload?.lane||"equity")===lane));
+  }
+  all.filter(e=>e.kind==="aether_paper_daily").slice(0,3).forEach(push);
+  all.filter(e=>e.kind==="aether_paper_fill").slice(0,15).forEach(push);
+  return [...keep.values()].sort((a,b)=>b.id-a.id);
+}
+
+let cache=[];
+let lastId=0;
+
+function tabFromHash(){
+  const h=(location.hash||"").replace(/^#/,"").toLowerCase();
+  if(h==="crypto") return "crypto";
+  if(h==="watcher") return "watcher";
+  if(h==="trading") return "trading";
+  return null;
+}
+function cacheHasTradingData(){
+  return TRADING_BACKFILL_REQUIRED.every(k=>cache.some(e=>e.kind===k));
+}
+function needsTradingBackfill(){
+  return !cacheHasTradingData();
+}
+
+// 版本升级 → 清本地事件缓存 + 回 TRADING (Safari 常卡旧 aev)
+let activeTab=tabFromHash()||st.get("aether_tab")||"trading";
+let needsBackfill=needsTradingBackfill();
+if(st.get("aev_page_ver")!==PAGE_VER){
+  st.set("aev_page_ver",PAGE_VER);
+  st.del("aether_tab");
+  st.del("aev");
+  st.del("atk");
+  cache=[];
+  lastId=0;
+  needsBackfill=true;
+}else{
+  cache=compactCache(st.get("aev")||[]);
+  lastId=cache.length?Math.max(...cache.map(e=>e.id)):0;
+}
+serverLaneSnap=laneSnapshotFromBoot();
+if(Array.isArray(window.__AETHER_BOOT__)&&window.__AETHER_BOOT__.length){
+  mergeEventsIntoCache(window.__AETHER_BOOT__);
+  needsBackfill=needsTradingBackfill();
+}
+
+function setTab(tab,opts){
+  activeTab=tab;
+  st.set("aether_tab",tab);
+  document.querySelectorAll("#tabs button").forEach(b=>{
+    b.classList.toggle("active",b.dataset.tab===tab);
+  });
+  const foot=$("#tab-foot");
+  if(foot) foot.textContent=tab.toUpperCase();
+  if(!opts||!opts.skipHash){
+    const want="#"+tab;
+    if(location.hash!==want) history.replaceState(null,"",want);
+  }
+  if(tab==="trading"&&!cacheHasTradingData()) needsBackfill=true;
+  render();
+}
+$("#tabs").addEventListener("click",e=>{
+  const btn=e.target.closest("button[data-tab]");
+  if(btn) setTab(btn.dataset.tab);
+});
+window.addEventListener("hashchange",()=>{
+  const t=tabFromHash();
+  if(t&&t!==activeTab) setTab(t,{skipHash:true});
+});
+
+/** 按 kind/lane 保留最新, 避免 paper_wallet 心跳挤掉 scan/brief */
+function mergeEventsIntoCache(incoming){
+  if(!incoming.length&&!serverLaneSnap.length) return;
+  const seen=new Set();
+  cache=compactCache(applyServerLanes([...incoming.sort((a,b)=>b.id-a.id),...cache]
+    .filter(e=>!seen.has(e.id)&&seen.add(e.id)),serverLaneSnap));
+  lastId=Math.max(lastId,...cache.map(e=>e.id));
+  st.set("aev",cache);
+}
+
+function pickEvents(){
+  const byKind=k=>cache.filter(e=>e.kind===k).sort((a,b)=>b.id-a.id);
+  const sortBriefs=arr=>arr.sort((a,b)=>briefSortKey(b).localeCompare(briefSortKey(a))||b.id-a.id);
+  const briefProd=sortBriefs(byKind("aether_brief"));
+  const briefDry=sortBriefs(byKind("aether_brief_dryrun"));
+  const newestProdDate=briefProd[0]?briefSortKey(briefProd[0]):"";
+  const dryVisible=briefDry.filter(e=>{
+    if(showDryRun) return true;
+    return briefSortKey(e)>newestProdDate;
+  });
+  const prodDates=new Set(briefProd.map(e=>e.payload?.date).filter(Boolean));
+  const merged=[...briefProd,...dryVisible.filter(e=>!prodDates.has(e.payload?.date))];
+  const briefs=sortBriefs(merged);
+  return{
+    briefs,
+    earnings:byKind("aether_sonnet_earnings"),
+    premarkets:byKind("aether_premarket"),
+    premarketGrid:byKind("aether_premarket_grid"),
+    premarketSonnet:byKind("aether_premarket_sonnet"),
+    premarketDeepseek:byKind("aether_premarket_deepseek"),
+    scans:byKind("aether_scan"),
+    mmts:byKind("aether_momentum"),
+    watcherMmts:cache.filter(e=>e.source==="watcher"&&e.kind==="watcher_momentum").sort((a,b)=>b.id-a.id),
+    watcherHealth:cache.filter(e=>e.source==="watcher"&&e.kind==="watcher_health").sort((a,b)=>b.id-a.id),
+    watcherAlerts:cache.filter(e=>e.source==="watcher"&&e.kind==="watcher_alert").sort((a,b)=>b.id-a.id),
+    filts:byKind("aether_filter"),
+    opool:byKind("aether_offpool"),
+    coachPool:byKind("aether_offpool_coach"),
+    gridCcScans:byKind("grid_cc_scan"),
+    paperW:cache.filter(e=>e.kind==="aether_paper_wallet"),
+    paperF:cache.filter(e=>e.kind==="aether_paper_fill"),
+    paperD:byKind("aether_paper_daily"),
+    cryptoAb:byKind("aether_crypto_paper_ab")
+  };
+}
+
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
+  '"':"&quot;","'":"&#39;"}[c]));
+const dirCls=d=>d>0?"up":d<0?"dn":"";
+function normLane(s){return String(s||"").toLowerCase().replace(/\s+/g,"-")}
+function latestOffpoolByLane(events,lane){
+  const want=normLane(lane);
+  return events.find(e=>normLane(e.payload?.lane||e.payload?.model)===want);
+}
+function offpoolLaneMeta(p){
+  const st=p.stats||{};
+  const parts=[];
+  if(st.item_count!=null) parts.push(`items <b>${st.item_count}</b>`);
+  if(st.in_pool_count) parts.push(`pool! <b>${st.in_pool_count}</b>`);
+  if(st.fabricated_count) parts.push(`硬凑 <b>${st.fabricated_count}</b>`);
+  if(st.hard_pad) parts.push(`<b>⚠硬凑日</b>`);
+  if(st.cost_usd!=null) parts.push(`$${Number(st.cost_usd).toFixed(3)}`);
+  const dur=st.duration_ms??p.duration_ms;
+  if(dur!=null) parts.push(`${(Number(dur)/1000).toFixed(1)}s`);
+  const resolved=(p.resolved_models||[]).filter(m=>/sonnet|opus|deepseek/i.test(m));
+  if(resolved.length) parts.push(resolved.join("+"));
+  return parts.join(" · ")||"report-only";
+}
+const locDate=ts=>{const d=new Date(ts*1000);
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")
+    +"-"+String(d.getDate()).padStart(2,"0")};
+function tradeDateLocal(){
+  return locDate(Date.now()/1000);
+}
+function maxIsoDate(...dates){
+  return dates.filter(Boolean).sort().pop()||"";
+}
+function briefSortKey(ev){
+  return ev.payload?.date||locDate(ev.ts);
+}
+function laneEventDate(ev){
+  if(!ev) return "";
+  return ev.payload?.date||locDateEt(ev.ts);
+}
+function anchorTradeDate(ev){
+  const dsToday=(ev.premarketDeepseek||[]).find(e=>laneEventDate(e)===tradeDateEt());
+  const bfsEv=pickLatestScan(scansByLabel(ev.scans,"BFS sp500"));
+  return maxIsoDate(
+    laneEventDate(dsToday),
+    bfsEv?scanDateForEvent(bfsEv):null,
+    laneEventDate(latestOffpoolByLane(ev.opool,"deepseek-v4"))
+  );
+}
+function laneIsToday(ev){
+  const d=laneEventDate(ev);
+  return d&&d===tradeDateLocal();
+}
+function coachEventsToday(arr){
+  const today=tradeDateEt();
+  const hits=(arr||[]).filter(e=>{
+    const d=e.payload?.date||laneEventDate(e);
+    return d===today;
+  });
+  const byWindow=new Map();
+  for(const e of hits){
+    const w=String(e.payload?.window||"").toUpperCase();
+    if(!w) continue;
+    const prev=byWindow.get(w);
+    if(!prev||e.id>prev.id) byWindow.set(w,e);
+  }
+  return [...byWindow.values()].sort((a,b)=>
+    String(a.payload?.window||"").localeCompare(String(b.payload?.window||"")));
+}
+function pickEventsForToday(ev){
+  const today=tradeDateEt();
+  const todayOnly=arr=>{
+    if(!arr?.length) return [];
+    const hit=arr.find(e=>laneEventDate(e)===today);
+    return hit?[hit]:[];
+  };
+  return{
+    ...ev,
+    premarketGrid:todayOnly(ev.premarketGrid),
+    premarketDeepseek:(ev.premarketDeepseek||[]).filter(e=>laneEventDate(e)===today),
+    scans:ev.scans||[],
+    opool:(ev.opool||[]).filter(e=>laneEventDate(e)===today),
+  };
+}
+function renderBriefStaleBanner(briefDate,anchorDate){
+  if(!briefDate||!anchorDate||briefDate>=anchorDate) return "";
+  const b=briefDate.slice(5), a=anchorDate.slice(5);
+  return `<div class="stale-banner">简报停留在 ${esc(b)} · 当前盘前/scan ${esc(a)} · post-market 尚未 emit 今日简报</div>`;
+}
+
+/** P2: 浮点渲染 — kill_value 等禁止 0.37829999999999997 */
+function fmtNum(v,d=4){
+  if(v==null||v==="") return "—";
+  const n=Number(v);
+  if(!Number.isFinite(n)) return esc(String(v));
+  return parseFloat(n.toFixed(d)).toString();
+}
+
+/** P0: cli 账本状态 — 未初始化 vs $1000 空仓 严格区分 */
+function laneIsUninit(p){
+  if(!p) return true;
+  if(p.status==="uninitialized") return true;
+  if(p.equity==null&&p.cash==null) return true;
+  return false;
+}
+function fmtLedgerEquity(p){
+  if(laneIsUninit(p)) return "未初始化";
+  const eq=Number(p.equity);
+  const start=Number(p.start_equity);
+  const nPos=Array.isArray(p.positions)?p.positions.length:(p.n_positions||0);
+  if(nPos===0&&start>0&&Math.abs(eq-start)<0.01) return `$${eq.toFixed(2)} · 空仓`;
+  return `$${eq.toFixed(2)}`;
+}
+function fmtLedgerCash(p){
+  if(laneIsUninit(p)) return "—";
+  return `$${Number(p.cash).toFixed(2)}`;
+}
+function fmtLedgerBg(p){
+  if(laneIsUninit(p)) return "未初始化";
+  if(p.return_pct_background==null) return "—";
+  const n=Number(p.return_pct_background);
+  const since=laneSinceMmdd(p);
+  const base=`${n>=0?"+":""}${n.toFixed(2)}% vs BTC`;
+  return since?`${base} · since ${since}`:base;
+}
+function laneSinceMmdd(p){
+  if(p?.since_mmdd) return p.since_mmdd;
+  const exp=p?.experiment||{};
+  const s=exp.started_at||p?.since_iso;
+  if(!s) return null;
+  const m=String(s).match(/\d{4}-(\d{2}-\d{2})/);
+  return m?m[1]:null;
+}
+function mergeLanePayload(lane,paperW,abPayload,paperD){
+  const w=(paperW||[]).find(e=>(e.payload?.lane||"equity")===lane);
+  if(w?.payload?.status==="uninitialized") return w.payload;
+  if(w?.payload&&!laneIsUninit(w.payload)) return {...w.payload,status:w.payload.status||"ready"};
+  const col=(abPayload?.columns||[]).find(c=>c.lane===lane);
+  if(col&&!laneIsUninit(col)) return col;
+  const laneRow=(paperD?.lanes||[]).find(r=>r.lane===lane);
+  if(laneRow&&!laneIsUninit(laneRow)) return laneRow;
+  if(w?.payload) return w.payload;
+  if(col) return col;
+  if(laneRow) return laneRow;
+  return{lane,status:"uninitialized"};
+}
+function abColumnsFromPayload(abPayload){
+  const cols=abPayload?.columns||[];
+  return["crypto_rules"].map(lane=>{
+    const found=cols.find(c=>c.lane===lane);
+    if(found) return found;
+    return{lane,status:"uninitialized",title:"RULES"};
+  });
+}
+
+function splitBriefItems(items){
+  const regular=[], anomaly=[], abStats=[], dsStats=[];
+  for(const it of items||[]){
+    if(!it||typeof it!=="object") continue;
+    const src=String(it.src||"");
+    const label=String(it.label||"");
+    if(src==="deepseek_performance"||label.startsWith("ds_")){
+      dsStats.push(it);
+      continue;
+    }
+    if(src==="premarket_ab"||label.startsWith("ab_")){
+      if(label==="ab_grid"||label==="ab_sonnet") abStats.push(it);
+      continue;
+    }
+    const isFlag=it.kind==="integrity_flag"||label==="anomaly"||label==="flag";
+    const val=String(it.value||"").trim();
+    const sym=String(it.sym||"").trim();
+    if(isFlag||(!sym||sym==="—")){
+      if(val) anomaly.push(it);
+      continue;
+    }
+    regular.push(it);
+  }
+  return {regular, anomaly, abStats, dsStats};
+}
+function stripPremarketAbBody(body){
+  const text=String(body||"");
+  if(/^\s*\{/.test(text)&&/candidate_count|top_symbol/.test(text)) return "";
+  let cut=text.length;
+  for(const m of["\n\nDeepSeek 表现 ·","\n\n盘前 A/B ·","\n\n盘前 ·"]){
+    const i=text.indexOf(m);
+    if(i>=0&&i<cut) cut=i;
+  }
+  return text.slice(0,cut).trimEnd();
+}
+function cryptoColumnTitle(col){
+  if(col?.lane==="crypto_cli") return "CRYPTO CLI";
+  if(col?.lane==="crypto_rules") return "RULES";
+  return col?.title||col?.lane||"—";
+}
+function fmtBlockTsEt(ts){
+  if(ts==null||ts==="") return "—";
+  let ms;
+  if(typeof ts==="number") ms=ts>1e12?ts:ts*1000;
+  else{
+    const p=Date.parse(String(ts));
+    ms=Number.isFinite(p)?p:NaN;
+  }
+  if(!Number.isFinite(ms)) return "—";
+  return new Intl.DateTimeFormat("en-US",{timeZone:ET_TZ,month:"2-digit",day:"2-digit",
+    hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(ms))+" ET";
+}
+function pipelineDots(ph){
+  if(!ph) return '<span class="dot off"></span><span class="dot off"></span><span class="dot off"></span><span class="dot off"></span>';
+  const flags=[
+    !ph.stale_post_market,
+    !ph.stale_offpool,
+    !ph.stale_premarket_grid,
+    !!(ph.pool_scan?.last_success_ts),
+  ];
+  return flags.map(ok=>`<span class="dot ${ok?"ok":"stale"}"></span>`).join("");
+}
+function renderStatusCompact(ph){
+  const el=$("#status-compact");
+  if(!el) return;
+  const updated=ph?.checked_at?fmtBlockTsEt(ph.checked_at):fmtBlockTsEt(Date.now()/1000);
+  el.innerHTML=`${esc(PAGE_VER)} · ${pipelineDots(ph)} · ${esc(updated)}`;
+}
+function fmtEventTs(ts){
+  return fmtBlockTsEt(ts);
+}
+function renderAnomalySection(anomalyItems,tradeDate,eventTs){
+  if(!anomalyItems.length) return "";
+  const ts=fmtEventTs(eventTs);
+  let h=`<div class="brief"><div class="bdate">integrity · anomaly · ${esc(tradeDate||"—")} · compile ${esc(ts)}</div>`;
+  for(const it of anomalyItems){
+    h+=`<div class="kills">${esc(it.value||it.note||"")}</div>`;
+  }
+  h+=`</div>`;
+  return h;
+}
+function aggregateNearMissRows(rows){
+  const m=new Map();
+  for(const r of rows||[]){
+    const sym=String(r.symbol||"").toUpperCase();
+    if(!sym) continue;
+    const key=[sym,r.strike,r.expiry,Number(r.score||0).toFixed(2)].join("|");
+    const rule=String(r.kill_rule||"");
+    const detail=r.kill_summary||`${rule} ${fmtNum(r.kill_value)}→${fmtNum(r.threshold_at_kill)}`;
+    if(!m.has(key)){
+      m.set(key,{sym,score:r.score,note:detail,kill_rule:rule,flag:true,src:r.quote_source==="indicative"?"ind":"rt"});
+    }else{
+      const prev=m.get(key);
+      const rules=new Set(String(prev.kill_rule||"").split("+").filter(Boolean));
+      if(rule) rule.split("+").forEach(x=>rules.add(x));
+      prev.kill_rule=[...rules].join("+");
+      if(!prev.note.includes(detail)) prev.note=prev.note?`${prev.note} · ${detail}`:detail;
+    }
+  }
+  return [...m.values()].sort((a,b)=>(Number(b.score)||0)-(Number(a.score)||0));
+}
+function renderKillCounts(killCounts){
+  const entries=Object.entries(killCounts||{}).sort((a,b)=>Number(b[1])-Number(a[1]));
+  if(!entries.length) return "";
+  return `<div class="kills">本轮各过滤器拦截计数 · `
+    +entries.map(([rule,n])=>`${esc(rule)} ×${esc(String(n))}`).join(" · ")
+    +`</div>`;
+}
+
+function rowsTable(rows,cols,extraCls){
+  const cls=[extraCls,"compact"].filter(Boolean).join(" ");
+  let h=`<table class="${cls}"><tr>`+cols.map(c=>`<th>${c.h}</th>`).join("")+"</tr>";
+  for(const r of rows||[]){
+    const bigText=Object.values(r).find(v=>typeof v==="string"&&/^(WARN|ERROR|需要人工)/.test(v));
+    const isFlag=r.kind==="integrity_flag"||r.label==="anomaly"||r.label==="flag";
+    if(isFlag||bigText){
+      const msg=String(r.value||bigText||(r.note&&r.note!=="anomaly"&&r.note!=="source"?r.note:"")||"").trim();
+      if(!msg) continue;
+      h+=`<tr><td class="notice" colspan="${cols.length}">${esc(msg)}</td></tr>`;
+      continue;
+    }
+    const stateCls=r.flag?"fl":dirCls(r.dir);
+    h+="<tr>"+cols.map(c=>{
+      const v=r[c.k]??"";
+      const cls=(c.k==="sym"?"sym ":c.k==="value"||c.k==="score"?"val ":"note ")+stateCls;
+      let cell=esc(v);
+      if(c.k==="sym"&&r.w8520) cell+=`<span class="tag w8520">8520</span>`;
+      if(c.k==="sym"&&r.src) cell+=`<span class="tag ${r.src==="rt"?"rt":r.src==="cloud"?"cloud":""}">${esc(r.src)}</span>`;
+      if(c.k==="sym"&&r.conv) cell+=`<span class="tag conv">×grid</span>`;
+      if(c.k==="sym"&&r.in_pool) cell+=`<span class="tag warn">pool!</span>`;
+      if(c.k==="sym"&&r.consensus) cell+=`<span class="tag consensus">CONSENSUS</span>`;
+      if((c.k==="note"||c.k==="value")&&(r.cached||r.src==="cache")) cell+=`<span class="tag cached">cached</span>`;
+      return `<td class="${cls}${r.notSelected?" not-selected":""}">${cell}</td>`;
+    }).join("")+"</tr>";
+  }
+  return h+"</table>";
+}
+
+function renderPaperFillLog(paperF,lanes){
+  const fills=(paperF||[]).filter(f=>lanes.includes(f.payload?.lane||"equity"));
+  if(!fills.length) return "";
+  let h=`<details class="paper-log"><summary>paper 日志 · ${fills.length}</summary>`;
+  for(const ev of fills.slice(0,8)){
+    const f=ev.payload||{};
+    const act=f.action==="exit"?"exit":"enter";
+    const ok=f.allowed!==false;
+    h+=`<div class="kills" style="font-size:11px;opacity:.85;margin:2px 0">`
+      +`${esc(fmtBlockTsEt(ev.ts))} · ${esc(f.lane||"")} ${esc(act)} ${esc(f.symbol||"")}`
+      +(ok?" ✓":" ✗ "+esc(f.risk_note||""))
+      +` · ${esc(String(f.reason||"").slice(0,100))}</div>`;
+  }
+  return h+`</details>`;
+}
+function renderPaperLanes(lanes,paperW,paperF,abPayload,paperD){
+  let h="";
+  const payloads=lanes.map(lane=>mergeLanePayload(lane,paperW,abPayload,paperD));
+  const sinceSet=new Set(payloads.map(p=>laneSinceMmdd(p)).filter(Boolean));
+  const ageMismatch=sinceSet.size>1;
+  if(ageMismatch&&lanes.length>1){
+    h+=`<div class="paper-lane-age">⚠ 异龄 lane 禁止直接对比 · ${[...sinceSet].map(s=>`since ${s}`).join(" · ")}</div>`;
+  }
+  for(let i=0;i<lanes.length;i++){
+    const lane=lanes[i];
+    const p=payloads[i];
+    const since=laneSinceMmdd(p);
+    const label=p.label||(lane==="crypto_rules"?"PAPER · crypto RULES":lane==="crypto_cli"?"PAPER · crypto CLI":"PAPER");
+    const t=paperW.find(e=>e.payload?.lane===lane);
+    const tsEt=t?fmtBlockTsEt(t.ts):"—";
+    const ageCls=ageMismatch?" lane-age-split":"";
+    h+=`<div class="brief paper${ageCls}"><div class="bdate">${esc(label)} · ${esc(lane)}<span class="block-ts">${esc(tsEt)}</span></div>`;
+    if(laneIsUninit(p)){
+      h+=`<div class="paper-meta">equity <b>未初始化</b> · cash — · 敞口 — · 背景收益 未初始化 · <b>broker=false</b></div>`;
+      h+=`<div class="kills">账本未初始化 · 等待 09:10 crypto_cli init</div>`;
+      h+=`</div>`;
+      continue;
+    }
+    const exp=p.experiment||{};
+    const ends=exp.ends_at?String(exp.ends_at).slice(0,10):"";
+    h+=`<div class="paper-meta">equity <b>${esc(fmtLedgerEquity(p))}</b>`
+      +` · cash ${fmtLedgerCash(p)}`
+      +` · 敞口 ${(Number(p.exposure_pct||0)*100).toFixed(0)}%`
+      +` · 背景收益 ${fmtLedgerBg(p)}`
+      +(ends?` · 至 ${esc(ends)}`:"")
+      +` · <b>broker=false</b></div>`;
+    const posRows=p.positions||[];
+    const asTable=posRows.length&&typeof posRows[0]==="object";
+    if(asTable&&posRows.length){
+      h+=rowsTable(posRows.map(r=>({
+        sym:r.sym, score:`$${Number(r.mark||0).toFixed(2)}`,
+        note:`qty ${r.qty} · entry $${r.entry} · stop $${r.stop} · uPnL ${r.upnl>=0?"+":""}${r.upnl}`,
+        dir:r.upnl>0?1:r.upnl<0?-1:0
+      })),[{h:"SYM",k:"sym"},{h:"MARK",k:"score"},{h:"持仓",k:"note"}]);
+    }else if(!posRows.length||(p.n_positions||0)===0){
+      h+=`<div class="kills">${fmtLedgerEquity(p)} · 空仓 · 等待信号</div>`;
+    }else{
+      h+=`<div class="kills">${esc(posRows.join(", "))}</div>`;
+    }
+    h+=`</div>`;
+  }
+  h+=renderPaperFillLog(paperF,lanes);
+  return h;
+}
+
+function tradingMetaLine(ev){
+  const b=ev.briefs[0], s=ev.scans[0];
+  const anchor=anchorTradeDate(ev);
+  if(!b&&!s) return "";
+  const parts=[];
+  if(b){
+    const d=b.payload?.date||locDate(b.ts);
+    const stale=d&&anchor&&d<anchor;
+    parts.push(`简报 ${esc(d)}${stale?" · 待 lane 更新":""}`);
+  }
+  if(s){
+    const d=scanDateForEvent(s);
+    const t=new Date(s.ts*1000).toLocaleString("zh-CN",{timeZone:ET_TZ,month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+    parts.push(`SCAN ${esc(d)} ${esc(t)}`);
+  }
+  return `<div class="kills" style="margin:0 0 10px;opacity:.85">最后更新 · ${parts.join(" · ")}</div>`;
+}
+
+function premarketParseCompileDate(payload,ev){
+  const ga=payload?.generated_at;
+  if(ga){
+    const d=new Date(ga);
+    if(!isNaN(d.getTime())) return d;
+  }
+  if(ev?.ts) return new Date(ev.ts*1000);
+  return null;
+}
+function premarketFmtCompileHeader(label,payload,ev){
+  const d=premarketParseCompileDate(payload,ev);
+  if(!d) return `${label} · compile —`;
+  const md=d.toLocaleString("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+  return `${label} · compile ${md}`;
+}
+function premarketAgeHours(payload,ev){
+  const d=premarketParseCompileDate(payload,ev);
+  if(!d) return null;
+  return (Date.now()-d.getTime())/3600000;
+}
+function premarketItemScore(it){
+  if(!it) return 0;
+  if(it.score!=null) return Number(it.score)||0;
+  const v=String(it.value||"");
+  if(/高置信/.test(v)) return 80;
+  if(/试探性/.test(v)) return 55;
+  return 30;
+}
+function premarketSortedItems(items){
+  return [...(items||[])].sort((a,b)=>premarketItemScore(b)-premarketItemScore(a));
+}
+function premarketComparisonRows(primaryItems,otherItems,sameDate){
+  const primary=premarketSortedItems(primaryItems);
+  const other=premarketSortedItems(otherItems);
+  const primaryBy=new Map(primary.map(it=>[String(it.sym||"").toUpperCase(),it]));
+  const otherBy=new Map(other.map(it=>[String(it.sym||"").toUpperCase(),it]));
+  const shared=sameDate
+    ?new Set([...primaryBy.keys()].filter(sym=>sym&&otherBy.has(sym)))
+    :new Set();
+  const real=[
+    ...primary.filter(it=>shared.has(String(it.sym||"").toUpperCase())),
+    ...primary.filter(it=>!shared.has(String(it.sym||"").toUpperCase())),
+  ].map(it=>({...it,consensus:shared.has(String(it.sym||"").toUpperCase())}));
+  const placeholders=other
+    .filter(it=>!primaryBy.has(String(it.sym||"").toUpperCase()))
+    .map(it=>({
+      sym:String(it.sym||"").toUpperCase(),
+      value:"未入选",
+      note:"对侧入选，本侧未入选",
+      dir:0,
+      notSelected:true,
+    }));
+  return [...real,...placeholders];
+}
+function renderPremarketLegacy(premarkets){
+  if(!premarkets.length) return "";
+  const pm=premarkets[0];
+  const p=pm.payload||{};
+  const items=p.items||[];
+  let h=`<div class="brief"><div class="bdate">盘前 · ${esc(p.date||locDate(pm.ts))} · legacy</div>`;
+  if(items.length){
+    h+=rowsTable(items,[{h:"SYM",k:"sym"},{h:"方向/置信",k:"value"},{h:"备注",k:"note"}]);
+  }else{
+    h+=`<div class="kills">无候选 · Grid 编译未产出 items</div>`;
+  }
+  h+=`</div>`;
+  return h;
+}
+function renderPremarketDeepseekSection(ev){
+  const p=ev?.payload||{};
+  const sDate=p.date||(ev?locDate(ev.ts):"");
+  const sItems=premarketSortedItems(p.items);
+  const win=p.window||p.label||"deepseek";
+  const notes=(p.items||[]).map(i=>`${i.note||""} ${i.value||""}`).join(" ");
+  let h=`<div class="brief offpool">`;
+  h+=`<div class="bdate">${esc(premarketFmtCompileHeader(`DS·${String(win).toUpperCase()}`,p,ev))} · ${sItems.length} 条${renderNoFactorBadge(notes)}</div>`;
+  h+=`<div class="lane-meta">Ollama cloud · DeepSeek V4 · <b>${esc(String(win))}</b> · report-only</div>`;
+  if(!sItems.length) h+=`<div class="kills">无候选</div>`;
+  else h+=rowsTable(sItems,[{h:"SYM",k:"sym"},{h:"方向/置信",k:"value"},{h:"备注",k:"note"}]);
+  h+=`</div>`;
+  return h;
+}
+function renderPremarketSonnetSection(sonnetEv,legacy){
+  const sonnet=sonnetEv?.payload||{};
+  if(!sonnetEv) return renderPremarketLegacy(legacy||[]);
+  const sDate=sonnet.date||(sonnetEv?locDate(sonnetEv.ts):"");
+  const sItems=premarketSortedItems(sonnet.items);
+  const sAge=premarketAgeHours(sonnet,sonnetEv);
+  const sStale=sAge!=null&&sAge>24;
+  const notes=(sonnet.items||[]).map(i=>`${i.note||""} ${i.value||""}`).join(" ");
+  let h=`<div class="brief offpool${sStale?" data-stale":""}">`;
+  if(sStale&&sDate){
+    h+=`<div class="stale-banner">盘前 Sonnet 停留在 ${esc(sDate.slice(5))}, pipeline 待修</div>`;
+  }
+  const today=tradeDateEt();
+  if(sDate&&sDate!==today){
+    h+=`<div class="stale-banner">Sonnet 盘前 ${esc(sDate.slice(5))} · 非今日 ${esc(today.slice(5))} · #${sonnetEv?.id||"?"}</div>`;
+  }
+  h+=`<div class="bdate">${esc(premarketFmtCompileHeader("SONNET",sonnet,sonnetEv))} · ${sItems.length} 条${renderNoFactorBadge(notes)}</div>`;
+  h+=`<div class="lane-meta">CC CLI · Sonnet · <b>06:40</b> · report-only${sonnetCcAuditMeta(sonnet)}</div>`;
+  if(!sItems.length) h+=`<div class="kills">无候选</div>`;
+  else h+=rowsTable(sItems,[{h:"SYM",k:"sym"},{h:"方向/置信",k:"value"},{h:"备注",k:"note"}]);
+  h+=`</div>`;
+  return h;
+}
+function tradingBlockFactorText(ev,kind){
+  if(kind==="aether_scan"){
+    return (ev?.payload?.rows||[]).map(r=>`${r.note||""} ${r.score||""}`).join(" ");
+  }
+  if(kind==="aether_offpool"){
+    return (ev?.payload?.items||[]).map(i=>`${i.note||""} ${i.value||""}`).join(" ");
+  }
+  if(kind==="aether_premarket_deepseek"){
+    return (ev?.payload?.items||[]).map(i=>`${i.note||""} ${i.value||""}`).join(" ");
+  }
+  if(kind==="aether_premarket_sonnet"){
+    return (ev?.payload?.items||[]).map(i=>`${i.note||""} ${i.value||""}`).join(" ");
+  }
+  return "";
+}
+function collectTradingBlocks(ev){
+  const blocks=[];
+  const allScans=ev.scans||[];
+  const bfsHtml=renderBfsScanSection(allScans);
+  if(bfsHtml){
+    const bfsToday=scansByLabel(allScans,"BFS sp500").filter(e=>scanDateForEvent(e)===tradeDateEt());
+    const bfsEv=pickLatestScan(bfsToday)||pickLatestScan(scansByLabel(allScans,"BFS sp500"));
+    blocks.push({
+      html:bfsHtml,ev:bfsEv,
+      meta:{
+        title:"R5.4.1 · BFS SP500 Scan",
+        kind:"aether_scan_bfs",
+        noFactor:!textHasTradingFactors(tradingBlockFactorText(bfsEv,"aether_scan")),
+      },
+    });
+  }
+  const dsEvents=(ev.premarketDeepseek||[]).filter(e=>laneEventDate(e)===tradeDateEt());
+  for(const dsEv of dsEvents){
+    const dsHtml=renderPremarketDeepseekSection(dsEv);
+    if(!dsHtml) continue;
+    blocks.push({
+      html:dsHtml,ev:dsEv,
+      meta:{
+        title:`DeepSeek · premarket · ${dsEv.payload?.window||"?"}`,
+        kind:"aether_premarket_deepseek",
+        noFactor:!textHasTradingFactors(tradingBlockFactorText(dsEv,"aether_premarket_deepseek")),
+      },
+    });
+  }
+  const poolHtml=renderPoolScanSection(allScans);
+  if(poolHtml){
+    const poolEv=pickLatestScan(scansByLabel(allScans,"Pool scan"));
+    blocks.push({
+      html:poolHtml,ev:poolEv,
+      meta:{
+        title:guardGridTitle("GRID · pool SCAN","aether_scan"),
+        kind:"aether_scan_pool",
+        noFactor:!textHasTradingFactors(tradingBlockFactorText(poolEv,"aether_scan")),
+      },
+    });
+  }
+  for(const [label] of scansByOtherLabels(allScans)){
+    const html=renderLabelScanSection(allScans,label);
+    if(!html) continue;
+    const refEv=pickLatestScan(scansByLabel(allScans,label));
+    blocks.push({
+      html,ev:refEv,
+      meta:{
+        title:label,
+        kind:"aether_scan_other",
+        noFactor:!textHasTradingFactors(tradingBlockFactorText(refEv,"aether_scan")),
+      },
+    });
+  }
+  const dsOpEv=latestOffpoolByLane(ev.opool,"deepseek-v4");
+  if(dsOpEv){
+    const opHtml=renderOffpoolDeepseekSection(dsOpEv);
+    if(opHtml){
+      blocks.push({
+        html:opHtml,ev:dsOpEv,
+        meta:{
+          title:"Off-pool · DeepSeek",
+          kind:"aether_offpool",
+          noFactor:!textHasTradingFactors(tradingBlockFactorText(dsOpEv,"aether_offpool")),
+        },
+      });
+    }
+  }
+  return blocks.sort((a,b)=>{
+    const oa=TRADING_BLOCK_ORDER[a.meta.kind]??9;
+    const ob=TRADING_BLOCK_ORDER[b.meta.kind]??9;
+    if(oa!==ob) return oa-ob;
+    return tradingEventTs(b.ev)-tradingEventTs(a.ev);
+  });
+}
+function renderBriefDeepseekPerformance(briefPayload){
+  const ds=briefPayload?.deepseek_performance;
+  const fp=briefPayload?.fact_pack?.deepseek_performance;
+  const items=(briefPayload?.items||[]).filter(it=>it.src==="deepseek_performance"||String(it.label||"").startsWith("ds_"));
+  if(!ds&&!fp&&!items.length) return "";
+  const lines=[];
+  if(items.length){
+    for(const it of items){
+      lines.push(`${it.value||it.label||"DS"} · ${it.note||""}`.trim());
+    }
+  }else if(fp&&(fp.offpool_deepseek_items!=null||fp.offpool_sonnet_items!=null)){
+    lines.push(
+      `off-pool DS ${fp.offpool_deepseek_items??"—"}条 硬凑${fp.offpool_deepseek_fabricated??0}`
+      +` · SN ${fp.offpool_sonnet_items??"—"}条 硬凑${fp.offpool_sonnet_fabricated??0}`
+    );
+    const wins=fp.premarket_windows||{};
+    const wbits=Object.entries(wins).filter(([,n])=>n!=null).map(([w,n])=>`${w}=${n}`);
+    if(wbits.length) lines.push(`盘前 DS · ${wbits.join(" · ")}`);
+    if(fp.rolling_fabrication_rate_deepseek!=null){
+      lines.push(`5d off-pool DS 硬凑率 ${(Number(fp.rolling_fabrication_rate_deepseek)*100).toFixed(1)}%`);
+    }
+  }
+  if(!lines.length) return "";
+  return `<div class="e4b-line ds-perf">DeepSeek 表现 · report-only · 5d观察</div>`
+    +lines.map(ln=>`<div class="kills" style="opacity:.92;margin:4px 0 0">${esc(ln)}</div>`).join("");
+}
+function renderBriefPremarketAb(ab){
+  if(!ab||( !ab.grid_n && !ab.sonnet_n)) return "";
+  const fsg=v=>v==null?"—":`${(Number(v)*100>=0?"+":"")}${(Number(v)*100).toFixed(2)}%`;
+  const startMd=(ab.ab_ledger_start||"2026-07-15").slice(5);
+  const f30=(v,w)=>w?`30d→${startMd}`:fsg(v);
+  const fwr=(x,w)=>w?`→${startMd}`:(x?.win_rate==null?"—":`${(Number(x.win_rate)*100).toFixed(0)}% (${x.wins||0}/${x.n_scored||0})`);
+  const warm=!!ab.warmup;
+  const dl=ab.dual_leaderboard||{};
+  const vb=ab.verdict_bootstrap||{};
+  const fdelta=(v,w)=>w?`→${startMd}`:`${Number(v||0).toFixed(2)}pp`;
+  const igLabel=dl.info_gap_label||"信息差成本";
+  const igVal=warm&&!dl.raw?`→${startMd}`:(dl.info_gap_cost_bps==null?"—":`${Number(dl.info_gap_cost_bps).toFixed(1)}bps`);
+  const r=vb.raw||{}, a=vb.adjusted||{};
+  const ciRaw=warm&&!r.verdict?`→${startMd}`:(r.verdict||"—");
+  const ciAdj=a.verdict?` · adj ${a.verdict}`:"";
+  const winDays=Number(dl.verdict_window_days||vb.verdict_window_days||30);
+  const pairedN=Number(
+    dl.paired_scorable_n??r.n_paired_scorable??ab.grid_scorable_days_30d??0
+  );
+  const E4B_MIN=5;
+  const inconclusive=r.verdict==="INCONCLUSIVE"||a.verdict==="INCONCLUSIVE";
+  const insufficient=warm||pairedN<E4B_MIN||inconclusive;
+  if(insufficient){
+    const ciNote=ciRaw!=="—"?` · CI ${esc(ciRaw)}`:" · CI INCONCLUSIVE";
+    return `<div class="e4b-line e4b-insufficient">E4-B · 样本不足 (n=${esc(String(pairedN))}/${esc(String(winDays))}) · 不可判`
+      +`${ciNote}`
+      +` · 当日参考 GRID ${esc(fsg(ab.grid_return_pct))} · SON ${esc(fsg(ab.sonnet_return_pct))}`
+      +`<span class="e4b-dim"> · 30d/rawΔ/adjΔ 待 n≥${E4B_MIN} 再展示</span>`
+      +(warm?" · warmup":"")+`</div>`;
+  }
+  return `<div class="e4b-line">E4-B · GRID ${esc(fsg(ab.grid_return_pct))}/${esc(f30(ab.grid_return_30d_pct,warm))}`
+    +` · SON ${esc(fsg(ab.sonnet_return_pct))}/${esc(f30(ab.sonnet_return_30d_pct,warm))}`
+    +` · 30d胜率 ${esc(fwr(ab.grid_rolling_win_rate,warm))}/${esc(fwr(ab.sonnet_rolling_win_rate,warm))}`
+    +` · rawΔ ${esc(fdelta(dl.raw?.diff_pct_pts,warm))} adjΔ ${esc(fdelta(dl.adjusted?.diff_pct_pts,warm))}`
+    +` · ${esc(igLabel)} ${esc(igVal)} · CI ${esc(ciRaw)}${esc(ciAdj)}${warm?" · warmup":""}</div>`;
+}
+function fmtScanPct(v){
+  const n=Number(v);
+  if(!Number.isFinite(n)) return null;
+  return (n*100).toFixed(2)+"%";
+}
+function fmtScanMoney(v){
+  const n=Number(v);
+  if(!Number.isFinite(n)) return null;
+  return n.toFixed(2);
+}
+function renderScoreBreakdown(sb){
+  if(!sb||typeof sb!=="object") return "";
+  const seg=(k,letter)=>sb[k]!=null?`${letter}${sb[k]}`:"";
+  const parts=[seg("liquidity","L"),seg("spread","S"),seg("delta","D"),seg("gamma_theta","G"),
+    seg("iv_value","V"),seg("catalyst","C")].filter(Boolean);
+  return parts.length?`<div class="kills" style="opacity:.88">Score: ${esc(parts.join(" "))}</div>`:"";
+}
+function scanRowHasFullFields(r){
+  return !!(r.strike||r.delta!=null||r.underlying_price!=null||r.iv!=null);
+}
+function renderScanCandidateCard(r){
+  const sym=esc(String(r.sym||r.symbol||"—"));
+  const score=r.score!=null&&r.score!==""?esc(String(r.score)):"—";
+  const tags=Array.isArray(r.tags)?r.tags.filter(Boolean):[];
+  const tagLine=tags.length?esc(tags.join(" · ")):"";
+  if(!scanRowHasFullFields(r)){
+    const note=r.note?esc(String(r.note)):"";
+    return `<div class="scan-cand"><div class="bdate">${sym} · ${score}${tagLine?` · ${tagLine}`:""}</div>`
+      +(note?`<div class="kills">${note}</div>`:"")+`</div>`;
+  }
+  const line1=[`${sym} · ${score}`,tagLine].filter(Boolean).join(" · ");
+  const up=r.underlying_price, ups=r.underlying_price_source;
+  const upStr=up!=null?`${fmtScanMoney(up)||up}${ups?`(${esc(String(ups))})`:""}`:"";
+  const strike=r.strike!=null?`Call ${esc(String(r.strike))}`:"";
+  const exp=r.expiry?esc(String(r.expiry)):"";
+  const dte=r.dte!=null?`(${esc(String(r.dte))} d)`:"";
+  const line2=[upStr,strike,[exp,dte].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
+  const d=r.delta!=null?`Δ ${esc(String(r.delta))}`:"";
+  const g=r.gamma_theta_ratio!=null?`Γ/Θ ${esc(String(r.gamma_theta_ratio))}`:"";
+  const iv=r.iv!=null?`IV ${esc(String(r.iv))}${r.iv_source?`(${esc(String(r.iv_source))})`:""}`:"";
+  const hv=r.hv_rank!=null?`HVrank ${esc(String(r.hv_rank))}`:"";
+  const ivhv=r.iv_hv_ratio!=null?`IV/HV ${esc(String(r.iv_hv_ratio))}`:"";
+  const line3=[d,g,iv,hv,ivhv].filter(Boolean).join(" · ");
+  const bid=r.bid!=null?String(r.bid):"", ask=r.ask!=null?String(r.ask):"";
+  const ba=(bid||ask)?`Bid/Ask ${esc(bid||"—")}/${esc(ask||"—")}`:"";
+  const vol=r.volume!=null?`Vol ${esc(String(r.volume))}`:"";
+  const oi=r.open_interest!=null?`OI ${esc(String(r.open_interest))}`:"";
+  const sp=fmtScanPct(r.spread_pct);
+  const line4=[ba,vol,oi,sp?`Spread ${sp}`:""].filter(Boolean).join(" · ");
+  const prem=r.premium_dollars!=null
+    ?`Premium $${esc(fmtScanMoney(r.premium_dollars)||String(r.premium_dollars))}`
+      +(r.price_source?` (${esc(String(r.price_source))})`:""):"";
+  let h=`<div class="scan-cand" style="margin:8px 0;padding:8px 10px;border:1px solid #2A2E4A;border-radius:6px">`;
+  h+=`<div class="bdate">${line1}</div>`;
+  if(line2) h+=`<div class="kills" style="opacity:.92">${line2}</div>`;
+  if(line3) h+=`<div class="kills" style="opacity:.92">${line3}</div>`;
+  if(line4) h+=`<div class="kills" style="opacity:.92">${line4}</div>`;
+  if(prem) h+=`<div class="kills" style="opacity:.92">${prem}</div>`;
+  h+=renderScoreBreakdown(r.score_breakdown);
+  h+=`</div>`;
+  return h;
+}
+function bfsSlotMap(scans,tradeDate){
+  const slots={AM:[],PM:[]};
+  for(const e of scansByLabel(scans,"BFS sp500")){
+    if(scanDateForEvent(e)!==tradeDate) continue;
+    const w=scanWindowForEvent(e);
+    if(w==="AM"||w==="PM") slots[w].push(e);
+  }
+  return slots;
+}
+function renderBfsScanEventBody(ev){
+  const p=ev.payload||{};
+  const rows=p.rows||[];
+  const t=new Date(ev.ts*1000).toLocaleTimeString("en-US",{timeZone:ET_TZ,hour:"2-digit",minute:"2-digit",hour12:false});
+  let h=`<div class="lane-meta">${esc(scanDateForEvent(ev))} ${esc(t)} ET · #${ev.id||"?"} · universe ${esc(String(p.universe_size??"—"))} · ${rows.length} 命中</div>`;
+  if(rows.length) h+=rows.map(renderScanCandidateCard).join("");
+  else{
+    const bad=(p.status&&p.status!=="ok")||p.universe_size===0;
+    const msg=`0 命中 · universe=${esc(String(p.universe_size??"?"))}`
+      +(p.status&&p.status!=="ok"?` · ${esc(String(p.status))}`:"")
+      +(p.universe_size===0?" · 宇宙为空":"");
+    h+=`<div class="kills"${bad?' style="color:#E0B453"':''}>${msg}</div>`;
+  }
+  return h;
+}
+function renderBfsScanSection(scans){
+  const today=tradeDateEt();
+  const allBfs=scansByLabel(scans,"BFS sp500");
+  const slots=bfsSlotMap(scans,today);
+  const anyToday=slots.AM.length||slots.PM.length;
+  const lastAll=pickLatestScan(allBfs);
+  if(!anyToday&&!lastAll) return "";
+  let h=`<div class="brief bfs-scan">`;
+  if(!anyToday&&lastAll){
+    h+=`<div class="stale-banner">今日未产出 · 末次 ${esc(scanDateForEvent(lastAll))}</div>`;
+  }
+  h+=`<div class="bdate">R5.4.1 · BFS SP500 Scan · ${esc(today)}</div>`;
+  for(const win of ["AM","PM"]){
+    const list=slots[win];
+    const ev=pickLatestScan(list);
+    const rerun=list.length>1?` · 重跑×${list.length}`:"";
+    const sched=win==="AM"?"~09:45":"~15:35";
+    h+=`<div class="bfs-slot" style="margin:10px 0;padding:8px;border-left:3px solid #4A5080">`;
+    h+=`<div class="lane-meta"><b>${win}</b> · ${sched} ET${rerun}</div>`;
+    if(!ev) h+=`<div class="kills">${win} 未扫</div>`;
+    else h+=renderBfsScanEventBody(ev);
+    h+=`</div>`;
+  }
+  h+=`</div>`;
+  return h;
+}
+function renderLabelScanSection(scans,label){
+  const items=scansByLabel(scans,label).sort((a,b)=>b.id-a.id);
+  if(!items.length) return "";
+  const today=tradeDateEt();
+  const todayEv=items.find(e=>scanDateForEvent(e)===today);
+  if(!todayEv){
+    const last=items[0];
+    return `<div class="brief offpool"><div class="stale-banner">今日未产出 · 末次 ${esc(scanDateForEvent(last))}</div>`
+      +`<div class="bdate">${esc(label)} · ${esc(scanDateForEvent(last)||"—")}</div>`
+      +`<div class="kills">${esc(label)} 今日尚无 emit</div></div>`;
+  }
+  return renderGenericScanEvent(todayEv,label);
+}
+function renderGenericScanEvent(ev,title){
+  const p=ev.payload||{};
+  const rows=p.rows||[];
+  const scanDay=scanDateForEvent(ev);
+  const t=new Date(ev.ts*1000).toLocaleTimeString("en-US",{timeZone:ET_TZ,hour:"2-digit",minute:"2-digit",hour12:false});
+  const scanNotes=rows.map(r=>`${r.note||""} ${r.score||""}`).join(" ");
+  let h=`<div class="brief offpool">`;
+  h+=`<div class="bdate">${esc(title)} · ${esc(scanDay||"—")} ${esc(t)} ET · #${ev.id||"?"}${renderNoFactorBadge(scanNotes)}</div>`;
+  h+=`<div class="lane-meta">universe ${esc(String(p.universe_size??"—"))} · ${rows.length} 命中 · window ${esc(scanWindowForEvent(ev))}</div>`;
+  if(rows.length){
+    const useCards=rows.some(scanRowHasFullFields);
+    h+=useCards?rows.map(renderScanCandidateCard).join("")
+      :rowsTable(rows,[{h:"SYM",k:"sym"},{h:"SCORE",k:"score"},{h:"备注",k:"note"}]);
+  }else{
+    const bad=(p.status&&p.status!=="ok")||p.universe_size===0;
+    const msg=`0 命中 · universe=${esc(String(p.universe_size??"?"))}`
+      +(p.status&&p.status!=="ok"?` · ${esc(String(p.status))}`:"");
+    h+=`<div class="kills"${bad?' style="color:#E0B453"':''}>${msg}</div>`;
+  }
+  h+=`</div>`;
+  return h;
+}
+function renderPoolScanSection(scans){
+  const pool=scansByLabel(scans,"Pool scan").sort((a,b)=>b.id-a.id);
+  if(!pool.length) return "";
+  const today=tradeDateEt();
+  const todayEv=pool.find(e=>scanDateForEvent(e)===today);
+  if(!todayEv){
+    const last=pool[0];
+    return `<div class="brief offpool"><div class="stale-banner">今日未产出 · 末次 ${esc(scanDateForEvent(last))}</div>`
+      +`<div class="bdate">${esc(guardGridTitle("GRID · pool SCAN","aether_scan"))} · ${esc(scanDateForEvent(last)||"—")}</div>`
+      +`<div class="kills">Pool scan 今日尚无 emit</div></div>`;
+  }
+  return renderGenericScanEvent(todayEv,guardGridTitle("GRID · pool SCAN","aether_scan"));
+}
+function renderOffpoolDeepseekSection(dsEv){
+  if(!dsEv) return "";
+  let h=`<div class="brief offpool"><div class="bdate">Off-pool · DeepSeek · report-only · 10:50</div>`;
+  h+=renderOffpoolLaneCol(dsEv,"DS · Ollama cloud","DeepSeek V4");
+  h+=`</div>`;
+  return h;
+}
+function renderOffpoolLaneCol(ev,head,backendHint){
+  if(!ev){
+    return `<div class="offpool-col"><div class="bdate">${esc(head)} · —</div><div class="kills">待跑</div></div>`;
+  }
+  const sp=ev.payload||{};
+  const items=sp.items||[];
+  const opDay=laneEventDate(ev);
+  const ot=new Date(ev.ts*1000).toLocaleTimeString().slice(0,5);
+  const opNotes=items.map(i=>`${i.note||""} ${i.value||""}`).join(" ");
+  let h=`<div class="offpool-col">`;
+  if(opDay&&opDay!==tradeDateEt()){
+    h+=`<div class="stale-banner">${esc(head)} ${esc(opDay.slice(5))} · 非今日</div>`;
+  }
+  h+=`<div class="bdate">${esc(head)} · ${esc(opDay||"—")} ${esc(ot)} · #${ev.id||"?"}${renderNoFactorBadge(opNotes)}</div>`;
+  h+=`<div class="lane-meta">${backendHint} · ${offpoolLaneMeta(sp)}</div>`;
+  if(!items.length) h+=`<div class="kills">无候选</div>`;
+  else h+=rowsTable(items.map(r=>({...r,src:/deepseek/i.test(head)?"cloud":"cloud"})),
+    [{h:"SYM",k:"sym"},{h:"判断",k:"value"},{h:"备注",k:"note"}]);
+  h+=`</div>`;
+  return h;
+}
+function renderOffpoolScanSection(sonnetEv){
+  if(!sonnetEv) return "";
+  const sp=sonnetEv.payload||{};
+  const items=sp.items||[];
+  if(!items.length) return "";
+  const opDay=laneEventDate(sonnetEv);
+  const ot=new Date(sonnetEv.ts*1000).toLocaleTimeString().slice(0,5);
+  const opNotes=items.map(i=>`${i.note||""} ${i.value||""}`).join(" ");
+  let h=`<div class="brief offpool"><div class="bdate">SONNET · off-pool · report-only</div>`;
+  if(opDay&&opDay!==tradeDateEt()){
+    h+=`<div class="stale-banner">Off-pool ${esc(opDay.slice(5))} · 非今日 · #${sonnetEv.id||"?"}</div>`;
+  }
+  h+=`<div class="bdate">SONNET · off-pool · ${esc(opDay||"—")} ${esc(ot)} · #${sonnetEv.id||"?"}${renderNoFactorBadge(opNotes)}</div>`;
+  h+=`<div class="lane-meta">${offpoolLaneMeta(sp)||"CC CLI"}</div>`;
+  h+=rowsTable(items.map(r=>({...r,src:"cloud"})),
+    [{h:"SYM",k:"sym"},{h:"判断",k:"value"},{h:"备注",k:"note"}]);
+  h+=`</div>`;
+  return h;
+}
+function renderOffpoolCoachSection(coachEvents){
+  if(!coachEvents?.length) return "";
+  const today=tradeDateEt();
+  const pre=coachEvents.find(e=>String(e.payload?.window||"").toUpperCase()==="PREMARKET");
+  const exe=coachEvents.find(e=>String(e.payload?.window||"").toUpperCase()==="EXECUTION");
+  let h=`<div class="brief offpool"><div class="bdate">FABLE COACH · off-pool trial · ${esc(today)} · report-only</div>`;
+  h+=`<div class="offpool-row">`;
+  for(const [label,ev,sched] of [["PREMARKET",pre,"06:20 PST"],["EXECUTION",exe,"07:15 PST"]]){
+    const p=ev?.payload||{};
+    const t=ev?new Date(ev.ts*1000).toLocaleTimeString().slice(0,5):"—";
+    const src=p.verdict_source||"—";
+    h+=`<div class="offpool-col">`;
+    h+=`<div class="bdate">${esc(label)} · ${esc(t)} · #${ev?.id||"?"}</div>`;
+    h+=`<div class="lane-meta">Fable · ${esc(sched)} · src <b>${esc(src)}</b> · picks <b>${esc(String(p.pick_count??(p.items||[]).length))}</b></div>`;
+    if(!ev) h+=`<div class="kills">待 coach</div>`;
+    else if((p.items||[]).length){
+      h+=rowsTable(p.items,[{h:"SYM",k:"sym"},{h:"grade",k:"value"},{h:"thesis/备注",k:"note"}]);
+    }else h+=`<div class="kills">0 pick · candidates=${esc(String(p.stats?.candidates??"?"))}</div>`;
+    h+=`</div>`;
+  }
+  h+=`</div></div>`;
+  return h;
+}
+
+function renderPremarketSection(ev){
+  const today=tradeDateEt();
+  const ds=(ev.premarketDeepseek||[]).filter(e=>(e.payload?.date||locDate(e.ts))===today);
+  if(!ds.length) return "";
+  return ds.map(renderPremarketDeepseekSection).join("");
+}
+
+function renderTraceChip(p,briefEv){
+  const tid=p.trace_id||"";
+  const tf=p.trace_file||"";
+  if(!tid&&!tf) return "";
+  const label=tid||tf;
+  return `<span class="trace-chip" data-trace="${esc(tid)}" data-tracefile="${esc(tf)}" title="点击复制 trace">${esc(label)}</span>`;
+}
+function openBriefReader(date){
+  if(!date) return;
+  fetch(`${gw}/store/report/daily/${encodeURIComponent(date)}`,{headers:authHeaders()})
+    .then(r=>r.ok?r.json():null)
+    .then(data=>{
+      const fromCache=pickEvents().briefs.find(x=>(x.payload?.date||"")===date);
+      const ev=data?.brief||data?.brief_dryrun||fromCache;
+      const b=ev?.payload;
+      if(!b) return;
+      $("#brief-modal-title").textContent=b.title||`简报 · ${date}`;
+      $("#brief-modal-body").textContent=stripPremarketAbBody(b.body||"");
+      const tr=b.trace_id?`trace: ${b.trace_id}${b.trace_file?`\nfile: ${b.trace_file}`:""}`:"";
+      $("#brief-modal-trace").textContent=tr;
+      $("#brief-modal").classList.add("open");
+    }).catch(()=>{});
+}
+$("#brief-close")?.addEventListener("click",()=>$("#brief-modal").classList.remove("open"));
+document.addEventListener("click",e=>{
+  const chip=e.target.closest?.(".trace-chip");
+  if(chip){
+    const t=chip.dataset.trace||chip.dataset.tracefile||"";
+    if(t&&navigator.clipboard) navigator.clipboard.writeText(t).catch(()=>{});
+    return;
+  }
+  const card=e.target.closest?.("[data-brief-date]");
+  if(card) openBriefReader(card.dataset.briefDate);
+});
+function earningsIntegrityBlocked(earningsEv){
+  // Only the earnings lane's own meta — never borrow pool-scan / post-market brief anomalies.
+  // (07-14 brief still carries CSWI/theta WARN; that must not paint EARNINGS red.)
+  const meta=earningsEv?.payload?.meta||{};
+  if(meta.engine_integrity_ok===false) return true;
+  const reasons=meta.engine_integrity_reasons||meta.integrity_flags||[];
+  const block=/theta_ratio caps invalid|annualized theta mismatch|^WARN$|^ERROR$/i;
+  return (reasons||[]).some(r=>block.test(String(r||"")));
+}
+function formatOptionRow(p){
+  if(p.contract||p.asset_type==="option_call"){
+    const c=p.contract||p.sym;
+    const iv=p.IV_e??p.entry_iv??p.entry_iv_e;
+    return `${c} · qty ${p.qty||1} · entry $${Number(p.entry_premium||p.entry||0).toFixed(2)} · IV_e ${Number(iv||0).toFixed(2)}`;
+  }
+  return `qty ${p.qty} · entry $${p.entry} · stop $${p.stop} · uPnL ${p.upnl>=0?"+":""}${p.upnl}`;
+}
+function renderEarningsSection(earnings,paperW){
+  const date=earnings.length?(earnings[0].payload?.date||locDate(earnings[0].ts)):"—";
+  let h=`<div class="brief earnings"><div class="bdate">EARNINGS · sonnet · ${esc(date)} · report-only · 与盘前 A/B 平级</div>`;
+  if(earnings.length&&earningsIntegrityBlocked(earnings[0]))
+    h+=`<div class="earnings-warn">引擎异常，产出无效 · integrity 未清零 · 勿采信 Top1/持仓</div>`;
+  const ev=earnings[0];
+  const p=ev?.payload||{};
+  const it=p.item;
+  const skipReason=p.meta?.skip_reason||p.skip_reason;
+  if(!ev||!it){
+    h+=`<div class="kills">今日无标的${skipReason?` · ${esc(skipReason)}`:" · 宁缺毋滥"}</div>`;
+  }else{
+    h+=`<div class="bdate" style="margin-top:6px">Top 1</div>`;
+    h+=rowsTable([it],[{h:"SYM",k:"sym"},{h:"方向/置信",k:"value"},{h:"备注",k:"note"}]);
+  }
+  const wallet=(paperW||[]).find(w=>w.payload?.lane==="sonnet_earnings");
+  const wp=wallet?.payload||{};
+  h+=`<div class="bdate" style="margin-top:10px">持仓 · paper · sonnet_earnings</div>`;
+  if(!wallet||wp.status==="uninitialized"){
+    h+=`<div class="kills">未初始化 · 等待 init_sonnet_earnings_paper</div>`;
+  }else if((wp.positions||[]).length){
+    h+=rowsTable((wp.positions||[]).map(r=>({sym:r.contract||r.sym,score:"",note:formatOptionRow(r),dir:1})),[{h:"合约",k:"sym"},{h:"",k:"score"},{h:"明细",k:"note"}]);
+  }else h+=`<div class="kills">空仓</div>`;
+  const closed=wp.closed_trades||[];
+  h+=`<div class="bdate" style="margin-top:10px">已平仓 · ${closed.length}</div>`;
+  if(closed.length){
+    h+=rowsTable(closed.map(r=>({
+      sym:r.symbol||"—",
+      score:r.pnl_premium_pct!=null?`${r.pnl_premium_pct}%`:"—",
+      note:`IV_exit ${Number(r.IV_exit||0).toFixed(2)} · IV_T+1 ${Number(r["IV_T+1_open"]||0).toFixed(2)}`,
+      dir:(r.pnl_premium_pct||0)>=0?1:-1
+    })),[{h:"SYM",k:"sym"},{h:"P&L%",k:"score"},{h:"IV 三读数",k:"note"}]);
+  }else h+=`<div class="kills">无</div>`;
+  const breach=wp.discipline_breach_count??0;
+  h+=`<div class="kills" style="margin-top:8px">discipline_breach · 目标 0 · 当前 <b>${breach}</b></div>`;
+  h+=`</div>`;
+  return h;
+}
+function renderPipelineBar(ph){
+  const bar=$("#pipe-bar");
+  if(!bar) return;
+  renderStatusCompact(ph);
+  if(!ph){
+    bar.textContent="pipeline · 不可读";
+    bar.classList.add("stale");
+    return;
+  }
+  const scan=ph.pool_scan||{};
+  const off=ph.offpool||{};
+  const parts=[
+    `pool scan ${(scan.last_success_ts||"—").toString().slice(0,16)}`,
+    `offpool DS ${(off.store_last_success_date||off.last_success_date||"—").toString().slice(0,10)}`,
+    `brief ${(ph.post_market_daily?.last_success_date||"—").toString().slice(0,10)}`,
+    `premarket ${(ph.premarket_grid?.last_success_date||"—").toString().slice(0,10)}`,
+  ];
+  bar.textContent=parts.join(" · ");
+  bar.classList.toggle("stale",!!(ph.stale_post_market||ph.stale_offpool));
+}
+function watcherHealthSeverity(ev){
+  const p=ev?.payload||{};
+  const label=String(p.label||"").toLowerCase();
+  const note=String(p.note||"").toLowerCase();
+  if(label.includes("heartbeat_stale")||/^warn\b/.test(note)) return "warn";
+  if(label.startsWith("恢复")||label.includes("recovery")) return "ok";
+  if(label.includes("健康异常")||label.includes("异常")) return "bad";
+  return "info";
+}
+function snapTs(iso){
+  if(!iso) return Date.now()/1000;
+  const t=Date.parse(iso);
+  return Number.isFinite(t)?t/1000:Date.now()/1000;
+}
+function fmtSnap8520(e){
+  const kind=String(e.kind||"");
+  const target=String(e.target||"");
+  const sym=e.sym||"";
+  let title=`${target||"watcher"} · ${kind||"event"}`;
+  if(/momentum/i.test(kind)||/momentum/i.test(target)){
+    const m=String(e.detail||"").match(/^([A-Z]{1,6})\b/);
+    title=`异动 · ${sym||m?.[1]||target||"Momentum"}`;
+  }else if(/健康|health|scanner/i.test(kind)||/scanner/i.test(target)){
+    title=`健康 · ${kind||target||"watcher"}`;
+  }
+  const body=String(e.detail||"").trim()||"—";
+  const sum=e.summary?String(e.summary):"";
+  return {title, body, sum};
+}
+function renderWatcherCard(title,body,sum,ts,cls){
+  return `<div class="watcher-card${cls?" "+cls:""}">
+    <div class="wh">${esc(title)} · ${fmtEventTs(ts)} · <span class="tag w8520">8520</span></div>
+    <div class="wb">${esc(body)}</div>${sum?`<div class="wh" style="margin-top:6px">${esc(sum)}</div>`:""}
+  </div>`;
+}
+function buildWatcherHtml(rawEv,snap){
+  const health=rawEv.watcherHealth||[];
+  const alerts=rawEv.watcherAlerts||[];
+  const mmts=rawEv.watcherMmts||[];
+  let headCls="bad";
+  let headText="8520 Watcher · snapshot 不可达 · 确认 aether_watcher daemon 在跑";
+  if(snap){
+    const age=snap.heartbeat_age_sec;
+    const online=!!snap.online;
+    headCls=online?"ok":(age!=null&&age<300?"warn":"bad");
+    const targets=(snap.targets||[]).map(t=>typeof t==="string"?t:(t.name||t.id||"")).filter(Boolean);
+    headText=`8520 Watcher · ${online?"在线":"离线"} · 心跳 ${age!=null?age+"s":"—"} 前`
+      +` · ${targets.length||"?"} 目标 · ${snap.event_count||0} 本地事件`;
+  }
+  let h=`<div class="watcher-head ${headCls}">${esc(headText)}</div>`;
+  h+=`<div class="day-section"><div class="section-head">8520 实时 · 本地 state</div>`;
+  const snapEvents=(snap?.events||[]).slice().reverse().slice(0,24);
+  if(!snapEvents.length)
+    h+=`<div class="watcher-hint" style="margin:12px 0 0">8520 暂无事件 · daemon 正常时等待触发</div>`;
+  else
+    for(const e of snapEvents){
+      const f=fmtSnap8520(e);
+      h+=renderWatcherCard(f.title,f.body,f.sum,snapTs(e.time),"");
+    }
+  h+=`</div>`;
+  h+=`<div class="day-section"><div class="section-head">8501 bridge · store 回放</div>`;
+  if(!health.length&&!alerts.length&&!mmts.length)
+    h+=`<div class="watcher-hint" style="margin:12px 0 0">bridge 暂无 watcher 事件 · 确认 aether_watcher_bridge 在跑</div>`;
+  for(const ev of mmts.slice(0,12)){
+    const p=ev.payload||{};
+    const note=String(p.note||"").replace(/^📌\s*Momentum Sticker\s*\n?/i,"").trim();
+    const sym=p.sym||"—";
+    h+=renderWatcherCard(`Momentum · ${sym}`,note,"",ev.ts,"");
+  }
+  for(const ev of alerts.slice(0,12)){
+    const ageMin=(Date.now()/1000-ev.ts)/60;
+    if(ageMin>720) continue;
+    const p=ev.payload||{};
+    h+=renderWatcherCard(`Alert · ${p.label||"alert"}`,String(p.note||"").slice(0,400),"",ev.ts,"");
+  }
+  for(const ev of health.slice(0,12)){
+    const ageMin=(Date.now()/1000-ev.ts)/60;
+    if(ageMin>720) continue;
+    const p=ev.payload||{};
+    const sev=watcherHealthSeverity(ev);
+    h+=renderWatcherCard(`Health · ${p.label||"health"}`,String(p.note||"").slice(0,400),"",ev.ts,sev==="info"?"":sev);
+  }
+  h+=`</div>`;
+  return h;
+}
+
+function buildTradingHtml(rawEv){
+  const ev=pickEventsForToday(rawEv);
+  const{briefs,premarkets,scans,mmts,filts,opool,paperW,paperF,paperD,earnings}=ev;
+  const today=tradeDateEt();
+  const bfsToday=scansByLabel(ev.scans,"BFS sp500").find(e=>scanDateForEvent(e)===today);
+  const scD=bfsToday?scanDateForEvent(bfsToday):(ev.scans[0]?scanDateForEvent(ev.scans[0]):"");
+  let h=tradingMetaLine(ev);
+  let sunkBody="";
+  const briefAnomaly=briefs.length?splitBriefItems(briefs[0].payload?.items||[]).anomaly:[];
+  h+=`<div class="day-section"><div class="section-head">SCAN · 决策 lanes · 同格式表格</div>`;
+  h+=`<div class="kills" style="margin:-4px 0 10px;color:#8B8FB8">${esc(laneStampLine(ev))}</div>`;
+  if(scD&&scD!==today){
+    h+=`<div class="stale-banner">存在非 ${esc(today.slice(5))} 数据 · 见各块日期与 #event id · 不得当日志</div>`;
+  }
+  for(const blk of collectTradingBlocks(ev)){
+    h+=wrapTradingBlock(blk.html,blk.ev,blk.meta);
+  }
+  h+=`</div>`;
+  h+=renderPaperLanes(["equity"],paperW,paperF,null,null);
+  let evidenceHtml="";
+  let diagHtml="";
+  if(briefs.length){
+    const briefDate=briefs[0].payload?.date||locDate(briefs[0].ts);
+    const anchor=anchorTradeDate(ev);
+    const staleBrief=briefDate&&anchor&&briefDate<anchor;
+    h+=renderBriefStaleBanner(briefDate,anchor);
+    h+=`<div class="day-section${staleBrief?" stale-day":""}"><div class="section-head">盘后简报 · ${esc(briefDate.slice(5))}${staleBrief?" · 上一交易日":""}</div>`;
+    const p=briefs[0].payload||{};
+    const body=stripPremarketAbBody(p.body||"");
+    const isDry=p.dry_run||briefs[0].kind==="aether_brief_dryrun";
+    const longBody=body.length>120;
+    const split=splitBriefItems(p.items);
+    h+=`<div class="brief${staleBrief?" data-stale":""}" data-brief-date="${esc(p.date||"")}" style="cursor:pointer;margin-top:0">
+      <div class="bdate">${isDry?"DRY-RUN · ":""}点击查看全文${split.anomaly.length?`<span class="diag-dot" title="integrity ${split.anomaly.length}"></span>`:""}</div>
+      <div class="btitle">${esc(p.title||"盘后摘要")}</div>`;
+    if(!longBody&&body) h+=`<div class="bbody">${esc(body.slice(0,160))}${body.length>160?"…":""}</div>`;
+    h+=renderBriefPremarketAb(p.premarket_ab);
+    h+=renderBriefDeepseekPerformance(p);
+    h+=renderTraceChip(p,briefs[0]);
+    h+=`</div></div>`;
+    if(longBody)
+      sunkBody=`<details class="brief" open><summary>复盘全文 · ${esc(p.date||locDate(briefs[0].ts))}</summary>
+        <div class="bbody" style="margin-top:10px">${esc(body)}</div>`
+        +renderTraceChip(p,briefs[0])+`</details>`;
+    if(split.regular.length)
+      evidenceHtml+=rowsTable(split.regular,[{h:"SYM",k:"sym"},{h:"指标",k:"label"},{h:"值",k:"value"},{h:"备注",k:"note"}]);
+    if(split.anomaly.length)
+      diagHtml+=renderAnomalySection(split.anomaly,p.date||locDate(briefs[0].ts),briefs[0].ts);
+  }
+  if(filts.length){
+    const p=filts[0].payload||{};
+    const ft=fmtEventTs(filts[0].ts);
+    const sid=p.scan_id?` · run ${esc(String(p.scan_id).slice(0,12))}`:"";
+    evidenceHtml+=`<div class="brief"><div class="bdate">FILTER · logging-first · compile ${esc(ft)}${sid}</div>`;
+    evidenceHtml+=renderKillCounts(p.kill_counts);
+    const near=aggregateNearMissRows(p.near_miss_top||[]);
+    if(near.length)
+      evidenceHtml+=rowsTable(near,[{h:"高分被杀",k:"sym"},{h:"SCORE",k:"score"},{h:"KILL",k:"note"}]);
+    evidenceHtml+=`</div>`;
+  }
+  if(mmts.length){
+    const rows=[];
+    for(const ev of mmts.slice(0,3))
+      for(const r of (ev.payload?.rows||[])) rows.push({...r,ts:ev.ts});
+    if(rows.length){
+      const newestTs=Math.max(...rows.map(r=>r.ts||0));
+      const ageMin=(Date.now()/1000-newestTs)/60;
+      if(ageMin<360){
+        const stale=ageMin>90;
+        const ageStr=ageMin<60?`${ageMin|0}分钟前`:`${(ageMin/60).toFixed(1)}小时前`;
+        evidenceHtml+=`<div class="brief"${stale?' style="opacity:.45"':''}>
+          <div class="bdate">异动 · compile · ${fmtEventTs(newestTs)}
+          · ${ageStr}${stale?" · 已过时":""} · report-only</div>`;
+        evidenceHtml+=rowsTable(rows,[{h:"SYM",k:"sym"},{h:"信号",k:"note"}],"mmt");
+        evidenceHtml+=`</div>`;
+      }
+    }
+  }
+  if(evidenceHtml)
+    h+=`<details class="layer-evidence"><summary>证据层 · scan / filter / 明细</summary>${evidenceHtml}</details>`;
+  if(diagHtml)
+    h+=`<details class="layer-diag"><summary>诊断层 · integrity / anomaly${briefAnomaly.length?` · ${briefAnomaly.length}`:""}</summary>${diagHtml}</details>`;
+  if(paperD.length){
+    const p=paperD[0].payload||{};
+    h+=`<div class="brief paper"><div class="bdate">PAPER DAILY · ${esc(p.date||"")} · 16:40</div>`;
+    if(p.body) h+=`<div class="bbody" style="font-size:13px;margin:6px 0">${esc(p.body)}</div>`;
+    if(p.items&&p.items.length)
+      h+=rowsTable(p.items,[{h:"LANE",k:"sym"},{h:"EQ",k:"value"},{h:"备注",k:"note"}]);
+    h+=`</div>`;
+  }
+  h+=sunkBody;
+  if(briefs.length>1){
+    h+=`<details><summary>过往简报 · ${briefs.length-1}${showDryRun?" (含 dry-run)":""}</summary>`;
+    for(const b of briefs.slice(1,15)){
+      const p=b.payload||{};
+      const dry=b.kind==="aether_brief_dryrun"||p.dry_run;
+      h+=`<div class="old" data-brief-date="${esc(p.date||"")}" style="cursor:pointer">
+        <div class="bdate">${esc(p.date||"")}${dry?" · DRY-RUN":""}</div>
+        ${esc((p.body||"").slice(0,160))}${(p.body||"").length>160?"…":""}
+        ${renderTraceChip(p,b)}</div>`;
+    }
+    h+=`</details>`;
+  }
+  if(!h){
+    const syncing=needsBackfill?" · 正在从 store 回填 scan/brief…":"";
+    return`<div id="empty">TRADING 暂无 scan/brief${syncing}
+      <code>点顶部 TRADING tab · 若仍空: 长按 stamp 清缓存\n或确认 nexus-dryrun / post-market-summary 在跑</code></div>`;
+  }
+  return h;
+}
+
+function buildCryptoHtml(ev){
+  const{paperW,paperF,paperD,cryptoAb}=ev;
+  const abPayload=cryptoAb.length?cryptoAb[0].payload:null;
+  const paperDPayload=paperD.length?paperD[0].payload:null;
+  let h="";
+  h+=renderPaperLanes(["crypto_rules"],paperW,paperF,abPayload,paperDPayload);
+  const abCols=abColumnsFromPayload(abPayload||{});
+  h+=`<div class="brief paper offpool" style="border-left-color:rgba(224,180,83,.5)"><div class="bdate">${esc(abPayload?.label||"CRYPTO A/B")} · mock · isolated ledgers</div>`;
+  if(abPayload?.ab_divergence?.length){
+    h+=`<div class="kills" style="color:#E0B453">⚠ A/B 差异: ${esc(abPayload.ab_divergence.join(" · "))}</div>`;
+  }else if(abPayload?.ab_contract){
+    h+=`<div class="kills">bg: ${esc(String(abPayload.ab_contract.bg_formula||"").slice(0,80))} · ${esc(abPayload.ab_contract.three_same||"三同")}</div>`;
+  }
+  h+=`<div class="offpool-row">`;
+  const abSinceSet=new Set(abCols.map(c=>laneSinceMmdd(c)).filter(Boolean));
+  const ageMismatch=abSinceSet.size>1;
+  if(ageMismatch){
+    h+=`<div class="paper-lane-age">⚠ 异龄 lane 禁止直接对比 · ${[...abSinceSet].map(s=>`since ${s}`).join(" · ")}</div>`;
+  }
+  for(const col of abCols){
+    const since=laneSinceMmdd(col);
+    h+=`<div class="offpool-col${ageMismatch?" lane-age-split":""}"><div class="bdate">${esc(cryptoColumnTitle(col))} · ${esc(col.status||"ready")}${since?` · since ${esc(since)}`:""}</div>`;
+    h+=`<div class="lane-meta">equity <b>${esc(fmtLedgerEquity(col))}</b> · ${esc(fmtLedgerBg(col))} · pos ${col.n_positions??0}</div>`;
+    const pos=laneIsUninit(col)?"未初始化":((col.positions||[]).join(", ")||"flat");
+    h+=`<div class="kills">${esc(pos)}</div></div>`;
+  }
+  h+=`</div></div>`;
+  if(paperD.length){
+    const p=paperD[0].payload||{};
+    const body=String(p.body||"").trim();
+    if(body&&!/LANE|EQ|crypto_rules|crypto_cli/i.test(body)){
+      h+=`<div class="brief paper"><div class="bdate">PAPER DAILY · ${esc(p.date||"")}<span class="block-ts">${esc(fmtBlockTsEt(paperD[0].ts))}</span></div>`;
+      h+=`<div class="bbody" style="font-size:13px;margin:6px 0">${esc(body)}</div></div>`;
+    }
+  }
+  const hasCrypto=abCols.length||paperW.some(e=>e.payload?.lane==="crypto_rules")||paperD.length;
+  if(!hasCrypto){
+    h+=`<div id="empty">CRYPTO 暂无事件
+      <code>paper_crypto_daily 09:05 · paper_daemon 120s · crypto_rules lane</code></div>`;
+  }
+  return h;
+}
+
+function render(){
+  const ev=pickEvents();
+  const B=$("#body");
+  if(activeTab==="crypto") B.innerHTML=buildCryptoHtml(ev);
+  else if(activeTab==="watcher") B.innerHTML=buildWatcherHtml(ev,watcherSnap);
+  else B.innerHTML=buildTradingHtml(ev);
+}
+
+function authHeaders(){
+  const hd={};
+  if(tk) hd["X-Grid-Token"]=tk;
+  return hd;
+}
+
+async function fetchEventSnapshot(){
+  const r=await fetch(`${gw}/store/events/snapshot?source=aether`,{headers:authHeaders()});
+  if(r.status===401||r.status===403) return null;
+  if(!r.ok) throw 0;
+  return r.json();
+}
+
+async function fetchBriefHistory(){
+  try{
+    const r=await fetch(`${gw}/store/events/recent?source=aether&kinds=${HISTORY_KINDS.join(",")}&per_kind=15`,{headers:authHeaders()});
+    if(r.status===401||r.status===403) return null;
+    if(!r.ok) throw 0;
+    const hist=await r.json();
+    if(Array.isArray(hist)&&hist.length) mergeEventsIntoCache(hist);
+    return hist;
+  }catch(_e){
+    return null;
+  }
+}
+
+async function fetchWatcherHistory(){
+  try{
+    const r=await fetch(`${gw}/store/events/recent?source=watcher&kinds=${WATCHER_KINDS.join(",")}&per_kind=10`,{headers:authHeaders()});
+    if(r.status===401||r.status===403) return null;
+    if(!r.ok) throw 0;
+    const hist=await r.json();
+    if(Array.isArray(hist)&&hist.length) mergeEventsIntoCache(hist);
+    return hist;
+  }catch(_e){
+    return null;
+  }
+}
+
+async function fetchWatcherSnapshot(){
+  try{
+    const r=await fetch(`${gw}/watcher/snapshot`,{headers:authHeaders()});
+    if(!r.ok) return null;
+    return r.json();
+  }catch(_e){
+    return null;
+  }
+}
+
+async function fetchPipelineHealth(){
+  try{
+    const r=await fetch(`${gw}/store/pipeline/health`,{headers:authHeaders()});
+    if(!r.ok) return null;
+    return r.json();
+  }catch(_e){return null;}
+}
+
+async function fetchLaneSnapshot(){
+  try{
+    const kinds=SERVER_LANE_KINDS.join(",");
+    const r=await fetch(`${gw}/store/events/recent?source=aether&kinds=${kinds}&per_kind=1`,{headers:authHeaders()});
+    if(!r.ok) return null;
+    const rows=await r.json();
+    return Array.isArray(rows)?rows:null;
+  }catch(_e){return null;}
+}
+
+async function poll(){
+  try{
+    if(location.hostname.endsWith(".ts.net")){
+      const want=defaultAgw();
+      if(gw!==want){ gw=want; st.set("agw",gw); $("#gw").value=gw; }
+    }
+    let merged=[];
+    const ph=await fetchPipelineHealth();
+    renderPipelineBar(ph);
+    const laneSnap=await fetchLaneSnapshot();
+    if(Array.isArray(laneSnap)&&laneSnap.length){
+      serverLaneSnap=laneSnap;
+      mergeEventsIntoCache(laneSnap);
+    }
+    try{
+      const snap=await fetchEventSnapshot();
+      if(Array.isArray(snap)&&snap.length) merged.push(...snap);
+    }catch(_e){/* 旧 gateway 无 snapshot → 大 limit 兜底 */}
+    await fetchBriefHistory();
+    await fetchWatcherHistory();
+    watcherSnap=await fetchWatcherSnapshot();
+    const since=needsBackfill?0:lastId;
+    const r=await fetch(`${gw}/store/events?since=${since}&limit=${needsBackfill?2000:100}&source=aether`,{headers:authHeaders()});
+    if(r.status===401||r.status===403){
+      $("#stamp").textContent="token 无效 · 清 Settings token";
+      render();
+      return;
+    }
+    if(!r.ok) throw 0;
+    const all=await r.json();
+    if(all.length) merged.push(...all);
+    try{
+      const rw=await fetch(`${gw}/store/events?since=${since}&limit=${needsBackfill?500:50}&source=watcher`,{headers:authHeaders()});
+      if(rw.ok){
+        const wAll=await rw.json();
+        if(wAll.length) merged.push(...wAll);
+      }
+    }catch(_e){}
+    const evs=merged.filter(e=>
+      e.source==="aether"||String(e.kind).startsWith("aether")||e.source==="watcher");
+    if(evs.length) mergeEventsIntoCache(evs);
+    needsBackfill=needsTradingBackfill();
+    const ev=pickEvents();
+    const tkCount=TRADING_LANE_KINDS.filter(k=>cache.some(e=>e.kind===k)).length;
+    renderStatusCompact(ph);
+    $("#stamp").textContent="↻";
+    render();
+  }catch(e){
+    $("#stamp").textContent="offline · 缓存视图";
+    render();
+  }
+}
+
+// V2[6]: stamp 点按=同步, 长按800ms=清缓存从 id=0 重拉 (应对 daemon 换库/id 归零)
+let pressT=null, longFired=false;
+const stamp=$("#stamp");
+stamp.addEventListener("pointerdown",()=>{
+  longFired=false;
+  pressT=setTimeout(()=>{
+    longFired=true;
+    cache=[]; lastId=0; st.del("aev"); st.del("aether_tab"); st.del("atk");
+    tk=""; $("#tk").value="";
+    needsBackfill=true;
+    stamp.textContent="缓存已清 · 重拉中…";
+    setTab("trading"); poll();
+  },800);
+});
+const cancelPress=()=>{clearTimeout(pressT)};
+stamp.addEventListener("pointerup",cancelPress);
+stamp.addEventListener("pointerleave",cancelPress);
+stamp.addEventListener("pointercancel",cancelPress);
+stamp.onclick=()=>{ if(!longFired) poll(); };
+stamp.oncontextmenu=e=>e.preventDefault();   // 移动端长按不弹系统菜单
+
+$("#body").innerHTML='<div id="empty">加载 Aether store…</div>';
+function bootPaint(){
+  if(!cacheHasTradingData()) return;
+  $("#stamp").textContent="↻";
+  render();
+}
+async function bootstrap(){
+  $("#page-ver").textContent=PAGE_VER;
+  bootPaint();
+  await poll();
+  setTab(activeTab,{skipHash:!tabFromHash()});
+  if(!location.hash) history.replaceState(null,"","#"+activeTab);
+}
+bootstrap();
+setInterval(poll, 30000);
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden) poll(); });
+</script>
+</body>
+</html>
