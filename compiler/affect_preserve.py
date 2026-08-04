@@ -2,6 +2,10 @@
 
 Deterministic only. No LLM. Does not soften, reframe, or invent goals.
 UNKNOWN when unsure — never guess into rejected_interpretations.
+
+POLARITY_FIX v1.2: polarity is the sole authority field. normalized_rule holds
+action text only (no FORBIDDEN:/REQUIRED: prefix). source_phrase must be a
+literal substring of raw (slice only, never rewrite).
 """
 from __future__ import annotations
 
@@ -10,49 +14,34 @@ from typing import Any
 
 UNKNOWN = "UNKNOWN"
 
-# Explicit negation / prohibition — user-authored only (not compiler inference).
-_NEGATION_RES = [
-    # ZH
-    re.compile(
-        r"(?P<span>(?:绝对|坚决|千万)?(?:不要|不许|不准|禁止|杜绝|绝不能|不可以|别再)"
-        r"[^。！？\n.!?]{0,80})"
-    ),
-    re.compile(r"(?P<span>不是\s*[^。！？\n.!?]{0,60})"),
-    re.compile(r"(?P<span>别\s*(?:再)?[^。！？\n.!?]{0,60})"),
-    # EN
-    re.compile(
-        r"(?P<span>(?:do\s+not|don't|never|must\s+not|cannot|can't|no\s+more)\s+"
-        r"[^.\n!?]{0,80})",
-        re.I,
-    ),
-    re.compile(
-        r"(?P<span>(?:stop|quit)\s+(?:telling|assuming|reframing|softening|rewriting)\s+"
-        r"[^.\n!?]{0,60})",
-        re.I,
-    ),
-]
+POLARITY_FORBIDDEN = "forbidden"
+POLARITY_REQUIRED = "required"
+POLARITY_UNCERTAIN = "uncertain"
+POLARITY_RELEASED = "released"
+POLARITY_QUOTED = "quoted"  # cited text — not a Lyra constraint
 
-_HARD_BOUNDARY_RES = [
-    re.compile(
-        r"(?P<span>(?:红线|硬边界|不可重解释|不可协商|底线|铁律)"
-        r"[^。！？\n.!?]{0,80})"
-    ),
-    re.compile(
-        r"(?P<span>(?:hard\s*boundary|red\s*line|non[- ]negotiable|do\s+not\s+reinterpret)"
-        r"[^.\n!?]{0,80})",
-        re.I,
-    ),
-    re.compile(
-        r"(?P<span>(?:必须|只能|务必)[^。！？\n.!?]{0,60})",
-    ),
-]
+# B · negation lexicon (longest-first match). 别的 ≠ 别.
+NEGATION_LEXICON: tuple[str, ...] = (
+    "绝不能", "不可以", "不要", "不准", "不许", "别再", "禁止", "拒绝", "停止",
+    "不得", "不再", "杜绝", "勿", "别",
+    "must not", "do not", "don't", "cannot", "can't", "no more", "never", "stop",
+)
 
-# Affect cue → type. Intensity derived from cue strength + local emphasis.
+# Focus words — must stay inside negation span when present (K).
+FOCUS_WORDS: tuple[str, ...] = ("只", "仅", "都", "全", "一定", "总是", "光", "净")
+
+# Required / request cues (not negation).
+_REQ_CUES = (
+    "不但要", "还要", "我要你", "要你", "必须", "务必", "只能", "先修", "先",
+    "照.+做", "也要",
+)
+
 _AFFECT_CUES: list[tuple[str, re.Pattern[str], float]] = [
     ("anger", re.compile(r"(愤怒|生气|火大|受够了|烦死|气死|怒|愤怒地|怒了)", re.I), 0.85),
     ("anger", re.compile(r"\b(angry|furious|pissed|outrage|mad\s+at)\b", re.I), 0.8),
     ("frustration", re.compile(r"(烦透|折腾|又来|第\s*\d+\s*次|再三|反复说了)", re.I), 0.7),
-    ("frustration", re.compile(r"\b(frustrat\w*|sick\s+of|enough\s+already|again\s+and\s+again)\b", re.I), 0.7),
+    ("frustration", re.compile(
+        r"\b(frustrat\w*|sick\s+of|enough\s+already|again\s+and\s+again)\b", re.I), 0.7),
     ("urgency", re.compile(r"(立刻|马上|赶紧|刻不容缓|现在就|紧急)", re.I), 0.75),
     ("urgency", re.compile(r"\b(urgent|immediately|right\s+now|asap|critical)\b", re.I), 0.75),
     ("emphasis", re.compile(r"(重点是|听清楚|我说的是|必须听懂|强调)", re.I), 0.65),
@@ -64,104 +53,489 @@ def _clip01(x: float) -> float:
     return max(0.0, min(1.0, float(x)))
 
 
-# Polarity bomb fix: never emit a bare positive string as normalized_rule.
-POLARITY_FORBIDDEN = "forbidden"
-POLARITY_REQUIRED = "required"
-_FORBIDDEN_PREFIX = "FORBIDDEN:"
-_REQUIRED_PREFIX = "REQUIRED:"
-
-# Per-clause negation: cue + body up to clause break (，、；。!?).
-# Splits "禁止A，禁止B" into two FORBIDDEN items — no half-stripped polarity.
-_CLAUSE_NEG_RE = re.compile(
-    r"(?P<cue>(?:绝对|坚决|千万)?(?:不要|不许|不准|禁止|杜绝|绝不能|不可以|别再|别|不得|不是)|"
-    r"(?:do\s+not|don't|never|must\s+not|cannot|can't|no\s+more))\s*"
-    r"(?P<body>[^。！？\n.!?，,；;]+)",
-    re.I,
-)
-_CLAUSE_REQ_RE = re.compile(
-    r"(?P<cue>必须|只能|务必|must|shall)\s*"
-    r"(?P<body>[^。！？\n.!?，,；;]+)",
-    re.I,
-)
-
-
 def _span_target(span: str) -> str:
     """Object fragment for affect windows only — NOT for constraint rules."""
     s = span.strip()
-    s2 = re.sub(
-        r"^(?:绝对|坚决|千万)?(?:不要|不许|不准|禁止|杜绝|绝不能|不可以|别再|别|不是|不得)\s*",
-        "",
-        s,
-    )
-    s2 = re.sub(
-        r"^(?:do\s+not|don't|never|must\s+not|cannot|can't|no\s+more)\s+",
-        "",
-        s2,
-        flags=re.I,
-    )
-    s2 = s2.strip(" ：:，,")
-    if len(s2) < 2:
-        return UNKNOWN
-    return s2[:120]
+    for cue in NEGATION_LEXICON:
+        if s.startswith(cue):
+            s = s[len(cue):].strip(" ：:，,")
+            break
+    return s[:120] if len(s) >= 2 else UNKNOWN
 
 
-def format_polarized_rule(polarity: str, action: str) -> str:
-    """Only legal string form of a constraint rule for any downstream."""
-    body = (action or "").strip()
-    if not body:
-        body = UNKNOWN
-    if polarity == POLARITY_REQUIRED:
-        return _REQUIRED_PREFIX + body[:200]
-    return _FORBIDDEN_PREFIX + body[:200]
+# ---------------------------------------------------------------------------
+# Quote masking (L)
+# ---------------------------------------------------------------------------
 
-
-def constraint_export(item: dict[str, Any]) -> str:
-    """Downstream-safe export. Never returns bare positive action text."""
-    rule = str(item.get("normalized_rule") or "")
-    pol = str(item.get("polarity") or "")
-    if rule.startswith(_FORBIDDEN_PREFIX) or rule.startswith(_REQUIRED_PREFIX):
-        return rule
-    if pol == POLARITY_REQUIRED:
-        return format_polarized_rule(POLARITY_REQUIRED, rule)
-    return format_polarized_rule(POLARITY_FORBIDDEN, rule)
-
-
-def bare_rule_readable_as_positive(normalized_rule: str) -> bool:
-    """True if rule can be misread as a positive instruction (polarity bomb)."""
-    r = (normalized_rule or "").strip()
-    if not r or r == UNKNOWN:
-        return False
-    if r.startswith(_FORBIDDEN_PREFIX) or r.startswith(_REQUIRED_PREFIX):
-        return False
-    # Leading negation cues = still polarized in-text
-    if re.match(
-        r"^(?:不要|不许|不准|禁止|杜绝|绝不能|不可以|别再|别|不得|不是|"
-        r"do\s+not|don't|never|must\s+not|FORBIDDEN:|REQUIRED:)",
-        r,
-        re.I,
+def find_quoted_ranges(text: str) -> list[tuple[int, int]]:
+    """Ranges that are citations / code — negations inside do not bind Lyra."""
+    ranges: list[tuple[int, int]] = []
+    for cre in (
+        re.compile(r"```.*?```", re.S),
+        re.compile(r"「[^」]*」"),
+        re.compile(r"“[^”]*”"),
+        re.compile(r"\"[^\"]*\""),
+        re.compile(r"以下是[^：:]*[：:][^\n]*"),
+        re.compile(r"他说[^。！？\n]*"),
+        re.compile(r"她说[^。！？\n]*"),
     ):
+        for m in cre.finditer(text or ""):
+            ranges.append((m.start(), m.end()))
+    ranges.sort()
+    return ranges
+
+
+def _in_ranges(pos: int, ranges: list[tuple[int, int]]) -> bool:
+    return any(a <= pos < b for a, b in ranges)
+
+
+def _span_in_quoted(start: int, end: int, ranges: list[tuple[int, int]]) -> bool:
+    if start >= end:
+        return False
+    # majority of span inside quote → quoted
+    mid = (start + end) // 2
+    return _in_ranges(mid, ranges)
+
+
+# ---------------------------------------------------------------------------
+# Polarity authority (D) — normalized_rule has NO polarity prefix
+# ---------------------------------------------------------------------------
+
+def assert_constraint_well_formed(item: dict[str, Any]) -> None:
+    """Hard fail if polarity missing or smuggled into normalized_rule."""
+    if not isinstance(item, dict):
+        raise ValueError("constraint must be a dict with polarity")
+    pol = item.get("polarity")
+    if pol not in (
+        POLARITY_FORBIDDEN, POLARITY_REQUIRED, POLARITY_UNCERTAIN,
+        POLARITY_RELEASED, POLARITY_QUOTED,
+    ):
+        raise ValueError("constraint missing/invalid polarity (sole authority)")
+    rule = str(item.get("normalized_rule") or "")
+    if rule.startswith("FORBIDDEN:") or rule.startswith("REQUIRED:"):
+        raise ValueError(
+            "normalized_rule must not contain polarity prefix; polarity field is sole authority"
+        )
+
+
+def constraint_log_label(item: dict[str, Any]) -> str:
+    """Human/log display only — never use as execute authority."""
+    assert_constraint_well_formed(item)
+    pol = item["polarity"]
+    rule = str(item.get("normalized_rule") or "")
+    return "%s:%s" % (str(pol).upper(), rule)
+
+
+def constraint_export_for_execute(item: dict[str, Any]) -> dict[str, Any]:
+    """Execute-bound export: requires polarity field; rejects rule-only payloads."""
+    assert_constraint_well_formed(item)
+    if item["polarity"] == POLARITY_UNCERTAIN:
+        raise ValueError("uncertain constraint cannot enter execute")
+    if item["polarity"] == POLARITY_QUOTED:
+        raise ValueError("quoted citation cannot enter execute")
+    if item["polarity"] == POLARITY_RELEASED:
+        raise ValueError("released constraint excluded from execute set")
+    return {
+        "polarity": item["polarity"],
+        "normalized_rule": item["normalized_rule"],
+        "source_phrase": item.get("source_phrase"),
+        "source_start": item.get("source_start"),
+        "source_end": item.get("source_end"),
+    }
+
+
+def bare_normalized_rule_alone_is_fail(payload: Any) -> bool:
+    """I/D: passing only normalized_rule (no polarity) → hard fail."""
+    if isinstance(payload, str):
+        return True
+    if isinstance(payload, dict):
+        if "normalized_rule" in payload and "polarity" not in payload:
+            return True
+        try:
+            assert_constraint_well_formed(payload)
+            return False
+        except ValueError:
+            return True
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Clause split + negation scope
+# ---------------------------------------------------------------------------
+
+def _is_negation_cue_at(text: str, i: int) -> str | None:
+    """Return lexicon cue at offset i, or None. Reject 别的 for 别."""
+    rest = text[i:]
+    for cue in NEGATION_LEXICON:
+        if not rest.lower().startswith(cue.lower() if cue.isascii() else cue):
+            continue
+        if cue == "别":
+            # 别的 / 别人 / 别处 — not imperative 别
+            nxt = rest[len(cue):len(cue) + 1]
+            if nxt in ("的", "人", "处", "名", "样"):
+                continue
+        return cue
+    return None
+
+
+def _split_top_clauses(text: str) -> list[tuple[int, int, str]]:
+    """Split on ，、；;。.!！？?:：\n — return (start, end, clause).
+
+    Fullwidth ！ / ： matter: without them, '说了三遍！不要…' stays one clause and
+    cue-prefix rejects 不要 → silent uncertain (fail-open risk).
+    """
+    out: list[tuple[int, int, str]] = []
+    start = 0
+    for i, ch in enumerate(text or ""):
+        if ch in "，、；;\n。.!！？?：:":
+            chunk = text[start:i].strip()
+            if chunk:
+                # trim offsets to chunk
+                rs = text.find(chunk, start, i)
+                re_ = rs + len(chunk)
+                out.append((rs, re_, chunk))
+            start = i + 1
+    if start < len(text or ""):
+        chunk = text[start:].strip()
+        if chunk:
+            rs = text.find(chunk, start)
+            out.append((rs, rs + len(chunk), chunk))
+    return out
+
+
+def _mk_item(
+    *,
+    raw: str,
+    start: int,
+    end: int,
+    polarity: str,
+    action: str,
+    releases: dict | None = None,
+) -> dict[str, Any]:
+    source = raw[start:end]
+    item = {
+        "normalized_rule": (action or UNKNOWN)[:200],
+        "polarity": polarity,
+        "source_phrase": source,
+        "source_start": start,
+        "source_end": end,
+        "action": (action or UNKNOWN)[:200],
+    }
+    if releases:
+        item["releases"] = releases
+    assert_constraint_well_formed(item)
+    assert source == raw[start:end]
+    assert source in raw  # C · in_raw
+    return item
+
+
+def _action_after_cue(clause: str, cue: str) -> str:
+    body = clause[len(cue):].strip(" ：:，,") if clause.startswith(cue) else clause
+    return body[:200] if body else UNKNOWN
+
+
+# 和 inside these bigrams is NOT a conjunctive splitter (温和建议 ≠ 温 + 建议).
+_AND_COMPOUND_BIGRAMS = frozenset({
+    "温和", "平和", "总和", "缓和", "饱和", "几何", "和尚", "和气",
+    "和谐", "和约", "和解", "和平", "暖和", "中和", "柔和", "调和",
+    "附和", "应和", "共和", "维和", "说和",
+})
+
+
+def _is_conjunctive_he(raw: str, i: int) -> bool:
+    """True if raw[i] is a real conjunctive 和/与/、 not a compound glyph."""
+    if i < 0 or i >= len(raw):
+        return False
+    ch = raw[i]
+    if ch == "、":
+        return True
+    if ch not in ("和", "与"):
+        return False
+    if i > 0 and raw[i - 1:i + 1] in _AND_COMPOUND_BIGRAMS:
         return False
     return True
 
 
-def _collect_spans(prompt: str, patterns: list[re.Pattern[str]]) -> list[str]:
-    found: list[str] = []
-    seen: set[str] = set()
-    for cre in patterns:
-        for m in cre.finditer(prompt):
-            span = (m.groupdict().get("span") or m.group(0) or "").strip()
-            if not span or span in seen:
-                continue
-            seen.add(span)
-            found.append(span)
-    return found
+def _distribute_he_conjuncts(
+    raw: str, cue_start: int, cue: str, body_start: int, body_end: int,
+) -> list[dict[str, Any]]:
+    """禁止A和B → two forbidden; source_phrase = literal slices only (C/f6)."""
+    def _single() -> list[dict[str, Any]]:
+        return [_mk_item(
+            raw=raw, start=cue_start, end=body_end, polarity=POLARITY_FORBIDDEN,
+            action=_action_after_cue(raw[cue_start:body_end], cue),
+        )]
 
+    parts: list[tuple[int, int]] = []
+    buf_s = body_start
+    i = body_start
+    while i < body_end:
+        if _is_conjunctive_he(raw, i) and i > buf_s:
+            parts.append((buf_s, i))
+            buf_s = i + 1
+        i += 1
+    if buf_s < body_end:
+        parts.append((buf_s, body_end))
+    if len(parts) <= 1:
+        return _single()
+    if any((b - a) < 2 for a, b in parts):
+        return _single()
+    items = []
+    for pi, (a, b) in enumerate(parts):
+        if pi == 0:
+            items.append(_mk_item(
+                raw=raw, start=cue_start, end=b, polarity=POLARITY_FORBIDDEN,
+                action=raw[a:b].strip()[:200] or UNKNOWN,
+            ))
+        else:
+            items.append(_mk_item(
+                raw=raw, start=a, end=b, polarity=POLARITY_FORBIDDEN,
+                action=raw[a:b].strip()[:200] or UNKNOWN,
+            ))
+    return items
+
+
+def _parse_required_clause(raw: str, start: int, end: int, clause: str) -> dict[str, Any] | None:
+    # 不但要X / 还要Y / 我要你Z / 也要W / 先修Q / 必须…
+    patterns = [
+        (re.compile(r"^(不但要)(.+)$"), 1),
+        (re.compile(r"^(还要)(.+)$"), 1),
+        (re.compile(r"^(也要)(.+)$"), 1),
+        (re.compile(r"^(我要你)(.+)$"), 1),
+        (re.compile(r"^(要你)(.+)$"), 1),
+        (re.compile(r"^(必须|务必|只能)(.+)$"), 1),
+        (re.compile(r"^(先修)(.+)$"), 1),
+        (re.compile(r"^(先)(.+)$"), 1),
+        (re.compile(r"^(照.+做)[：:]?\s*(.*)$"), 1),  # endorsement shell
+    ]
+    for cre, _ in patterns:
+        m = cre.match(clause)
+        if not m:
+            continue
+        # 先 + 修极性 ok; 先 alone weak — still required if body
+        action = (m.group(m.lastindex) or "").strip()  # type: ignore[arg-type]
+        if not action and m.lastindex and m.lastindex >= 1:
+            action = clause
+        if cre.pattern.startswith("^(照"):
+            # handled elsewhere (f12)
+            continue
+        if not action:
+            continue
+        return _mk_item(
+            raw=raw, start=start, end=end, polarity=POLARITY_REQUIRED, action=action,
+        )
+    return None
+
+
+def _looks_like_negation_tone(text: str) -> bool:
+    return bool(re.search(
+        r"(不要|不准|不许|禁止|不得|勿|拒绝|别(?!的)|不再|停止|难道|岂能)",
+        text or "",
+    ))
+
+
+
+def _has_endorsement_before(raw: str, pos: int) -> bool:
+    window = raw[max(0, pos - 40):pos]
+    return bool(re.search(r"照\s*\S+?\s*说的做[：:]\s*$", window))
+
+
+def extract_constraint_items(prompt: str) -> list[dict[str, Any]]:
+    raw = prompt or ""
+    quoted = find_quoted_ranges(raw)
+    items: list[dict[str, Any]] = []
+    consumed: list[tuple[int, int]] = []
+
+    def mark(a: int, b: int) -> None:
+        consumed.append((a, b))
+
+    def overlaps_consumed(a: int, b: int) -> bool:
+        return any(not (b <= x or a >= y) for x, y in consumed)
+
+    # Pass 0: endorsement 照…说的做：body
+    for m in re.finditer(
+        r"照\s*\S+?\s*说的做[：:]\s*", raw,
+    ):
+        body_start = m.end()
+        # body until sentence end
+        body_end = len(raw)
+        for sep in ("。", "！", "？", "\n"):
+            j = raw.find(sep, body_start)
+            if j != -1:
+                body_end = min(body_end, j)
+        body = raw[body_start:body_end]
+        # parse body as if Lyra (ignore quote masks inside endorsement body)
+        for start, end, clause in _split_top_clauses(body):
+            abs_s, abs_e = body_start + start, body_start + end
+            cue = _is_negation_cue_at(raw, abs_s)
+            # also search cue at abs_s
+            found_cue = None
+            found_off = None
+            for i in range(abs_s, abs_e):
+                c = _is_negation_cue_at(raw, i)
+                if c:
+                    found_cue, found_off = c, i
+                    break
+            if found_cue and found_off is not None:
+                items.append(_mk_item(
+                    raw=raw, start=found_off, end=abs_e,
+                    polarity=POLARITY_FORBIDDEN,
+                    action=raw[found_off + len(found_cue):abs_e].strip() or UNKNOWN,
+                ))
+                mark(found_off, abs_e)
+        mark(m.start(), body_end)
+
+    # Pass 1: clauses (forbids/requires first — releases need prior forbids)
+    for start, end, clause in _split_top_clauses(raw):
+        if overlaps_consumed(start, end):
+            continue
+
+        if _span_in_quoted(start, end, quoted):
+            if _looks_like_negation_tone(clause):
+                items.append(_mk_item(
+                    raw=raw, start=start, end=end, polarity=POLARITY_QUOTED,
+                    action=clause[:200],
+                ))
+                mark(start, end)
+            continue
+
+        # f10 corrective opener
+        if clause.startswith("不是不要"):
+            mark(start, end)
+            continue
+
+        # find negation cue (may follow affect preface / 红线：)
+        found_cue = None
+        found_off = None
+        for i in range(start, end):
+            c = _is_negation_cue_at(raw, i)
+            if not c:
+                continue
+            prefix = raw[start:i]
+            ps = prefix.strip()
+            ok_prefix = (
+                ps in ("", "也", "又", "且", "并", "我是")
+                or prefix.endswith("我是")
+                or prefix.endswith(("：", ":"))
+                or ("：" in prefix or ":" in prefix)
+                or bool(re.search(r"(愤怒|生气|火大|受够)", prefix))
+                or ps.startswith("红线")
+            )
+            if not ok_prefix:
+                continue
+            found_cue, found_off = c, i
+            break
+
+        if found_cue and found_off is not None:
+            body_start = found_off + len(found_cue)
+            while body_start < end and raw[body_start] in " \t：:":
+                body_start += 1
+            src_start = found_off
+            if raw[start:found_off].strip() in ("也", "我是"):
+                src_start = start
+            body = raw[body_start:end]
+            if re.search(r"[和与、]", body) and not re.search(
+                r"(不要|禁止|不得|别|不准|不许)", body,
+            ):
+                for it in _distribute_he_conjuncts(
+                    raw, src_start, found_cue, body_start, end,
+                ):
+                    items.append(it)
+                    mark(it["source_start"], it["source_end"])
+            else:
+                items.append(_mk_item(
+                    raw=raw, start=src_start, end=end,
+                    polarity=POLARITY_FORBIDDEN,
+                    action=raw[body_start:end].strip() or UNKNOWN,
+                ))
+                mark(src_start, end)
+            continue
+
+        req = _parse_required_clause(raw, start, end, clause)
+        if req:
+            # f8: 别的不说 skipped — 先修极性
+            if clause.startswith("别的"):
+                continue
+            items.append(req)
+            mark(start, end)
+            continue
+
+        if clause.startswith("别的"):
+            continue
+
+        if _looks_like_negation_tone(clause):
+            items.append(_mk_item(
+                raw=raw, start=start, end=end, polarity=POLARITY_UNCERTAIN,
+                action=clause[:200],
+            ))
+            mark(start, end)
+
+    # Boundary labels
+    for m in re.finditer(r"红线[：:][^\n。！？]+", raw):
+        if overlaps_consumed(m.start(), m.end()) or _span_in_quoted(m.start(), m.end(), quoted):
+            continue
+        # prefer nested forbids already extracted
+        if any(_is_negation_cue_at(raw, i) for i in range(m.start(), m.end())):
+            continue
+        items.append(_mk_item(
+            raw=raw, start=m.start(), end=m.end(), polarity=POLARITY_REQUIRED,
+            action=raw[m.start():m.end()].strip()[:200],
+        ))
+
+    # Pass 2: releases (M) — after forbids exist; flip matching forbidden → released
+    for m in re.finditer(r"现在可以([^。！？\n]+?)了", raw):
+        if overlaps_consumed(m.start(), m.end()):
+            continue
+        act = (m.group(1) or "").strip()
+        if not act:
+            continue
+        target = None
+        for prev in items:
+            if prev.get("polarity") == POLARITY_FORBIDDEN and (
+                act in str(prev.get("action") or "")
+                or str(prev.get("action") or "") in act
+                or act in str(prev.get("normalized_rule") or "")
+            ):
+                target = {
+                    "normalized_rule": prev["normalized_rule"],
+                    "source_start": prev["source_start"],
+                    "source_end": prev["source_end"],
+                }
+                prev["polarity"] = POLARITY_RELEASED
+                prev["releases"] = {"by_source": raw[m.start():m.end()]}
+                break
+        items.append(_mk_item(
+            raw=raw, start=m.start(), end=m.end(), polarity=POLARITY_RELEASED,
+            action=act, releases=target or {"normalized_rule": act},
+        ))
+        mark(m.start(), m.end())
+
+    return items
+
+
+def extract_rejected_interpretations(prompt: str) -> list[dict[str, Any]]:
+    """Forbidden (and only forbidden) — explicit user negations."""
+    return [
+        it for it in extract_constraint_items(prompt)
+        if it.get("polarity") == POLARITY_FORBIDDEN
+    ]
+
+
+def extract_hard_constraints(prompt: str) -> list[dict[str, Any]]:
+    """All constraint items except pure quoted (quoted stays out of hard list)."""
+    return [
+        it for it in extract_constraint_items(prompt)
+        if it.get("polarity") != POLARITY_QUOTED
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Affect / ownership / core (unchanged spirit)
+# ---------------------------------------------------------------------------
 
 def detect_repetition_phrases(prompt: str) -> list[tuple[str, int]]:
-    """Return (phrase, count) for repeated tokens/short phrases (count>=2)."""
     text = prompt or ""
     counts: dict[str, int] = {}
-    # Sliding CJK windows (3–8 chars) catch "说了三遍" style repeats
     cjk = re.findall(r"[\u4e00-\u9fff]+", text)
     for run in cjk:
         for n in (3, 4, 5, 6, 7, 8):
@@ -171,20 +545,15 @@ def detect_repetition_phrases(prompt: str) -> list[tuple[str, int]]:
                 gram = run[i : i + n]
                 counts[gram] = counts.get(gram, 0) + 1
     for t in re.findall(r"[A-Za-z]{3,24}", text):
-        key = t.lower()
-        counts[key] = counts.get(key, 0) + 1
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    for ln in lines:
+        counts[t.lower()] = counts.get(t.lower(), 0) + 1
+    for ln in (ln.strip() for ln in text.splitlines() if ln.strip()):
         counts[ln] = counts.get(ln, 0) + 1
     out: list[tuple[str, int]] = []
     for k, n in counts.items():
-        # sliding windows overcount; require true substring occurrences ≥2
         occ = text.lower().count(k.lower()) if k.isascii() else text.count(k)
         if occ >= 2 and 2 <= len(k) <= 40:
             out.append((k, occ))
-    # prefer longer phrases
     out.sort(key=lambda x: (-len(x[0]), -x[1]))
-    # drop grams fully contained in a longer kept phrase with same count
     kept: list[tuple[str, int]] = []
     for phrase, n in out:
         if any(phrase != p and phrase in p and n <= m for p, m in kept):
@@ -196,17 +565,14 @@ def detect_repetition_phrases(prompt: str) -> list[tuple[str, int]]:
 
 
 def extract_affect_signals(prompt: str) -> list[dict[str, Any]]:
-    """Structured affect_signals. No personality inference."""
     text = prompt or ""
     signals: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
-
     bangs = len(re.findall(r"[!！]{2,}", text))
-    caps_ratio = 0.0
     letters = [c for c in text if c.isalpha()]
-    if letters:
-        caps_ratio = sum(1 for c in letters if c.isupper()) / len(letters)
-
+    caps_ratio = (
+        sum(1 for c in letters if c.isupper()) / len(letters) if letters else 0.0
+    )
     for typ, cre, base in _AFFECT_CUES:
         for m in cre.finditer(text):
             phrase = m.group(0).strip()
@@ -214,12 +580,9 @@ def extract_affect_signals(prompt: str) -> list[dict[str, Any]]:
             if key in seen:
                 continue
             seen.add(key)
-            intens = base
-            if bangs:
-                intens += min(0.15, 0.05 * bangs)
+            intens = base + (min(0.15, 0.05 * bangs) if bangs else 0)
             if caps_ratio >= 0.55 and len(letters) >= 8:
                 intens += 0.1
-            # Sentence containing the cue only (no cross-sentence bleed).
             left = 0
             for sep in ("\n", "。", "！", "？", ".", "!", "?"):
                 i = text.rfind(sep, 0, m.start())
@@ -231,28 +594,20 @@ def extract_affect_signals(prompt: str) -> list[dict[str, Any]]:
                 if i != -1 and i < right:
                     right = i
             clause = text[left:right].strip() or phrase
-            # Prefer object after cue colon／： when present
             after = re.split(r"[：:]", clause, maxsplit=1)
-            if len(after) == 2 and after[1].strip():
-                target = after[1].strip()
-            else:
-                target = clause if len(clause) >= 2 else UNKNOWN
-            if not target:
-                target = UNKNOWN
+            target = after[1].strip() if len(after) == 2 and after[1].strip() else clause
             signals.append({
                 "type": typ,
                 "intensity": round(_clip01(intens), 3),
-                "target": target[:160],
+                "target": (target or UNKNOWN)[:160],
                 "source_phrase": phrase,
             })
-
     for phrase, n in detect_repetition_phrases(text):
         if n < 2:
             continue
         key = ("repetition", phrase)
         if key in seen:
             continue
-        # only if phrase actually repeats as substring enough
         occ = text.lower().count(phrase.lower()) if phrase.isascii() else text.count(phrase)
         if occ < 2:
             continue
@@ -260,117 +615,32 @@ def extract_affect_signals(prompt: str) -> list[dict[str, Any]]:
         signals.append({
             "type": "repetition",
             "intensity": round(_clip01(0.45 + 0.1 * min(n, 5)), 3),
-            "target": phrase if len(phrase) >= 2 else UNKNOWN,
+            "target": phrase,
             "source_phrase": phrase,
         })
-
     return signals
 
 
-def _clause_items_from_negations(prompt: str) -> list[dict[str, Any]]:
-    """Per-clause forbidden items; source_phrase = cue+body as in raw."""
-    items: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for m in _CLAUSE_NEG_RE.finditer(prompt or ""):
-        body = (m.group("body") or "").strip(" ：:，,")
-        if not body:
-            continue
-        source = (prompt or "")[m.start() : m.end()].strip()
-        if source in seen:
-            continue
-        seen.add(source)
-        items.append({
-            "normalized_rule": format_polarized_rule(POLARITY_FORBIDDEN, body),
-            "polarity": POLARITY_FORBIDDEN,
-            "source_phrase": source,
-            "action": body[:200],
-        })
-    return items
-
-
-def extract_hard_constraints(prompt: str) -> list[dict[str, Any]]:
-    """Hard boundaries + polarized clauses. normalized_rule never bare-positive."""
-    items: list[dict[str, Any]] = []
-    seen_src: set[str] = set()
-    # Boundary labels (红线/硬边界…) — required respect markers, not positive asks
-    for span in _collect_spans(prompt, _HARD_BOUNDARY_RES):
-        if span in seen_src:
-            continue
-        seen_src.add(span)
-        # If span itself contains negation clauses, expand those instead of one blob
-        nested = _clause_items_from_negations(span)
-        if nested:
-            for it in nested:
-                if it["source_phrase"] in seen_src:
-                    continue
-                seen_src.add(it["source_phrase"])
-                items.append(it)
-            continue
-        items.append({
-            "normalized_rule": format_polarized_rule(POLARITY_REQUIRED, span),
-            "polarity": POLARITY_REQUIRED,
-            "source_phrase": span,
-            "action": span[:200],
-        })
-    for it in _clause_items_from_negations(prompt):
-        if it["source_phrase"] in seen_src:
-            continue
-        seen_src.add(it["source_phrase"])
-        items.append(it)
-    for m in _CLAUSE_REQ_RE.finditer(prompt or ""):
-        source = (prompt or "")[m.start() : m.end()].strip()
-        body = (m.group("body") or "").strip()
-        if not source or source in seen_src or not body:
-            continue
-        # Skip if this is inside a negation (must not → already forbidden)
-        if re.search(r"(不要|禁止|不得|别|don't|never)", source, re.I):
-            continue
-        seen_src.add(source)
-        items.append({
-            "normalized_rule": format_polarized_rule(POLARITY_REQUIRED, body),
-            "polarity": POLARITY_REQUIRED,
-            "source_phrase": source,
-            "action": body[:200],
-        })
-    return items
-
-
-def extract_rejected_interpretations(prompt: str) -> list[dict[str, Any]]:
-    """ONLY explicit user negations — never compiler-inferred opposition.
-
-    Each item MUST carry polarity=forbidden and normalized_rule=FORBIDDEN:<action>.
-    Bare positive normalized_rule is a polarity bomb — forbidden by contract.
-    """
-    return _clause_items_from_negations(prompt)
-
-
 def extract_core_intent(prompt: str) -> str:
-    """Keep first actionable clause; do not soften. UNKNOWN if empty."""
     text = (prompt or "").strip()
     if not text:
         return UNKNOWN
-    # Prefer a line that is not pure affect/negation marker
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    for ln in lines:
-        if re.fullmatch(r"[!！?？。.\s]+", ln):
-            continue
-        return ln[:500]
+    for ln in (ln.strip() for ln in text.splitlines() if ln.strip()):
+        if not re.fullmatch(r"[!！?？。.\s]+", ln):
+            return ln[:500]
     return text[:500]
 
 
 def extract_ownership(prompt: str) -> str:
     text = prompt or ""
-    # Prefer explicit ownership clauses — avoid matching bare「我的」in「我的要求」
-    patterns = [
+    for pat in (
         r"这是我的决定[^。！？\n]*",
         r"由我决定[^。！？\n]*",
         r"我说了算[^。！？\n]*",
         r"属于我[^。！？\n]*",
         r"\bmy\s+decision\b[^.\n!?]{0,40}",
         r"\bi\s+own\b[^.\n!?]{0,40}",
-        r"\bownership\b[^.\n!?]{0,40}",
-    ]
-    for pat in patterns:
+    ):
         m = re.search(pat, text, re.I)
         if m:
             return m.group(0).strip()[:160]
@@ -378,9 +648,8 @@ def extract_ownership(prompt: str) -> str:
 
 
 def derive_priority_urgency(
-    prompt: str, affect: list[dict[str, Any]], hard: list[dict[str, str]]
+    prompt: str, affect: list[dict[str, Any]], hard: list[dict[str, Any]],
 ) -> tuple[str, str]:
-    """priority/urgency for routing only — not personality."""
     text = prompt or ""
     max_aff = max((float(a.get("intensity") or 0) for a in affect), default=0.0)
     types = {str(a.get("type")) for a in affect}
@@ -406,9 +675,10 @@ def extract_unknowns(
     core_intent: str,
     ownership: str,
     affect: list[dict[str, Any]],
-    hard: list[dict[str, str]],
-    rejected: list[dict[str, str]],
+    hard: list[dict[str, Any]],
+    rejected: list[dict[str, Any]],
 ) -> list[str]:
+    del hard, rejected
     unk: list[str] = []
     if core_intent == UNKNOWN:
         unk.append("core_intent")
@@ -417,21 +687,18 @@ def extract_unknowns(
     for a in affect:
         if a.get("target") == UNKNOWN:
             unk.append("affect_signals.target")
-        if a.get("type") == UNKNOWN:
-            unk.append("affect_signals.type")
-        if a.get("intensity") == UNKNOWN:
-            unk.append("affect_signals.intensity")
-    if not hard:
-        # not an unknown — may simply have no hard constraints
-        pass
-    if not rejected and not hard:
-        pass
-    # de-dupe preserve order
     out: list[str] = []
     for u in unk:
         if u not in out:
             out.append(u)
     return out
+
+
+def disambiguation_question(uncertain_items: list[dict[str, Any]]) -> str:
+    """H · uncertain must bubble a human-answerable question."""
+    phrases = [str(u.get("source_phrase") or "") for u in uncertain_items]
+    joined = " / ".join(p for p in phrases if p) or "（未解析片段）"
+    return "这句是要求还是禁令？→ %s" % joined
 
 
 def build_executable_structure(
@@ -442,17 +709,29 @@ def build_executable_structure(
     priority: str,
     urgency: str,
 ) -> dict[str, Any]:
-    # Downstream only receives polarized exports — never bare action strings.
-    must_not = [constraint_export(r) for r in rejected]
-    must_not += [
-        constraint_export(h) for h in hard
-        if h.get("polarity") == POLARITY_FORBIDDEN
-        and constraint_export(h) not in must_not
-    ]
-    must_respect = [
-        constraint_export(h) for h in hard
-        if h.get("polarity") == POLARITY_REQUIRED
-    ]
+    """Execute set: only forbidden/required. uncertain blocks whole canonical (H)."""
+    all_items = list(hard)
+    # rejected already subset of forbidden in hard usually; ensure union
+    seen = {(i.get("source_start"), i.get("source_end"), i.get("polarity")) for i in all_items}
+    for r in rejected:
+        key = (r.get("source_start"), r.get("source_end"), r.get("polarity"))
+        if key not in seen:
+            all_items.append(r)
+            seen.add(key)
+
+    uncertain = [i for i in all_items if i.get("polarity") == POLARITY_UNCERTAIN]
+    blocked = bool(uncertain)
+    must_not: list[dict[str, Any]] = []
+    must_respect: list[dict[str, Any]] = []
+    if not blocked:
+        for i in all_items:
+            pol = i.get("polarity")
+            if pol == POLARITY_FORBIDDEN:
+                must_not.append(constraint_export_for_execute(i))
+            elif pol == POLARITY_REQUIRED:
+                must_respect.append(constraint_export_for_execute(i))
+            # released / quoted skipped
+
     return {
         "goal": core_intent,
         "must_respect": must_respect,
@@ -461,11 +740,14 @@ def build_executable_structure(
         "urgency": urgency,
         "softening_allowed": False,
         "reinterpretation_allowed": False,
+        "execute_blocked": blocked,
+        "disambiguation_question": (
+            disambiguation_question(uncertain) if blocked else None
+        ),
     }
 
 
 def compile_affect_structure(prompt: str) -> dict[str, Any]:
-    """Full structured layer required by PATCH + ADDENDUM."""
     affect = extract_affect_signals(prompt)
     hard = extract_hard_constraints(prompt)
     rejected = extract_rejected_interpretations(prompt)
@@ -476,6 +758,10 @@ def compile_affect_structure(prompt: str) -> dict[str, Any]:
         core_intent=core, ownership=ownership, affect=affect,
         hard=hard, rejected=rejected,
     )
+    # surface uncertain into unknowns list as well
+    if any(h.get("polarity") == POLARITY_UNCERTAIN for h in hard):
+        if "constraint.uncertain" not in unknowns:
+            unknowns.append("constraint.uncertain")
     return {
         "core_intent": core,
         "hard_constraints": hard,
@@ -485,8 +771,41 @@ def compile_affect_structure(prompt: str) -> dict[str, Any]:
         "affect_signals": affect,
         "ownership": ownership,
         "unknowns": unknowns,
+        "negation_lexicon": list(NEGATION_LEXICON),
         "executable_structure": build_executable_structure(
             core_intent=core, hard=hard, rejected=rejected,
             priority=priority, urgency=urgency,
         ),
     }
+
+
+# Back-compat aliases used by older tests (D: prefix no longer authoritative)
+def format_polarized_rule(polarity: str, action: str) -> str:
+    """Log-only label. Not for execute authority."""
+    return constraint_log_label({
+        "polarity": polarity if polarity in (
+            POLARITY_FORBIDDEN, POLARITY_REQUIRED, POLARITY_UNCERTAIN,
+            POLARITY_RELEASED, POLARITY_QUOTED,
+        ) else POLARITY_UNCERTAIN,
+        "normalized_rule": action,
+    })
+
+
+def constraint_export(item: dict[str, Any]) -> dict[str, Any]:
+    """Prefer structured execute export (breaking change from string prefix era)."""
+    return constraint_export_for_execute(item)
+
+
+def bare_rule_readable_as_positive(normalized_rule: str) -> bool:
+    """Deprecated bomb check: bare rule strings are actions; polarity decides.
+
+    Returns True when *string alone* would be mistaken for an instruction —
+    i.e. always True for non-empty action text without polarity context.
+    Callers must use polarity field.
+    """
+    r = (normalized_rule or "").strip()
+    if not r or r == UNKNOWN:
+        return False
+    if r.startswith("FORBIDDEN:") or r.startswith("REQUIRED:"):
+        return True  # prefix smuggled into rule — still a bomb per D
+    return True  # bare action is never safe alone
