@@ -3,9 +3,10 @@
 Deterministic only. No LLM. Does not soften, reframe, or invent goals.
 UNKNOWN when unsure — never guess into rejected_interpretations.
 
-POLARITY_FIX v1.2: polarity is the sole authority field. normalized_rule holds
-action text only (no FORBIDDEN:/REQUIRED: prefix). source_phrase must be a
-literal substring of raw (slice only, never rewrite).
+INTENT_CONVERGE polarity (Commit A): polarity is the sole authority field.
+normalized_rule / executable_meaning hold action text only (no FORBIDDEN: prefix).
+source_phrase is a literal raw slice; authoritative span = UTF-8 byte offsets.
+Focus words in negation scope must survive into executable_meaning.
 """
 from __future__ import annotations
 
@@ -20,15 +21,48 @@ POLARITY_UNCERTAIN = "uncertain"
 POLARITY_RELEASED = "released"
 POLARITY_QUOTED = "quoted"  # cited text — not a Lyra constraint
 
-# B · negation lexicon (longest-first match). 别的 ≠ 别.
+# Negation lexicon (longest-first match). 别的 ≠ 别.
 NEGATION_LEXICON: tuple[str, ...] = (
     "绝不能", "不可以", "不要", "不准", "不许", "别再", "禁止", "拒绝", "停止",
     "不得", "不再", "杜绝", "勿", "别",
     "must not", "do not", "don't", "cannot", "can't", "no more", "never", "stop",
 )
 
-# Focus words — must stay inside negation span when present (K).
+# Focus words — must enter executable_meaning, not only source_phrase.
 FOCUS_WORDS: tuple[str, ...] = ("只", "仅", "都", "全", "一定", "总是", "光", "净")
+
+
+def utf8_byte_span(raw: str, char_start: int, char_end: int) -> tuple[int, int]:
+    """Char indices → UTF-8 byte offsets (authoritative provenance)."""
+    if char_start < 0 or char_end < char_start or char_end > len(raw or ""):
+        raise ValueError("invalid char span for utf8_byte_span")
+    start_b = len((raw or "")[:char_start].encode("utf-8"))
+    end_b = start_b + len((raw or "")[char_start:char_end].encode("utf-8"))
+    return start_b, end_b
+
+
+def phrase_from_utf8_span(raw: str, start_b: int, end_b: int) -> str:
+    return (raw or "").encode("utf-8")[start_b:end_b].decode("utf-8")
+
+
+def _strip_leading_negation_cue(text: str) -> str:
+    s = (text or "").strip()
+    for cue in NEGATION_LEXICON:
+        if s.startswith(cue):
+            return s[len(cue):].strip(" ：:，,")
+    return s
+
+
+def _focus_preserving_action(source_phrase: str, action: str) -> str:
+    """If focus words sit in the negation body, keep them in executable rule text."""
+    body = _strip_leading_negation_cue(source_phrase)
+    out = (action or "").strip()
+    for fw in sorted(FOCUS_WORDS, key=len, reverse=True):
+        if fw in body and fw not in out:
+            return body[:200] if body else UNKNOWN
+    if not out:
+        return body[:200] if body else UNKNOWN
+    return out[:200]
 
 # Required / request cues (not negation).
 _REQ_CUES = (
@@ -102,7 +136,7 @@ def _span_in_quoted(start: int, end: int, ranges: list[tuple[int, int]]) -> bool
 # ---------------------------------------------------------------------------
 
 def assert_constraint_well_formed(item: dict[str, Any]) -> None:
-    """Hard fail if polarity missing or smuggled into normalized_rule."""
+    """Hard fail if polarity missing, prefix-smuggled, or provenance incomplete."""
     if not isinstance(item, dict):
         raise ValueError("constraint must be a dict with polarity")
     pol = item.get("polarity")
@@ -112,10 +146,24 @@ def assert_constraint_well_formed(item: dict[str, Any]) -> None:
     ):
         raise ValueError("constraint missing/invalid polarity (sole authority)")
     rule = str(item.get("normalized_rule") or "")
-    if rule.startswith("FORBIDDEN:") or rule.startswith("REQUIRED:"):
+    if rule.startswith("FORBIDDEN:") or rule.startswith("REQUIRED:") or rule.startswith("UNCERTAIN:"):
         raise ValueError(
             "normalized_rule must not contain polarity prefix; polarity field is sole authority"
         )
+    meaning = str(item.get("executable_meaning") or rule)
+    if meaning.startswith("FORBIDDEN:") or meaning.startswith("REQUIRED:"):
+        raise ValueError("executable_meaning must not contain polarity prefix")
+    # Focus words present in source body must survive into executable meaning
+    if pol in (POLARITY_FORBIDDEN, POLARITY_REQUIRED):
+        src = str(item.get("source_phrase") or "")
+        body = _strip_leading_negation_cue(src)
+        for fw in FOCUS_WORDS:
+            if fw in body and fw not in meaning:
+                raise ValueError(
+                    "focus word %r in source scope missing from executable_meaning" % fw
+                )
+    if "source_start_byte" not in item or "source_end_byte" not in item:
+        raise ValueError("constraint missing UTF-8 byte provenance")
 
 
 def constraint_log_label(item: dict[str, Any]) -> str:
@@ -127,7 +175,7 @@ def constraint_log_label(item: dict[str, Any]) -> str:
 
 
 def constraint_export_for_execute(item: dict[str, Any]) -> dict[str, Any]:
-    """Execute-bound export: requires polarity field; rejects rule-only payloads."""
+    """Execute-bound export: rule + polarity + provenance; rejects rule-only."""
     assert_constraint_well_formed(item)
     if item["polarity"] == POLARITY_UNCERTAIN:
         raise ValueError("uncertain constraint cannot enter execute")
@@ -135,22 +183,32 @@ def constraint_export_for_execute(item: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("quoted citation cannot enter execute")
     if item["polarity"] == POLARITY_RELEASED:
         raise ValueError("released constraint excluded from execute set")
+    meaning = str(item.get("executable_meaning") or item["normalized_rule"])
     return {
         "polarity": item["polarity"],
         "normalized_rule": item["normalized_rule"],
+        "executable_meaning": meaning,
         "source_phrase": item.get("source_phrase"),
-        "source_start": item.get("source_start"),
-        "source_end": item.get("source_end"),
+        "source_start_byte": item["source_start_byte"],
+        "source_end_byte": item["source_end_byte"],
     }
 
 
 def bare_normalized_rule_alone_is_fail(payload: Any) -> bool:
-    """I/D: passing only normalized_rule (no polarity) → hard fail."""
+    """Any path that outputs/consumes normalized_rule alone → FAIL."""
     if isinstance(payload, str):
         return True
     if isinstance(payload, dict):
         if "normalized_rule" in payload and "polarity" not in payload:
             return True
+        if "normalized_rule" in payload and (
+            "source_start_byte" not in payload or "source_end_byte" not in payload
+        ):
+            # rule without provenance is not execute-safe
+            if payload.get("polarity") in (
+                POLARITY_FORBIDDEN, POLARITY_REQUIRED,
+            ):
+                return True
         try:
             assert_constraint_well_formed(payload)
             return False
@@ -213,19 +271,27 @@ def _mk_item(
     releases: dict | None = None,
 ) -> dict[str, Any]:
     source = raw[start:end]
+    meaning = _focus_preserving_action(source, action)
+    start_b, end_b = utf8_byte_span(raw, start, end)
+    if phrase_from_utf8_span(raw, start_b, end_b) != source:
+        raise ValueError("UTF-8 byte span does not round-trip to source_phrase")
     item = {
-        "normalized_rule": (action or UNKNOWN)[:200],
+        "normalized_rule": meaning,
+        "executable_meaning": meaning,
         "polarity": polarity,
         "source_phrase": source,
+        "source_start_byte": start_b,
+        "source_end_byte": end_b,
+        # char offsets: internal only (non-authoritative)
         "source_start": start,
         "source_end": end,
-        "action": (action or UNKNOWN)[:200],
+        "action": meaning,
     }
     if releases:
         item["releases"] = releases
     assert_constraint_well_formed(item)
     assert source == raw[start:end]
-    assert source in raw  # C · in_raw
+    assert source in raw  # literal substring — never rewrite
     return item
 
 
@@ -441,7 +507,7 @@ def extract_constraint_items(prompt: str) -> list[dict[str, Any]]:
                     raw, src_start, found_cue, body_start, end,
                 ):
                     items.append(it)
-                    mark(it["source_start"], it["source_end"])
+                    mark(int(it["source_start"]), int(it["source_end"]))
             else:
                 items.append(_mk_item(
                     raw=raw, start=src_start, end=end,
@@ -498,8 +564,8 @@ def extract_constraint_items(prompt: str) -> list[dict[str, Any]]:
             ):
                 target = {
                     "normalized_rule": prev["normalized_rule"],
-                    "source_start": prev["source_start"],
-                    "source_end": prev["source_end"],
+                    "source_start_byte": prev["source_start_byte"],
+                    "source_end_byte": prev["source_end_byte"],
                 }
                 prev["polarity"] = POLARITY_RELEASED
                 prev["releases"] = {"by_source": raw[m.start():m.end()]}
@@ -712,9 +778,12 @@ def build_executable_structure(
     """Execute set: only forbidden/required. uncertain blocks whole canonical (H)."""
     all_items = list(hard)
     # rejected already subset of forbidden in hard usually; ensure union
-    seen = {(i.get("source_start"), i.get("source_end"), i.get("polarity")) for i in all_items}
+    seen = {
+        (i.get("source_start_byte"), i.get("source_end_byte"), i.get("polarity"))
+        for i in all_items
+    }
     for r in rejected:
-        key = (r.get("source_start"), r.get("source_end"), r.get("polarity"))
+        key = (r.get("source_start_byte"), r.get("source_end_byte"), r.get("polarity"))
         if key not in seen:
             all_items.append(r)
             seen.add(key)
@@ -782,13 +851,11 @@ def compile_affect_structure(prompt: str) -> dict[str, Any]:
 # Back-compat aliases used by older tests (D: prefix no longer authoritative)
 def format_polarized_rule(polarity: str, action: str) -> str:
     """Log-only label. Not for execute authority."""
-    return constraint_log_label({
-        "polarity": polarity if polarity in (
-            POLARITY_FORBIDDEN, POLARITY_REQUIRED, POLARITY_UNCERTAIN,
-            POLARITY_RELEASED, POLARITY_QUOTED,
-        ) else POLARITY_UNCERTAIN,
-        "normalized_rule": action,
-    })
+    pol = polarity if polarity in (
+        POLARITY_FORBIDDEN, POLARITY_REQUIRED, POLARITY_UNCERTAIN,
+        POLARITY_RELEASED, POLARITY_QUOTED,
+    ) else POLARITY_UNCERTAIN
+    return "%s:%s" % (pol.upper(), action or "")
 
 
 def constraint_export(item: dict[str, Any]) -> dict[str, Any]:

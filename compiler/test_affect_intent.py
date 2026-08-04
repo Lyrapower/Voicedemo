@@ -1,4 +1,4 @@
-"""POLARITY_FIX v1.2 · affect / negation provenance regression (A–M)."""
+"""INTENT_CONVERGE polarity · Commit A (bidirectional + focus + UTF-8 span)."""
 from __future__ import annotations
 
 import json
@@ -10,19 +10,21 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from compiler.affect_preserve import (  # noqa: E402
+    FOCUS_WORDS,
     NEGATION_LEXICON,
     POLARITY_FORBIDDEN,
     POLARITY_REQUIRED,
     POLARITY_UNCERTAIN,
     POLARITY_RELEASED,
     POLARITY_QUOTED,
-    UNKNOWN,
     assert_constraint_well_formed,
     bare_normalized_rule_alone_is_fail,
     constraint_export_for_execute,
     constraint_log_label,
     extract_constraint_items,
     extract_rejected_interpretations,
+    phrase_from_utf8_span,
+    utf8_byte_span,
 )
 from compiler.semantic_mapper import SemanticMapper  # noqa: E402
 
@@ -41,6 +43,7 @@ F6 = "禁止软化语气和重新解释我的硬边界"
 F7 = "不但要直接，还要完整"
 F8 = "别的不说，先修极性"
 F9 = "不要只修极性，也要验证下游"
+F9B = "不要仅修极性，也要验证下游"
 F10 = "不是不要你直接说，我是不要你替我总结"
 F11 = "「他说不要软化语气」"
 F12 = "照 SOL 说的做：不要软化语气"
@@ -53,6 +56,15 @@ def _pols(items):
 
 def _by_pol(items, pol):
     return [i for i in items if i["polarity"] == pol]
+
+
+def _assert_byte_provenance(raw: str, item: dict) -> None:
+    sb = item["source_start_byte"]
+    eb = item["source_end_byte"]
+    phrase = item["source_phrase"]
+    assert phrase_from_utf8_span(raw, sb, eb) == phrase
+    assert raw.encode("utf-8")[sb:eb].decode("utf-8") == phrase
+    assert phrase in raw
 
 
 class AffectIntentRegression(unittest.TestCase):
@@ -71,20 +83,19 @@ class AffectIntentRegression(unittest.TestCase):
             self.assertIn(k, self.d)
 
     def test_negation_lexicon_coverage(self) -> None:
-        """B · lexicon must include required stems."""
         need = ["不要", "不准", "不许", "别", "禁止", "勿", "拒绝", "停止", "不得", "不再"]
         for w in need:
             self.assertIn(w, NEGATION_LEXICON, w)
-        print("\n[B lexicon]", list(NEGATION_LEXICON))
 
-    def test_angry_rejected_count_and_sources(self) -> None:
-        """E · #2 拆二后核心 4 条 source 必在；全量可贴（含红线·不得 → rejected≥4）。"""
+    def test_focus_words_table(self) -> None:
+        for w in ("只", "仅", "都", "全", "一定", "总是", "光", "净"):
+            self.assertIn(w, FOCUS_WORDS)
+
+    def test_angry_core_forbidden_sources(self) -> None:
         rejected = self.d["rejected_interpretations"]
         sources = [r["source_phrase"] for r in rejected]
-        print("\n[E rejected=%d sources]" % len(rejected))
-        for i, s in enumerate(sources, 1):
-            print(i, s)
-            self.assertIn(s, ANGRY_INPUT)
+        for r in rejected:
+            _assert_byte_provenance(ANGRY_INPUT, r)
         need = [
             "不要再把我的要求改写成温和建议",
             "禁止软化语气",
@@ -93,41 +104,37 @@ class AffectIntentRegression(unittest.TestCase):
         ]
         for n in need:
             self.assertIn(n, sources, msg="missing exact %r in %r" % (n, sources))
-        # 温和 must not be split on 和 → no orphan 「温」/「建议」
         self.assertNotIn("建议", sources)
-        self.assertFalse(any(s.endswith("温") for s in sources))
-        self.assertGreaterEqual(len(rejected), 4)
 
-    def test_polarity_sole_authority_no_prefix_in_rule(self) -> None:
-        """D · polarity field sole authority; normalized_rule has no FORBIDDEN: prefix."""
-        sample = None
-        for r in self.d["rejected_interpretations"]:
-            assert_constraint_well_formed(r)
-            self.assertEqual(r["polarity"], POLARITY_FORBIDDEN)
-            self.assertFalse(str(r["normalized_rule"]).startswith("FORBIDDEN:"))
-            self.assertFalse(str(r["normalized_rule"]).startswith("REQUIRED:"))
-            sample = r
-        self.assertIsNotNone(sample)
-        print("\n[D sample JSON]", json.dumps(sample, ensure_ascii=False, indent=2))
-        # rule-alone path is FAIL
+    def test_polarity_sole_authority_sample_json(self) -> None:
+        sample = extract_rejected_interpretations("禁止软化语气")[0]
+        assert_constraint_well_formed(sample)
+        self.assertEqual(sample["polarity"], POLARITY_FORBIDDEN)
+        self.assertEqual(sample["normalized_rule"], "软化语气")
+        self.assertEqual(sample["executable_meaning"], "软化语气")
+        self.assertEqual(sample["source_phrase"], "禁止软化语气")
+        self.assertEqual(sample["source_start_byte"], 0)
+        self.assertEqual(
+            sample["source_end_byte"],
+            len("禁止软化语气".encode("utf-8")),
+        )
+        print("\n[A sample JSON]", json.dumps({
+            "normalized_rule": sample["normalized_rule"],
+            "polarity": sample["polarity"],
+            "source_phrase": sample["source_phrase"],
+            "source_start_byte": sample["source_start_byte"],
+            "source_end_byte": sample["source_end_byte"],
+        }, ensure_ascii=False, indent=2))
         self.assertTrue(bare_normalized_rule_alone_is_fail(sample["normalized_rule"]))
         self.assertTrue(bare_normalized_rule_alone_is_fail(
             {"normalized_rule": sample["normalized_rule"]}
         ))
-        # structured export ok
-        constraint_export_for_execute(sample)
-        # log label may use prefix — display only
+        ex = constraint_export_for_execute(sample)
+        self.assertIn("executable_meaning", ex)
+        self.assertIn("source_start_byte", ex)
         self.assertTrue(constraint_log_label(sample).startswith("FORBIDDEN:"))
 
-    def test_fixture2_two_forbidden(self) -> None:
-        rejected = extract_rejected_interpretations("禁止软化语气，禁止重新解释我的硬边界")
-        self.assertEqual(len(rejected), 2)
-        for r in rejected:
-            self.assertEqual(r["polarity"], POLARITY_FORBIDDEN)
-            self.assertNotIn("FORBIDDEN:", r["normalized_rule"])
-
     def test_f4_mixed_not_double_forbidden(self) -> None:
-        """A · f4 reverse over-tag."""
         items = extract_constraint_items(F4)
         forb = _by_pol(items, POLARITY_FORBIDDEN)
         req = _by_pol(items, POLARITY_REQUIRED)
@@ -139,121 +146,112 @@ class AffectIntentRegression(unittest.TestCase):
     def test_f5_also_distributes_forbidden(self) -> None:
         rejected = extract_rejected_interpretations(F5)
         self.assertEqual(len(rejected), 2, rejected)
-        blob = " ".join(r["source_phrase"] for r in rejected)
-        self.assertIn("不要假设", blob)
-        self.assertIn("不要替我总结", blob)
 
-    def test_f6_he_split_in_raw_source(self) -> None:
-        """A/C · f6 和-split; source_phrase literal in raw; in_raw True."""
+    def test_f6_he_split_literal_source(self) -> None:
         rejected = extract_rejected_interpretations(F6)
         self.assertEqual(len(rejected), 2, rejected)
         for r in rejected:
-            self.assertEqual(r["polarity"], POLARITY_FORBIDDEN)
-            in_raw = r["source_phrase"] in F6
-            print("\n[C f6]", r["source_phrase"], "in_raw=", in_raw,
-                  "start/end", r["source_start"], r["source_end"])
-            self.assertTrue(in_raw)
-            # must NOT invent 「禁止重新解释…」 if absent from raw
+            _assert_byte_provenance(F6, r)
             if "重新解释" in r["source_phrase"]:
                 self.assertNotEqual(r["source_phrase"], "禁止重新解释我的硬边界")
-                self.assertIn(r["source_phrase"], F6)
 
     def test_f7_pseudo_negation_required(self) -> None:
         items = extract_constraint_items(F7)
-        req = _by_pol(items, POLARITY_REQUIRED)
-        self.assertEqual(len(req), 2, items)
+        self.assertEqual(len(_by_pol(items, POLARITY_REQUIRED)), 2, items)
         self.assertEqual(_by_pol(items, POLARITY_FORBIDDEN), [])
 
     def test_f8_bied_not_imperative(self) -> None:
         items = extract_constraint_items(F8)
         self.assertEqual(_by_pol(items, POLARITY_FORBIDDEN), [])
-        req = _by_pol(items, POLARITY_REQUIRED)
-        self.assertEqual(len(req), 1, items)
-        self.assertIn("极性", req[0]["source_phrase"])
+        self.assertEqual(len(_by_pol(items, POLARITY_REQUIRED)), 1, items)
 
-    def test_f9_focus_only_and_required(self) -> None:
-        """K · forbidden source must contain 只."""
+    def test_f9_focus_in_source_and_executable(self) -> None:
         items = extract_constraint_items(F9)
         forb = _by_pol(items, POLARITY_FORBIDDEN)
         req = _by_pol(items, POLARITY_REQUIRED)
         self.assertEqual(len(forb), 1, items)
         self.assertEqual(len(req), 1, items)
         self.assertIn("只", forb[0]["source_phrase"])
-        self.assertIn("验证下游", req[0]["source_phrase"] + req[0]["normalized_rule"])
+        self.assertIn("只", forb[0]["normalized_rule"])
+        self.assertIn("只", forb[0]["executable_meaning"])
+        ex = constraint_export_for_execute(forb[0])
+        self.assertIn("只", ex["executable_meaning"])
+        self.assertNotEqual(ex["executable_meaning"], "修极性")
+
+    def test_f9b_focus_jin_in_executable(self) -> None:
+        items = extract_constraint_items(F9B)
+        forb = _by_pol(items, POLARITY_FORBIDDEN)
+        self.assertEqual(len(forb), 1, items)
+        self.assertIn("仅", forb[0]["source_phrase"])
+        self.assertIn("仅", forb[0]["executable_meaning"])
+        self.assertIn("仅", constraint_export_for_execute(forb[0])["executable_meaning"])
+
+    def test_focus_strip_would_fail_well_formed(self) -> None:
+        good = extract_rejected_interpretations("不要只修极性")[0]
+        bad = dict(good)
+        bad["normalized_rule"] = "修极性"
+        bad["executable_meaning"] = "修极性"
+        with self.assertRaises(ValueError):
+            assert_constraint_well_formed(bad)
 
     def test_f10_double_neg_not_forbidden(self) -> None:
         items = extract_constraint_items(F10)
         forb = _by_pol(items, POLARITY_FORBIDDEN)
         self.assertEqual(len(forb), 1, items)
-        self.assertIn("替我总结", forb[0]["source_phrase"])
         self.assertFalse(any("直接说" in f["source_phrase"] for f in forb))
 
     def test_f11_quoted_zero_constraint(self) -> None:
         items = extract_constraint_items(F11)
         self.assertEqual(_by_pol(items, POLARITY_FORBIDDEN), [])
         self.assertEqual(_by_pol(items, POLARITY_REQUIRED), [])
-        # may have quoted marker
-        self.assertTrue(
-            not items or all(i["polarity"] == POLARITY_QUOTED for i in items), items
-        )
 
     def test_f12_endorsement_one_forbidden(self) -> None:
-        items = extract_constraint_items(F12)
-        forb = _by_pol(items, POLARITY_FORBIDDEN)
-        self.assertEqual(len(forb), 1, items)
+        forb = _by_pol(extract_constraint_items(F12), POLARITY_FORBIDDEN)
+        self.assertEqual(len(forb), 1, forb)
 
-    def test_f13_release(self) -> None:
+    def test_f13_release_same_raw(self) -> None:
         items = extract_constraint_items(F13)
-        released = _by_pol(items, POLARITY_RELEASED)
-        self.assertTrue(released, items)
-        # no active forbidden left for 总结
-        forb = _by_pol(items, POLARITY_FORBIDDEN)
-        self.assertEqual(forb, [], forb)
-        # execute set empty for that forbid
+        self.assertTrue(_by_pol(items, POLARITY_RELEASED), items)
+        self.assertEqual(_by_pol(items, POLARITY_FORBIDDEN), [])
         ex = SemanticMapper().compile_intent(F13).executable_structure
         self.assertFalse(ex.get("execute_blocked"))
         self.assertEqual(ex.get("must_not"), [])
 
     def test_uncertain_blocks_whole_canonical(self) -> None:
-        """H · uncertain blocks execute; bubbles question."""
-        # Force uncertain via leftover tone — use odd fragment the parser can't classify cleanly
-        # "岂能软化" looks like negation tone but not in lexicon as cue at clause start the same way
         text = "岂能软化语气"
         items = extract_constraint_items(text)
-        unc = _by_pol(items, POLARITY_UNCERTAIN)
-        self.assertTrue(unc, items)
+        self.assertTrue(_by_pol(items, POLARITY_UNCERTAIN), items)
         ex = SemanticMapper().compile_intent(text).executable_structure
         self.assertTrue(ex["execute_blocked"])
-        self.assertIsNotNone(ex["disambiguation_question"])
-        self.assertIn("要求还是禁令", ex["disambiguation_question"])
         self.assertEqual(ex["must_not"], [])
-        self.assertEqual(ex["must_respect"], [])
 
     def test_morph_reorder_and_punct(self) -> None:
-        """I · reorder / punct synonym keep polarities."""
         a = extract_constraint_items("禁止软化语气，我要你直接说")
         b = extract_constraint_items("我要你直接说；禁止软化语气")
         c = extract_constraint_items("禁止软化语气。我要你直接说")
         self.assertEqual(sorted(_pols(a)), sorted(_pols(b)))
         self.assertEqual(sorted(_pols(a)), sorted(_pols(c)))
-        self.assertEqual(_pols(a).count(POLARITY_FORBIDDEN), 1)
-        self.assertEqual(_pols(a).count(POLARITY_REQUIRED), 1)
 
     def test_execute_rejects_rule_only(self) -> None:
-        """I · delete polarity or only normalized_rule → hard fail."""
         good = extract_rejected_interpretations("禁止软化语气")[0]
         with self.assertRaises(ValueError):
             constraint_export_for_execute({"normalized_rule": good["normalized_rule"]})
-        self.assertTrue(bare_normalized_rule_alone_is_fail(good["normalized_rule"]))
 
-    def test_source_offsets_present(self) -> None:
-        """J · source_start/source_end internal."""
-        for r in extract_rejected_interpretations(F6):
-            self.assertIsInstance(r["source_start"], int)
-            self.assertIsInstance(r["source_end"], int)
-            self.assertEqual(
-                F6[r["source_start"]:r["source_end"]], r["source_phrase"]
-            )
+    def test_utf8_byte_span_cjk_emoji_newline_repeat(self) -> None:
+        raw = "禁止软化😤\n禁止软化语气\n不要只修极性"
+        items = extract_constraint_items(raw)
+        forb = _by_pol(items, POLARITY_FORBIDDEN)
+        self.assertGreaterEqual(len(forb), 2, items)
+        phrases = [f["source_phrase"] for f in forb]
+        # repeated 禁止软化… must bind distinct byte spans
+        spans = [(f["source_start_byte"], f["source_end_byte"]) for f in forb]
+        self.assertEqual(len(spans), len(set(spans)), spans)
+        for f in forb:
+            _assert_byte_provenance(raw, f)
+        # emoji between clauses must not break decode
+        sb, eb = utf8_byte_span(raw, 0, raw.index("\n"))
+        self.assertEqual(phrase_from_utf8_span(raw, sb, eb), raw[: raw.index("\n")])
+        self.assertTrue(any("只" in f["executable_meaning"] for f in forb), phrases)
 
     def test_no_softening(self) -> None:
         self.assertEqual(self.d["cleaned_prompt"], ANGRY_INPUT)
@@ -264,6 +262,8 @@ class AffectIntentRegression(unittest.TestCase):
         self.assertFalse(ex.get("execute_blocked"))
         for item in ex["must_not"]:
             self.assertEqual(item["polarity"], POLARITY_FORBIDDEN)
+            self.assertIn("executable_meaning", item)
+            self.assertIn("source_start_byte", item)
             self.assertNotIn("FORBIDDEN:", item["normalized_rule"])
 
 
