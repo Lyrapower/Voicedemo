@@ -396,17 +396,30 @@ async def chat(req: Request):
         "temperature": CFG["temperature"],
         "messages": gateway_messages,
     }
+    # 门保持摘除。8790→8501 外发：进程内 attach_grid_verification(禁止 HTTP 要签)
+    _wb = _GSR / "workbench"
+    if str(_wb) not in sys.path:
+        sys.path.insert(0, str(_wb))
+    from gateway_verify_proxy import (  # noqa: E402
+        DEFAULT_GATEWAY,
+        SIGNER_ID,
+        _ensure_key_env,
+        attach_grid_verification,
+    )
+    _gw_timeout = 15.0
     if use_model == CFG["gateway_model"]:
-        gv = body.get("grid_verification")
-        if not isinstance(gv, dict):
-            return JSONResponse(
-                {"error": "grid_verification required for demo/aster"},
-                status_code=403,
+        try:
+            _ensure_key_env()
+            payload = attach_grid_verification(
+                payload,
+                gateway_base=_gateway_base() or DEFAULT_GATEWAY,
+                signer_id=SIGNER_ID,
             )
-        signed_msgs = body.get("messages")
-        if signed_msgs != gateway_messages:
-            return JSONResponse({"error": "verification messages mismatch"}, status_code=422)
-        payload["grid_verification"] = gv
+        except Exception as exc:
+            return JSONResponse(
+                {"error": f"grid_verification sign failed: {exc}"},
+                status_code=503,
+            )
     # 写序:persistUser(+[文件]) → 调模型 → persistAssistant
     user_persisted = False
     if use_mem and part_idx == 0 and not body.get("continue") and mem_user:
@@ -420,35 +433,42 @@ async def chat(req: Request):
     async def gen():
         state, n_tok, full, finish, served, t0 = "thinking", 0, [], None, None, time.time()
         contract_flag = None
+        gw_http = None
+        gw_detail = None
         try:
-            async with httpx.AsyncClient(timeout=300) as cli:
+            async with httpx.AsyncClient(timeout=_gw_timeout) as cli:
                 async with cli.stream("POST", CFG["gateway"], json=payload) as r:
-                    async for line in r.aiter_lines():
-                        if not line.startswith("data:"):
-                            continue
-                        data = line[5:].strip()
-                        if data == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data)
-                        except Exception:
-                            continue
-                        ev = derive_event(chunk, state)
-                        served = ev["served_by"] or served
-                        finish = ev["finish"] or finish
-                        if ev.get("contract_flag"):
-                            contract_flag = ev["contract_flag"]
-                        if ev["state"] != state:
-                            state = ev["state"]
-                            await BUS.pub(state=state)
-                        if ev["reasoning"]:
-                            n_tok += 1
-                            if n_tok % 8 == 0:
-                                await BUS.pub(state=state, tokens=n_tok)
-                        if ev["token"]:
-                            full.append(ev["token"]); n_tok += 1
-                            await BUS.pub(state="output", tokens=n_tok)
-                            yield f"data: {json.dumps({'token': ev['token']}, ensure_ascii=False)}\n\n"
+                    gw_http = r.status_code
+                    if r.status_code >= 400:
+                        raw = (await r.aread()).decode("utf-8", "replace")[:300]
+                        gw_detail = raw or r.reason_phrase or "empty body"
+                    else:
+                        async for line in r.aiter_lines():
+                            if not line.startswith("data:"):
+                                continue
+                            data = line[5:].strip()
+                            if data == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data)
+                            except Exception:
+                                continue
+                            ev = derive_event(chunk, state)
+                            served = ev["served_by"] or served
+                            finish = ev["finish"] or finish
+                            if ev.get("contract_flag"):
+                                contract_flag = ev["contract_flag"]
+                            if ev["state"] != state:
+                                state = ev["state"]
+                                await BUS.pub(state=state)
+                            if ev["reasoning"]:
+                                n_tok += 1
+                                if n_tok % 8 == 0:
+                                    await BUS.pub(state=state, tokens=n_tok)
+                            if ev["token"]:
+                                full.append(ev["token"]); n_tok += 1
+                                await BUS.pub(state="output", tokens=n_tok)
+                                yield f"data: {json.dumps({'token': ev['token']}, ensure_ascii=False)}\n\n"
             prior = body.get("prior_text") or ""
             merged = prior + "".join(full) if body.get("continue") else "".join(full)
             garden = BUS.snapshot["coherence"] if BUS.snapshot["links"].get("garden") else None
@@ -462,6 +482,14 @@ async def chat(req: Request):
                 done["contract_flag"] = contract_flag
             elif "contract_flag: subject_inversion" in done.get("text", ""):
                 done["contract_flag"] = "subject_inversion"
+            # served_by=null 空 done：如实文案，禁止静默空屏
+            if not (done.get("text") or "").strip() and not served:
+                reason = gw_detail or "无正文"
+                status = gw_http if gw_http is not None else "?"
+                msg = f"网关拒答 · HTTP {status} · {reason}"
+                done["text"] = msg
+                done["error"] = msg
+                done["finish_reason"] = "gateway_rejected"
             if use_mem and _turn_complete(done, task) and merged.strip():
                 # 用户轮已在 prepare 阶段落库;此处只落 assistant
                 await asyncio.to_thread(
@@ -484,6 +512,11 @@ async def chat(req: Request):
                 done["session_seed"] = session_meta.get("session_seed")
                 done["method_cards_used"] = session_meta.get("method_cards_used")
             yield "data: " + json.dumps(done, ensure_ascii=False) + "\n\n"
+        except httpx.TimeoutException:
+            await BUS.pub(state="error")
+            yield f"data: {json.dumps({'error': '网关超时', 'done': True, 'text': '网关超时', 'served_by': None}, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(0.6)
+            await BUS.pub(state="idle")
         except Exception as e:
             await BUS.pub(state="error")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
