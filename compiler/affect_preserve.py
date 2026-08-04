@@ -3,13 +3,14 @@
 Deterministic only. No LLM. Does not soften, reframe, or invent goals.
 UNKNOWN when unsure — never guess into rejected_interpretations.
 
-INTENT_CONVERGE polarity (Commit A): polarity is the sole authority field.
-normalized_rule / executable_meaning hold action text only (no FORBIDDEN: prefix).
+INTENT_CONVERGE polarity (Commit D): executable_meaning is the sole execute
+string. display_hint is log/human only — never enters canonical_core.
 source_phrase is a literal raw slice; authoritative span = UTF-8 byte offsets.
 Focus words in negation scope must survive into executable_meaning.
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -108,7 +109,7 @@ _SELF_INGEST_LINE = re.compile(
 _SELF_INGEST_BLOCK = re.compile(
     r"(?s)(?:"
     r"```.*?```|"
-    r"\{[^{}]*\"(?:polarity|normalized_rule|source_phrase|executable_meaning)\"[^{}]*\}|"
+    r"\{[^{}]*\"(?:polarity|normalized_rule|display_hint|source_phrase|executable_meaning)\"[^{}]*\}|"
     r"_diag/[^\s]+|"
     r"compiler receipt.*?(?:\n\n|\Z)|"
     r"structured(?:_compile)?(?:_sample)?(?:\.json)?[^\n]*"
@@ -187,8 +188,25 @@ def _span_in_quoted(start: int, end: int, ranges: list[tuple[int, int]]) -> bool
 
 
 # ---------------------------------------------------------------------------
-# Polarity authority (D) — normalized_rule has NO polarity prefix
+# Polarity authority — executable_meaning sole execute string; display_hint log-only
 # ---------------------------------------------------------------------------
+
+# Whitelist for constraint slices inside canonical_core (construct, never strip-copy).
+CANONICAL_CORE_CONSTRAINT_KEYS = frozenset({
+    "executable_meaning",
+    "polarity",
+    "source_phrase",
+    "source_start_byte",
+    "source_end_byte",
+})
+
+_BANNED_CORE_KEYS = frozenset({
+    "display_hint", "normalized_rule", "action", "releases",
+    "source_start", "source_end", "uncertain_scope",
+})
+
+_HUMAN_PREFIX_RE = re.compile(r"^(FORBIDDEN|REQUIRED|UNCERTAIN)\s*:")
+
 
 def assert_constraint_well_formed(item: dict[str, Any]) -> None:
     """Hard fail if polarity missing, prefix-smuggled, or provenance incomplete."""
@@ -200,17 +218,15 @@ def assert_constraint_well_formed(item: dict[str, Any]) -> None:
         POLARITY_RELEASED, POLARITY_QUOTED,
     ):
         raise ValueError("constraint missing/invalid polarity (sole authority)")
-    rule = str(item.get("normalized_rule") or "")
-    meaning = str(item.get("executable_meaning") or rule)
-    # quoted may literally contain pasted FORBIDDEN: lines — polarity=quoted keeps them inert
+    if "normalized_rule" in item:
+        raise ValueError("normalized_rule retired; use display_hint (log) + executable_meaning")
+    meaning = str(item.get("executable_meaning") or "")
+    hint = str(item.get("display_hint") or "")
     if pol != POLARITY_QUOTED:
-        if rule.startswith("FORBIDDEN:") or rule.startswith("REQUIRED:") or rule.startswith("UNCERTAIN:"):
-            raise ValueError(
-                "normalized_rule must not contain polarity prefix; polarity field is sole authority"
-            )
-        if meaning.startswith("FORBIDDEN:") or meaning.startswith("REQUIRED:"):
-            raise ValueError("executable_meaning must not contain polarity prefix")
-    # Focus words present in source body must survive into executable meaning
+        if _HUMAN_PREFIX_RE.match(meaning) or _HUMAN_PREFIX_RE.match(hint):
+            raise ValueError("polarity prefix forbidden in executable_meaning/display_hint")
+    if not meaning and pol in (POLARITY_FORBIDDEN, POLARITY_REQUIRED):
+        raise ValueError("executable_meaning required for executable polarities")
     if pol in (POLARITY_FORBIDDEN, POLARITY_REQUIRED):
         src = str(item.get("source_phrase") or "")
         body = _strip_leading_negation_cue(src)
@@ -227,12 +243,83 @@ def constraint_log_label(item: dict[str, Any]) -> str:
     """Human/log display only — never use as execute authority."""
     assert_constraint_well_formed(item)
     pol = item["polarity"]
-    rule = str(item.get("normalized_rule") or "")
-    return "%s:%s" % (str(pol).upper(), rule)
+    hint = str(item.get("display_hint") or item.get("source_phrase") or "")
+    return "%s:%s" % (str(pol).upper(), hint)
+
+
+def assert_canonical_core_safe(obj: Any, *, _path: str = "$") -> None:
+    """Exit guard: canonical_core must not carry display fields or human prefixes."""
+    if isinstance(obj, dict):
+        if "display_hint" in obj or "normalized_rule" in obj:
+            raise ValueError(
+                "canonical_core forbids display_hint/normalized_rule at %s (hard fail)" % _path
+            )
+        for k in obj:
+            if k in _BANNED_CORE_KEYS:
+                raise ValueError(
+                    "canonical_core forbids key %r at %s (hard fail)" % (k, _path)
+                )
+        # constraint-shaped objects: exact whitelist only
+        if "polarity" in obj or "executable_meaning" in obj:
+            extra = set(obj.keys()) - CANONICAL_CORE_CONSTRAINT_KEYS
+            if extra:
+                raise ValueError(
+                    "canonical_core non-whitelist keys %s at %s (hard fail)"
+                    % (sorted(extra), _path)
+                )
+        for k, v in obj.items():
+            assert_canonical_core_safe(v, _path="%s.%s" % (_path, k))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            assert_canonical_core_safe(v, _path="%s[%d]" % (_path, i))
+    elif isinstance(obj, str):
+        if _HUMAN_PREFIX_RE.match(obj):
+            raise ValueError(
+                "canonical_core forbids human polarity prefix at %s (hard fail)" % _path
+            )
+
+
+def build_canonical_core_constraint(item: dict[str, Any]) -> dict[str, Any]:
+    """Whitelist-construct execute constraint — never copy-then-delete."""
+    assert_constraint_well_formed(item)
+    if item["polarity"] not in (POLARITY_FORBIDDEN, POLARITY_REQUIRED):
+        raise ValueError("canonical_core constraint only for forbidden/required")
+    meaning = str(item["executable_meaning"])
+    if not meaning:
+        raise ValueError("executable_meaning empty")
+    core = {
+        "executable_meaning": meaning,
+        "polarity": item["polarity"],
+        "source_phrase": item["source_phrase"],
+        "source_start_byte": int(item["source_start_byte"]),
+        "source_end_byte": int(item["source_end_byte"]),
+    }
+    # enforce exact key set
+    if set(core.keys()) != CANONICAL_CORE_CONSTRAINT_KEYS:
+        raise ValueError("canonical_core key set mismatch")
+    assert_canonical_core_safe(core)
+    return core
+
+
+def serialize_canonical_core_constraints(items: list[dict[str, Any]]) -> str:
+    """Stable one-line JSON array of whitelist constraint cores."""
+    cores = [
+        build_canonical_core_constraint(i)
+        for i in items
+        if i.get("polarity") in (POLARITY_FORBIDDEN, POLARITY_REQUIRED)
+    ]
+    cores.sort(key=lambda c: (c["source_start_byte"], c["source_end_byte"]))
+    blob = json.dumps(cores, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    assert_canonical_core_safe(json.loads(blob))
+    if "display_hint" in blob or "normalized_rule" in blob:
+        raise ValueError("canonical_core serialization leaked display fields")
+    if "FORBIDDEN:" in blob or "REQUIRED:" in blob or "UNCERTAIN:" in blob:
+        raise ValueError("canonical_core serialization leaked human polarity prefix")
+    return blob
 
 
 def constraint_export_for_execute(item: dict[str, Any]) -> dict[str, Any]:
-    """Execute-bound export: rule + polarity + provenance; rejects rule-only."""
+    """Execute-bound export = canonical_core constraint slice (no display_hint)."""
     assert_constraint_well_formed(item)
     if item["polarity"] == POLARITY_UNCERTAIN:
         raise ValueError("uncertain constraint cannot enter execute")
@@ -240,38 +327,41 @@ def constraint_export_for_execute(item: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("quoted citation cannot enter execute")
     if item["polarity"] == POLARITY_RELEASED:
         raise ValueError("released constraint excluded from execute set")
-    meaning = str(item.get("executable_meaning") or item["normalized_rule"])
-    return {
-        "polarity": item["polarity"],
-        "normalized_rule": item["normalized_rule"],
-        "executable_meaning": meaning,
-        "source_phrase": item.get("source_phrase"),
-        "source_start_byte": item["source_start_byte"],
-        "source_end_byte": item["source_end_byte"],
-    }
+    return build_canonical_core_constraint(item)
 
 
-def bare_normalized_rule_alone_is_fail(payload: Any) -> bool:
-    """Any path that outputs/consumes normalized_rule alone → FAIL."""
+def fake_downstream_read_display_hint(canonical_core: dict[str, Any]) -> str:
+    """Fake consumer that only trusts display_hint — must hard-fail on canonical_core."""
+    assert_canonical_core_safe(canonical_core)
+    if "display_hint" in canonical_core:
+        raise ValueError("display_hint leaked into canonical_core")
+    raise ValueError(
+        "hard fail: display_hint not available in canonical_core (not an execute field)"
+    )
+
+
+def bare_executable_meaning_alone_is_fail(payload: Any) -> bool:
+    """Naked executable_meaning (no polarity + span) must not be consumable."""
     if isinstance(payload, str):
         return True
     if isinstance(payload, dict):
-        if "normalized_rule" in payload and "polarity" not in payload:
+        if "executable_meaning" in payload and "polarity" not in payload:
             return True
-        if "normalized_rule" in payload and (
-            "source_start_byte" not in payload or "source_end_byte" not in payload
-        ):
-            # rule without provenance is not execute-safe
-            if payload.get("polarity") in (
-                POLARITY_FORBIDDEN, POLARITY_REQUIRED,
-            ):
-                return True
+        if "display_hint" in payload and "polarity" not in payload:
+            return True
+        if "normalized_rule" in payload:
+            return True
         try:
-            assert_constraint_well_formed(payload)
+            constraint_export_for_execute(payload)
             return False
-        except ValueError:
+        except (ValueError, KeyError, TypeError):
             return True
     return True
+
+
+# back-compat name used by older tests
+def bare_normalized_rule_alone_is_fail(payload: Any) -> bool:
+    return bare_executable_meaning_alone_is_fail(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -332,14 +422,15 @@ def _mk_item(
     start_b, end_b = utf8_byte_span(raw, start, end)
     if phrase_from_utf8_span(raw, start_b, end_b) != source:
         raise ValueError("UTF-8 byte span does not round-trip to source_phrase")
+    # display_hint = raw slice (human); executable_meaning = scoped action (execute)
     item = {
-        "normalized_rule": meaning,
+        "display_hint": source,
         "executable_meaning": meaning,
         "polarity": polarity,
         "source_phrase": source,
         "source_start_byte": start_b,
         "source_end_byte": end_b,
-        # char offsets: internal only (non-authoritative)
+        # char offsets: internal only (non-authoritative; not in canonical_core)
         "source_start": start,
         "source_end": end,
         "action": meaning,
@@ -667,12 +758,11 @@ def extract_constraint_items(prompt: str) -> list[dict[str, Any]]:
         target = None
         for prev in items:
             if prev.get("polarity") == POLARITY_FORBIDDEN and (
-                act in str(prev.get("action") or "")
-                or str(prev.get("action") or "") in act
-                or act in str(prev.get("normalized_rule") or "")
+                act in str(prev.get("executable_meaning") or "")
+                or str(prev.get("executable_meaning") or "") in act
             ):
                 target = {
-                    "normalized_rule": prev["normalized_rule"],
+                    "executable_meaning": prev["executable_meaning"],
                     "source_start_byte": prev["source_start_byte"],
                     "source_end_byte": prev["source_end_byte"],
                 }
@@ -681,7 +771,7 @@ def extract_constraint_items(prompt: str) -> list[dict[str, Any]]:
                 break
         items.append(_mk_item(
             raw=raw, start=m.start(), end=m.end(), polarity=POLARITY_RELEASED,
-            action=act, releases=target or {"normalized_rule": act},
+            action=act, releases=target or {"executable_meaning": act},
         ))
         mark(m.start(), m.end())
 
@@ -961,7 +1051,6 @@ def compile_affect_structure(prompt: str) -> dict[str, Any]:
     }
 
 
-# Back-compat aliases used by older tests (D: prefix no longer authoritative)
 def format_polarized_rule(polarity: str, action: str) -> str:
     """Log-only label. Not for execute authority."""
     pol = polarity if polarity in (
@@ -972,20 +1061,12 @@ def format_polarized_rule(polarity: str, action: str) -> str:
 
 
 def constraint_export(item: dict[str, Any]) -> dict[str, Any]:
-    """Prefer structured execute export (breaking change from string prefix era)."""
     return constraint_export_for_execute(item)
 
 
-def bare_rule_readable_as_positive(normalized_rule: str) -> bool:
-    """Deprecated bomb check: bare rule strings are actions; polarity decides.
-
-    Returns True when *string alone* would be mistaken for an instruction —
-    i.e. always True for non-empty action text without polarity context.
-    Callers must use polarity field.
-    """
-    r = (normalized_rule or "").strip()
+def bare_rule_readable_as_positive(text: str) -> bool:
+    """Bare strings without polarity are never safe to execute."""
+    r = (text or "").strip()
     if not r or r == UNKNOWN:
         return False
-    if r.startswith("FORBIDDEN:") or r.startswith("REQUIRED:"):
-        return True  # prefix smuggled into rule — still a bomb per D
-    return True  # bare action is never safe alone
+    return True

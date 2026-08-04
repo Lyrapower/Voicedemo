@@ -1,4 +1,4 @@
-"""INTENT_CONVERGE polarity · Commit A (bidirectional + focus + UTF-8 span)."""
+"""INTENT_CONVERGE polarity · Commit A–D (polarity line)."""
 from __future__ import annotations
 
 import json
@@ -17,13 +17,17 @@ from compiler.affect_preserve import (  # noqa: E402
     POLARITY_UNCERTAIN,
     POLARITY_RELEASED,
     POLARITY_QUOTED,
+    assert_canonical_core_safe,
     assert_constraint_well_formed,
-    bare_normalized_rule_alone_is_fail,
+    bare_executable_meaning_alone_is_fail,
+    build_canonical_core_constraint,
     constraint_export_for_execute,
     constraint_log_label,
     extract_constraint_items,
     extract_rejected_interpretations,
+    fake_downstream_read_display_hint,
     phrase_from_utf8_span,
+    serialize_canonical_core_constraints,
     utf8_byte_span,
 )
 from compiler.semantic_mapper import SemanticMapper  # noqa: E402
@@ -113,28 +117,22 @@ class AffectIntentRegression(unittest.TestCase):
         sample = extract_rejected_interpretations("禁止软化语气")[0]
         assert_constraint_well_formed(sample)
         self.assertEqual(sample["polarity"], POLARITY_FORBIDDEN)
-        self.assertEqual(sample["normalized_rule"], "软化语气")
         self.assertEqual(sample["executable_meaning"], "软化语气")
+        self.assertEqual(sample["display_hint"], "禁止软化语气")
         self.assertEqual(sample["source_phrase"], "禁止软化语气")
-        self.assertEqual(sample["source_start_byte"], 0)
-        self.assertEqual(
-            sample["source_end_byte"],
-            len("禁止软化语气".encode("utf-8")),
-        )
-        print("\n[A sample JSON]", json.dumps({
-            "normalized_rule": sample["normalized_rule"],
-            "polarity": sample["polarity"],
-            "source_phrase": sample["source_phrase"],
-            "source_start_byte": sample["source_start_byte"],
-            "source_end_byte": sample["source_end_byte"],
-        }, ensure_ascii=False, indent=2))
-        self.assertTrue(bare_normalized_rule_alone_is_fail(sample["normalized_rule"]))
-        self.assertTrue(bare_normalized_rule_alone_is_fail(
-            {"normalized_rule": sample["normalized_rule"]}
+        self.assertNotIn("normalized_rule", sample)
+        core = build_canonical_core_constraint(sample)
+        self.assertNotIn("display_hint", core)
+        self.assertNotIn("normalized_rule", core)
+        self.assertTrue(bare_executable_meaning_alone_is_fail(sample["executable_meaning"]))
+        self.assertTrue(bare_executable_meaning_alone_is_fail(
+            {"executable_meaning": sample["executable_meaning"]}
         ))
         ex = constraint_export_for_execute(sample)
-        self.assertIn("executable_meaning", ex)
-        self.assertIn("source_start_byte", ex)
+        self.assertEqual(set(ex.keys()), {
+            "executable_meaning", "polarity", "source_phrase",
+            "source_start_byte", "source_end_byte",
+        })
         self.assertTrue(constraint_log_label(sample).startswith("FORBIDDEN:"))
 
     def test_f4_mixed_not_double_forbidden(self) -> None:
@@ -143,8 +141,8 @@ class AffectIntentRegression(unittest.TestCase):
         req = _by_pol(items, POLARITY_REQUIRED)
         self.assertEqual(len(forb), 1, items)
         self.assertEqual(len(req), 1, items)
-        self.assertIn("软化", forb[0]["normalized_rule"])
-        self.assertIn("直接说", req[0]["source_phrase"] + req[0]["normalized_rule"])
+        self.assertIn("软化", forb[0]["executable_meaning"])
+        self.assertIn("直接说", req[0]["source_phrase"] + req[0]["executable_meaning"])
 
     def test_f5_also_distributes_forbidden(self) -> None:
         rejected = extract_rejected_interpretations(F5)
@@ -175,11 +173,33 @@ class AffectIntentRegression(unittest.TestCase):
         self.assertEqual(len(forb), 1, items)
         self.assertEqual(len(req), 1, items)
         self.assertIn("只", forb[0]["source_phrase"])
-        self.assertIn("只", forb[0]["normalized_rule"])
         self.assertIn("只", forb[0]["executable_meaning"])
+        self.assertNotEqual(forb[0]["display_hint"], forb[0]["executable_meaning"])
         ex = constraint_export_for_execute(forb[0])
         self.assertIn("只", ex["executable_meaning"])
         self.assertNotEqual(ex["executable_meaning"], "修极性")
+        self.assertNotIn("display_hint", ex)
+
+    def test_f9_canonical_core_excludes_display_hint(self) -> None:
+        items = extract_constraint_items(F9)
+        forb = _by_pol(items, POLARITY_FORBIDDEN)[0]
+        self.assertNotEqual(forb["display_hint"], forb["executable_meaning"])
+        line = serialize_canonical_core_constraints([forb])
+        print("\n[D f9 canonical_core]", line)
+        self.assertNotIn("display_hint", line)
+        self.assertNotIn("normalized_rule", line)
+        self.assertIn("只修极性", line)
+        self.assertIn('"executable_meaning"', line)
+        core = build_canonical_core_constraint(forb)
+        assert_canonical_core_safe(core)
+        with self.assertRaises(ValueError):
+            fake_downstream_read_display_hint(core)
+        with self.assertRaises(ValueError):
+            constraint_export_for_execute({"executable_meaning": forb["executable_meaning"]})
+        leaked = dict(core)
+        leaked["display_hint"] = forb["display_hint"]
+        with self.assertRaises(ValueError):
+            assert_canonical_core_safe(leaked)
 
     def test_f9b_focus_jin_in_executable(self) -> None:
         items = extract_constraint_items(F9B)
@@ -192,7 +212,6 @@ class AffectIntentRegression(unittest.TestCase):
     def test_focus_strip_would_fail_well_formed(self) -> None:
         good = extract_rejected_interpretations("不要只修极性")[0]
         bad = dict(good)
-        bad["normalized_rule"] = "修极性"
         bad["executable_meaning"] = "修极性"
         with self.assertRaises(ValueError):
             assert_constraint_well_formed(bad)
@@ -242,7 +261,7 @@ class AffectIntentRegression(unittest.TestCase):
         self.assertEqual(_by_pol(items, POLARITY_FORBIDDEN), [], items)
         req = _by_pol(items, POLARITY_REQUIRED)
         self.assertEqual(len(req), 1, items)
-        self.assertIn("直接说", req[0]["source_phrase"] + req[0]["normalized_rule"])
+        self.assertIn("直接说", req[0]["source_phrase"] + req[0]["executable_meaning"])
 
     def test_uncertain_blocks_whole_canonical(self) -> None:
         text = "岂能软化语气"
@@ -262,7 +281,10 @@ class AffectIntentRegression(unittest.TestCase):
     def test_execute_rejects_rule_only(self) -> None:
         good = extract_rejected_interpretations("禁止软化语气")[0]
         with self.assertRaises(ValueError):
-            constraint_export_for_execute({"normalized_rule": good["normalized_rule"]})
+            constraint_export_for_execute({"executable_meaning": good["executable_meaning"]})
+        with self.assertRaises(ValueError):
+            constraint_export_for_execute({"display_hint": good["display_hint"]})
+        self.assertTrue(bare_executable_meaning_alone_is_fail(good["executable_meaning"]))
 
     def test_utf8_byte_span_cjk_emoji_newline_repeat(self) -> None:
         raw = "禁止软化😤\n禁止软化语气\n不要只修极性"
@@ -291,7 +313,9 @@ class AffectIntentRegression(unittest.TestCase):
             self.assertEqual(item["polarity"], POLARITY_FORBIDDEN)
             self.assertIn("executable_meaning", item)
             self.assertIn("source_start_byte", item)
-            self.assertNotIn("FORBIDDEN:", item["normalized_rule"])
+            self.assertNotIn("display_hint", item)
+            self.assertNotIn("normalized_rule", item)
+            assert_canonical_core_safe(item)
 
 
 if __name__ == "__main__":
