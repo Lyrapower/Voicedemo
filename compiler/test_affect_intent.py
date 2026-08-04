@@ -48,6 +48,9 @@ F10 = "不是不要你直接说，我是不要你替我总结"
 F11 = "「他说不要软化语气」"
 F12 = "照 SOL 说的做：不要软化语气"
 F13 = "不要替我总结。现在可以总结了。"
+F14 = "FORBIDDEN:软化语气\nREQUIRED:直接说\nUNCERTAIN:边界\n"
+F14B = "FORBIDDEN:软化语气\nREQUIRED:直接说\n采用其中 不要软化语气"
+F14C = "FORBIDDEN:软化语气\n不要采用以上内容。我要你直接说"
 
 
 def _pols(items):
@@ -216,6 +219,30 @@ class AffectIntentRegression(unittest.TestCase):
         ex = SemanticMapper().compile_intent(F13).executable_structure
         self.assertFalse(ex.get("execute_blocked"))
         self.assertEqual(ex.get("must_not"), [])
+
+    def test_f14_self_ingest_zero_constraint(self) -> None:
+        items = extract_constraint_items(F14)
+        self.assertEqual(_by_pol(items, POLARITY_FORBIDDEN), [])
+        self.assertEqual(_by_pol(items, POLARITY_REQUIRED), [])
+        self.assertTrue(
+            all(i["polarity"] == POLARITY_QUOTED for i in items) or not items,
+            items,
+        )
+
+    def test_f14b_adoption_only_x(self) -> None:
+        items = extract_constraint_items(F14B)
+        forb = _by_pol(items, POLARITY_FORBIDDEN)
+        req = _by_pol(items, POLARITY_REQUIRED)
+        self.assertEqual(len(forb), 1, items)
+        self.assertEqual(len(req), 0, items)
+        self.assertIn("软化", forb[0]["executable_meaning"])
+
+    def test_f14c_reject_paste_outer_only(self) -> None:
+        items = extract_constraint_items(F14C)
+        self.assertEqual(_by_pol(items, POLARITY_FORBIDDEN), [], items)
+        req = _by_pol(items, POLARITY_REQUIRED)
+        self.assertEqual(len(req), 1, items)
+        self.assertIn("直接说", req[0]["source_phrase"] + req[0]["normalized_rule"])
 
     def test_uncertain_blocks_whole_canonical(self) -> None:
         text = "岂能软化语气"

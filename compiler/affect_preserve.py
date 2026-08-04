@@ -101,9 +101,25 @@ def _span_target(span: str) -> str:
 # Quote masking (L)
 # ---------------------------------------------------------------------------
 
+# System self-ingestion markers — pasted receipts are inert unless endorsed.
+_SELF_INGEST_LINE = re.compile(
+    r"(?m)^[ \t]*(?:FORBIDDEN|REQUIRED|UNCERTAIN)\s*:.*$"
+)
+_SELF_INGEST_BLOCK = re.compile(
+    r"(?s)(?:"
+    r"```.*?```|"
+    r"\{[^{}]*\"(?:polarity|normalized_rule|source_phrase|executable_meaning)\"[^{}]*\}|"
+    r"_diag/[^\s]+|"
+    r"compiler receipt.*?(?:\n\n|\Z)|"
+    r"structured(?:_compile)?(?:_sample)?(?:\.json)?[^\n]*"
+    r")"
+)
+
+
 def find_quoted_ranges(text: str) -> list[tuple[int, int]]:
-    """Ranges that are citations / code — negations inside do not bind Lyra."""
+    """Ranges that are citations / code / system receipts — inert by default."""
     ranges: list[tuple[int, int]] = []
+    t = text or ""
     for cre in (
         re.compile(r"```.*?```", re.S),
         re.compile(r"「[^」]*」"),
@@ -112,11 +128,50 @@ def find_quoted_ranges(text: str) -> list[tuple[int, int]]:
         re.compile(r"以下是[^：:]*[：:][^\n]*"),
         re.compile(r"他说[^。！？\n]*"),
         re.compile(r"她说[^。！？\n]*"),
+        _SELF_INGEST_LINE,
+        _SELF_INGEST_BLOCK,
     ):
-        for m in cre.finditer(text or ""):
+        for m in cre.finditer(t):
             ranges.append((m.start(), m.end()))
+    # contiguous FORBIDDEN:/REQUIRED: dump blocks (no DOTALL — do not eat outer speech)
+    for m in re.finditer(
+        r"(?m)(?:^[ \t]*(?:FORBIDDEN|REQUIRED|UNCERTAIN)\s*:.*\n?)+",
+        t,
+    ):
+        ranges.append((m.start(), m.end()))
     ranges.sort()
-    return ranges
+    return _merge_ranges(ranges)
+
+
+def _merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    if not ranges:
+        return []
+    out = [ranges[0]]
+    for a, b in ranges[1:]:
+        pa, pb = out[-1]
+        if a <= pb:
+            out[-1] = (pa, max(pb, b))
+        else:
+            out.append((a, b))
+    return out
+
+
+def _adoption_ranges(raw: str) -> list[tuple[int, int, str]]:
+    """「采用其中 X」→ promote only X from otherwise quoted paste."""
+    out: list[tuple[int, int, str]] = []
+    for m in re.finditer(r"采用其中\s*([^\n。！？]+)", raw or ""):
+        frag = (m.group(1) or "").strip()
+        if frag:
+            out.append((m.start(1), m.end(1), frag))
+    return out
+
+
+def _outer_negates_paste(raw: str) -> bool:
+    """User explicitly rejects pasted system content (f14c)."""
+    return bool(re.search(
+        r"(不要采用|别采用|忽略(?:其中|以上|这段|粘贴)|不采纳|作废|当没看见)",
+        raw or "",
+    ))
 
 
 def _in_ranges(pos: int, ranges: list[tuple[int, int]]) -> bool:
@@ -146,13 +201,15 @@ def assert_constraint_well_formed(item: dict[str, Any]) -> None:
     ):
         raise ValueError("constraint missing/invalid polarity (sole authority)")
     rule = str(item.get("normalized_rule") or "")
-    if rule.startswith("FORBIDDEN:") or rule.startswith("REQUIRED:") or rule.startswith("UNCERTAIN:"):
-        raise ValueError(
-            "normalized_rule must not contain polarity prefix; polarity field is sole authority"
-        )
     meaning = str(item.get("executable_meaning") or rule)
-    if meaning.startswith("FORBIDDEN:") or meaning.startswith("REQUIRED:"):
-        raise ValueError("executable_meaning must not contain polarity prefix")
+    # quoted may literally contain pasted FORBIDDEN: lines — polarity=quoted keeps them inert
+    if pol != POLARITY_QUOTED:
+        if rule.startswith("FORBIDDEN:") or rule.startswith("REQUIRED:") or rule.startswith("UNCERTAIN:"):
+            raise ValueError(
+                "normalized_rule must not contain polarity prefix; polarity field is sole authority"
+            )
+        if meaning.startswith("FORBIDDEN:") or meaning.startswith("REQUIRED:"):
+            raise ValueError("executable_meaning must not contain polarity prefix")
     # Focus words present in source body must survive into executable meaning
     if pol in (POLARITY_FORBIDDEN, POLARITY_REQUIRED):
         src = str(item.get("source_phrase") or "")
@@ -406,11 +463,24 @@ def _has_endorsement_before(raw: str, pos: int) -> bool:
     return bool(re.search(r"照\s*\S+?\s*说的做[：:]\s*$", window))
 
 
+def _classify_uncertain_scope(clause: str) -> str:
+    """whole = block entire execute; local = drop only this item (fail-closed default whole)."""
+    c = clause or ""
+    if re.search(r"(目标|授权|红线|硬|验收|决定|交付|边界|核心)", c):
+        return "whole"
+    if re.search(r"(禁止|不要|不得|软化|总结|解释|极性)", c):
+        return "whole"
+    if re.search(r"(或许|可能|好像|未必)", c):
+        return "local"
+    return "whole"
+
+
 def extract_constraint_items(prompt: str) -> list[dict[str, Any]]:
     raw = prompt or ""
     quoted = find_quoted_ranges(raw)
     items: list[dict[str, Any]] = []
     consumed: list[tuple[int, int]] = []
+    reject_paste = _outer_negates_paste(raw)
 
     def mark(a: int, b: int) -> None:
         consumed.append((a, b))
@@ -418,10 +488,46 @@ def extract_constraint_items(prompt: str) -> list[dict[str, Any]]:
     def overlaps_consumed(a: int, b: int) -> bool:
         return any(not (b <= x or a >= y) for x, y in consumed)
 
+    # Pass -1: self-ingest / quote spans → quoted (inert). Adoption handled later.
+    for a, b in quoted:
+        if overlaps_consumed(a, b):
+            continue
+        frag = raw[a:b]
+        if not frag.strip():
+            continue
+        # strip leading log-prefix from action so quoted payload is inert text only
+        action = frag.strip()[:200]
+        action = re.sub(
+            r"^(?:FORBIDDEN|REQUIRED|UNCERTAIN)\s*:\s*", "", action, flags=re.M,
+        ).strip() or frag.strip()[:200]
+        items.append(_mk_item(
+            raw=raw, start=a, end=b, polarity=POLARITY_QUOTED,
+            action=action,
+        ))
+        mark(a, b)
+
+    # Pass -0.5: explicit adoption 「采用其中 X」→ parse X as live constraint
+    if not reject_paste:
+        for m in re.finditer(r"采用其中\s*([^\n。！？]+)", raw):
+            frag = (m.group(1) or "").strip()
+            a, b = m.start(1), m.end(1)
+            mark(m.start(), m.end())  # consume whole adoption directive
+            if not frag:
+                continue
+            for it in extract_constraint_items(frag):
+                if it["polarity"] in (POLARITY_FORBIDDEN, POLARITY_REQUIRED):
+                    items.append(_mk_item(
+                        raw=raw, start=a, end=b,
+                        polarity=it["polarity"],
+                        action=it["executable_meaning"],
+                    ))
+
     # Pass 0: endorsement 照…说的做：body
     for m in re.finditer(
         r"照\s*\S+?\s*说的做[：:]\s*", raw,
     ):
+        if overlaps_consumed(m.start(), m.end()):
+            continue
         body_start = m.end()
         # body until sentence end
         body_end = len(raw)
@@ -433,8 +539,8 @@ def extract_constraint_items(prompt: str) -> list[dict[str, Any]]:
         # parse body as if Lyra (ignore quote masks inside endorsement body)
         for start, end, clause in _split_top_clauses(body):
             abs_s, abs_e = body_start + start, body_start + end
-            cue = _is_negation_cue_at(raw, abs_s)
-            # also search cue at abs_s
+            if overlaps_consumed(abs_s, abs_e):
+                continue
             found_cue = None
             found_off = None
             for i in range(abs_s, abs_e):
@@ -457,16 +563,16 @@ def extract_constraint_items(prompt: str) -> list[dict[str, Any]]:
             continue
 
         if _span_in_quoted(start, end, quoted):
-            if _looks_like_negation_tone(clause):
-                items.append(_mk_item(
-                    raw=raw, start=start, end=end, polarity=POLARITY_QUOTED,
-                    action=clause[:200],
-                ))
-                mark(start, end)
+            # already marked in pass -1; skip
             continue
 
         # f10 corrective opener
         if clause.startswith("不是不要"):
+            mark(start, end)
+            continue
+
+        # f14c: meta about paste — not a domain constraint
+        if re.match(r"^(不要采用|别采用|忽略(?:其中|以上|这段|粘贴)|不采纳)", clause):
             mark(start, end)
             continue
 
@@ -530,10 +636,13 @@ def extract_constraint_items(prompt: str) -> list[dict[str, Any]]:
             continue
 
         if _looks_like_negation_tone(clause):
-            items.append(_mk_item(
+            # fail-closed: negation tone without lexicon scope → uncertain (never default required)
+            unc = _mk_item(
                 raw=raw, start=start, end=end, polarity=POLARITY_UNCERTAIN,
                 action=clause[:200],
-            ))
+            )
+            unc["uncertain_scope"] = _classify_uncertain_scope(clause)
+            items.append(unc)
             mark(start, end)
 
     # Boundary labels
@@ -775,9 +884,8 @@ def build_executable_structure(
     priority: str,
     urgency: str,
 ) -> dict[str, Any]:
-    """Execute set: only forbidden/required. uncertain blocks whole canonical (H)."""
+    """Execute: required/forbidden only. whole-uncertain blocks all; local drops item."""
     all_items = list(hard)
-    # rejected already subset of forbidden in hard usually; ensure union
     seen = {
         (i.get("source_start_byte"), i.get("source_end_byte"), i.get("polarity"))
         for i in all_items
@@ -789,7 +897,11 @@ def build_executable_structure(
             seen.add(key)
 
     uncertain = [i for i in all_items if i.get("polarity") == POLARITY_UNCERTAIN]
-    blocked = bool(uncertain)
+    whole_unc = [
+        u for u in uncertain
+        if u.get("uncertain_scope", "whole") != "local"
+    ]
+    blocked = bool(whole_unc)
     must_not: list[dict[str, Any]] = []
     must_respect: list[dict[str, Any]] = []
     if not blocked:
@@ -799,8 +911,9 @@ def build_executable_structure(
                 must_not.append(constraint_export_for_execute(i))
             elif pol == POLARITY_REQUIRED:
                 must_respect.append(constraint_export_for_execute(i))
-            # released / quoted skipped
+            # local uncertain / released / quoted skipped
 
+    ask = whole_unc if blocked else uncertain
     return {
         "goal": core_intent,
         "must_respect": must_respect,
@@ -811,7 +924,7 @@ def build_executable_structure(
         "reinterpretation_allowed": False,
         "execute_blocked": blocked,
         "disambiguation_question": (
-            disambiguation_question(uncertain) if blocked else None
+            disambiguation_question(ask) if ask else None
         ),
     }
 
