@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#06070E">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>GRID</title>
+<style>
+/* ── tokens ──
+   墨 #06070E · 星雾 #16173A · 粒 #C9CCEA · 文 #E3E5F2 · 灰 #6E7190 · 青 #8FD8E8 */
+:root{
+  --mo:#06070E; --wen:#E3E5F2; --hui:#6E7190; --an:#43465F;
+  --qing:#8FD8E8; --jie:rgba(140,138,200,.14);
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --sans:-apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--mo);color:var(--wen);
+  font:16px/1.9 var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+body{background-image:radial-gradient(130% 46% at 50% -6%,#16173A 0%,rgba(22,23,58,0) 62%)}
+
+#sky{position:fixed;inset:0;z-index:0;pointer-events:none}
+#app{position:relative;z-index:1;height:100%;display:flex;flex-direction:column}
+
+#head{flex:none;padding:calc(10px + env(safe-area-inset-top)) 18px 0}
+#toprow{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#lanes{display:flex;gap:20px;align-items:baseline}
+.lane{background:none;border:none;padding:0;cursor:pointer;
+  font:600 12px var(--mono);letter-spacing:.32em;color:var(--an);
+  text-shadow:none;transition:color .2s,text-shadow .2s;-webkit-tap-highlight-color:transparent}
+.lane.on[data-lane="grid"]{color:#9B9ED0;text-shadow:0 0 18px rgba(155,158,208,.5)}
+.lane.on[data-lane="qwen"]{color:var(--qing);text-shadow:0 0 16px rgba(143,216,232,.35)}
+.lane.on[data-lane="coach"]{color:#E8B86B;text-shadow:0 0 16px rgba(232,184,107,.35)}
+#coachPanel{flex:1;overflow:hidden;display:none;flex-direction:column;min-height:0}
+#coachPanel.on{display:flex}
+
+/* ── Coach Inbox (spec v1) ── */
+.cin-view{flex:1;display:flex;flex-direction:column;min-height:0;padding:0 16px 12px}
+.cin-view.hidden{display:none!important}
+.cin-head{display:flex;align-items:center;gap:10px;padding:10px 0 8px;flex-wrap:wrap}
+.cin-title{font:600 15px var(--sans);color:var(--wen);letter-spacing:.04em}
+.cin-budget{flex:1;font:10px var(--mono);color:var(--hui);text-align:right}
+.cin-budget.amber{color:#E8B86B}
+.cin-manual{border:1px solid rgba(232,184,107,.45);background:rgba(40,32,18,.55);color:#E8B86B;
+  font:11px var(--mono);padding:7px 12px;border-radius:8px;cursor:pointer}
+.cin-chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch}
+.cin-chip{flex:none;border:1px solid var(--jie);background:rgba(18,19,40,.5);color:var(--hui);
+  font:10px var(--mono);padding:8px 12px;border-radius:999px;cursor:pointer;min-height:44px}
+.cin-chip.on{color:#E8B86B;border-color:rgba(232,184,107,.5);background:rgba(232,184,107,.1)}
+.cin-rows{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:4px}
+.cin-row{width:100%;text-align:left;border:1px solid transparent;background:rgba(18,19,40,.35);
+  border-radius:10px;padding:10px 12px;cursor:pointer;color:var(--wen);min-height:44px}
+.cin-row:hover{border-color:var(--jie);background:rgba(18,19,40,.62)}
+.cin-row-l1{display:block;font:11px var(--mono);line-height:1.5;color:var(--wen)}
+.cin-row-l2{display:block;font:10px var(--mono);color:var(--hui);margin-top:2px}
+.cin-dot.pending{color:#8FD8E8}.cin-dot.held{color:#E8B86B}.cin-dot.approved{color:#8FD0A8}
+.cin-dot.rejected{color:#C97B6E}.cin-dot.skip{color:var(--an)}
+.cin-node{color:var(--hui);margin:0 4px}
+.cin-skip{font-style:italic;color:var(--an)}
+.cin-empty{font:12px var(--mono);color:var(--hui);padding:24px 8px;line-height:1.6}
+.cin-link{background:none;border:none;color:#E8B86B;font:inherit;cursor:pointer;text-decoration:underline}
+.cin-more{align-self:center;margin:10px 0;border:1px solid var(--jie);background:none;color:var(--hui);
+  font:10px var(--mono);padding:8px 16px;border-radius:8px;cursor:pointer}
+.cin-more.hidden{display:none}
+.cin-detail-head{display:flex;align-items:center;gap:10px;padding:8px 0}
+.cin-back{border:none;background:none;color:#E8B86B;font:18px var(--sans);cursor:pointer;padding:4px 8px;min-width:44px;min-height:44px}
+.cin-detail-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:10px;padding-bottom:8px}
+.cin-card{border:1px solid var(--jie);border-radius:10px;background:rgba(18,19,40,.4);overflow:hidden}
+.cin-card-lbl{font:9px var(--mono);color:var(--an);letter-spacing:.12em;padding:8px 10px 0}
+.cin-card-body{padding:8px 10px 10px;font:12px/1.55 var(--sans);color:var(--wen)}
+.cin-card.cin-coach{border-color:rgba(232,184,107,.35)}
+.cin-pre,.cin-json{font:11px/1.45 var(--mono);white-space:pre-wrap;word-break:break-word;max-height:12em;overflow:auto;margin:0}
+.cin-mono{font:10px var(--mono);color:var(--hui);word-break:break-all}
+.cin-copy{border:1px solid var(--jie);background:none;color:var(--hui);font:9px var(--mono);padding:2px 6px;border-radius:4px;cursor:pointer;margin-left:6px}
+.cin-chip-ft{display:inline-block;font:10px var(--mono);padding:4px 8px;border-radius:6px;
+  background:rgba(232,184,107,.15);color:#E8B86B;margin-bottom:8px}
+.cin-amber-block{border:1px solid rgba(232,184,107,.4);border-radius:8px;background:rgba(40,32,18,.4);margin-top:8px}
+.cin-amber-cap{font:9px var(--mono);color:#E8B86B;padding:6px 8px;border-bottom:1px solid rgba(232,184,107,.2)}
+.cin-amber-block pre{padding:8px;margin:0;font:10px var(--mono);overflow:auto}
+.cin-vocab{background:rgba(201,123,110,.15);color:#E8A090;font:10px var(--mono);padding:8px;border-radius:6px;margin-bottom:8px}
+.cin-fold{margin-top:8px;font:11px var(--mono);color:var(--hui)}
+.cin-fold summary{cursor:pointer;color:var(--wen);min-height:44px;display:flex;align-items:center}
+.cin-cost-foot{font:9px var(--mono);color:var(--an);margin-top:10px;padding-top:8px;border-top:1px solid var(--jie)}
+.cin-muted{font:10px var(--mono);color:var(--an);font-style:italic}
+.cin-actions{flex:none;border-top:1px solid var(--jie);padding:10px 0 calc(8px + env(safe-area-inset-bottom));background:rgba(6,7,14,.92)}
+.cin-actions-inner{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cin-cur-st{font:10px var(--mono);color:var(--hui);margin-right:4px}
+.cin-act{font:11px var(--mono);padding:10px 14px;border-radius:8px;cursor:pointer;min-height:44px}
+.cin-act.approve{background:#8FD0A8;color:#0A0910;border:none;font-weight:600}
+.cin-act.reject{border:1px solid #C97B6E;color:#E8A090;background:transparent}
+.cin-act.hold{border:1px solid #E8B86B;color:#E8B86B;background:transparent}
+.cin-act:disabled{opacity:.35;cursor:not-allowed}
+.cin-reason{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.cin-reason.hidden{display:none!important}
+.cin-reason input{flex:1;min-width:120px;background:rgba(18,19,40,.62);border:1px solid var(--jie);
+  color:var(--wen);font:11px var(--mono);padding:10px;border-radius:8px;outline:none}
+.cin-reason button{font:10px var(--mono);padding:10px 12px;border-radius:8px;cursor:pointer;border:1px solid var(--jie);background:rgba(18,19,40,.62);color:var(--wen)}
+.cin-compose-head{display:flex;align-items:center;gap:10px;padding:8px 0}
+.cin-compose-body{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+.cin-lbl{font:9px var(--mono);color:var(--an);letter-spacing:.12em}
+.cin-ta{width:100%;min-height:120px;resize:vertical;background:rgba(18,19,40,.62);color:var(--wen);
+  border:1px solid var(--jie);border-radius:10px;padding:10px;font:12px/1.45 var(--mono);outline:none}
+.cin-compose-btns{display:flex;gap:8px;flex-wrap:wrap;padding:8px 0}
+.cin-compose-btns button{border:1px solid rgba(232,184,107,.35);background:rgba(40,32,18,.5);
+  color:#E8B86B;font:11px var(--mono);padding:10px 14px;border-radius:8px;cursor:pointer;min-height:44px}
+.cin-toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  z-index:99;font:11px var(--mono);padding:10px 16px;border-radius:8px;background:rgba(18,19,40,.95);border:1px solid var(--jie)}
+.cin-toast.ok{border-color:rgba(143,208,168,.5);color:#8FD0A8}
+.cin-toast.err{border-color:rgba(201,123,110,.5);color:#E8A090}
+.cin-toast.hidden{display:none}
+#cfg{background:none;border:none;color:var(--an);font:20px/1 var(--mono);
+  padding:2px 4px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#conn{max-height:0;overflow:hidden;transition:max-height .25s ease}
+#conn.open{max-height:220px}
+#conn input{display:block;width:100%;background:none;border:none;outline:none;
+  color:var(--hui);font:11px var(--mono);letter-spacing:.05em;padding:4px 0 2px}
+#conn input::placeholder{color:var(--an)}
+#conn .hint{font:10px var(--mono);color:var(--an);letter-spacing:.04em;padding:2px 0 6px}
+#kh{display:flex;gap:8px;align-items:center;padding:4px 0 8px;flex-wrap:wrap}
+#kh input{flex:1;min-width:120px;background:none;border:none;outline:none;color:var(--hui);
+  font:11px var(--mono);letter-spacing:.04em}
+#kh button{border:1px solid var(--jie);background:rgba(18,19,40,.62);color:var(--hui);
+  font:10px var(--mono);padding:4px 10px;border-radius:8px;cursor:pointer}
+#khst{font:10px var(--mono);color:var(--an)}
+
+#m{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:12vh 20px 24px;scrollbar-width:none}
+#m::-webkit-scrollbar{display:none}
+
+.u{color:var(--hui);font-size:14px;line-height:1.7;margin:30px 0 14px;
+  padding-left:14px;border-left:1px solid var(--jie);
+  white-space:pre-wrap;word-break:break-word}
+.u img{display:block;max-width:62%;border-radius:12px;margin:0 0 8px auto;border:1px solid var(--jie)}
+.g{white-space:pre-wrap;word-break:break-word;margin:0 0 6px;
+  font-weight:500;letter-spacing:.015em;
+  text-shadow:0 0 22px rgba(180,183,235,.28)}
+.g.qwen{text-shadow:0 0 20px rgba(143,216,232,.22)}
+.g.err{color:var(--hui);font-size:14px;text-shadow:none;font-weight:400}
+.t{font:10.5px var(--mono);color:var(--an);letter-spacing:.06em;margin:10px 0 0}
+.t i{font-style:normal;color:#565A7C}
+
+#down{position:absolute;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));
+  width:34px;height:34px;border-radius:50%;border:1px solid var(--jie);
+  background:rgba(6,7,14,.8);color:var(--hui);font-size:15px;line-height:32px;
+  text-align:center;display:none;z-index:2}
+
+#c{flex:none;display:flex;gap:8px;align-items:flex-end;
+  padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+  background:linear-gradient(rgba(6,7,14,0),var(--mo) 34%)}
+#i{flex:1;min-width:0;max-height:138px;resize:none;background:rgba(18,19,40,.62);
+  color:var(--wen);border:1px solid var(--jie);border-radius:14px;
+  padding:11px 15px;font:16px/1.55 var(--sans);outline:none;
+  backdrop-filter:blur(8px);transition:border-color .2s}
+#i:focus{border-color:rgba(143,216,232,.45)}
+#compileMode{flex:none;width:38px;height:38px;margin-bottom:5px;border-radius:50%;
+  border:2px solid #E8B86B;background:rgba(28,24,14,.82);
+  color:#E8B86B;font:700 13px/34px var(--mono);text-align:center;padding:0;cursor:pointer;
+  box-shadow:0 0 16px rgba(232,184,107,.45);-webkit-tap-highlight-color:transparent}
+#compileMode.on{color:#0A0910;border:none;
+  background:radial-gradient(circle at 35% 28%,#F0D9A0,#E8B86B);
+  box-shadow:0 0 20px rgba(232,184,107,.65)}
+body.lane-qwen #compileMode,body.lane-coach #compileMode{display:none!important}
+#codeBackendRow{display:none;align-items:center;gap:6px;margin-bottom:5px;font:10px var(--mono);color:var(--an)}
+body.lane-grid.compile-backend #codeBackendRow{display:flex}
+#codeBackendRow button{border:1px solid rgba(143,208,168,.35);background:transparent;color:var(--an);
+  border-radius:999px;padding:4px 10px;cursor:pointer;font:10px var(--mono)}
+#codeBackendRow button.on{background:rgba(143,208,168,.18);color:#8FD0A8;border-color:#8FD0A8}
+#codeBackendRow button.cc.on{background:rgba(232,184,107,.18);color:#E8B86B;border-color:#E8B86B}
+#codeBackendPin{margin-left:4px;font:10px var(--mono);color:var(--an)}
+#att{flex:none;width:44px;height:44px;border-radius:50%;
+  border:1px solid var(--jie);background:rgba(18,19,40,.62);
+  color:var(--hui);font:20px/1 var(--sans);cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+#file{display:none}
+#prev{display:none;position:absolute;bottom:calc(74px + env(safe-area-inset-bottom));
+  left:16px;z-index:3;border:1px solid var(--jie);border-radius:12px;
+  background:rgba(10,11,24,.9);padding:6px;backdrop-filter:blur(8px)}
+#prev img{display:block;max-height:88px;border-radius:8px}
+#prev button{position:absolute;top:-8px;right:-8px;width:22px;height:22px;
+  border-radius:50%;border:none;background:#43465F;color:var(--wen);
+  font:12px/1 var(--sans);cursor:pointer}
+#s{flex:none;width:44px;height:44px;border-radius:50%;border:none;
+  background:radial-gradient(circle at 35% 30%,#B8BBEE,#7E82C8);
+  color:#0A0B18;font:600 15px var(--sans);
+  box-shadow:0 0 22px rgba(155,158,220,.35)}
+#s.qwen{background:radial-gradient(circle at 35% 30%,#A8E8F4,#5BA8C0);
+  box-shadow:0 0 22px rgba(143,216,232,.28)}
+#s:disabled{opacity:.3;box-shadow:none}
+#mic{flex:none;width:44px;height:44px;border-radius:50%;
+  border:1px solid var(--jie);background:rgba(18,19,40,.62);
+  color:var(--hui);font:18px/1 var(--sans);cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+#mic.on{color:var(--qing);border-color:rgba(143,216,232,.55);
+  box-shadow:0 0 18px rgba(143,216,232,.25)}
+#voiceBarge{flex:none;width:38px;height:38px;margin-bottom:5px;border-radius:50%;
+  border:1px solid var(--jie);background:rgba(18,19,40,.62);color:var(--hui);
+  font:14px/1 var(--sans);cursor:pointer;display:none;-webkit-tap-highlight-color:transparent}
+#voiceBarge.on{display:block;color:#E8B86B;border-color:rgba(232,184,107,.55)}
+#vst{font:10px var(--mono);color:var(--an);letter-spacing:.08em;
+  padding:0 4px 2px;text-align:center;min-height:14px}
+#vas{font:10px var(--mono);color:#565A7C;letter-spacing:.04em;
+  padding:0 12px 4px;text-align:center;min-height:14px;line-height:1.4}
+#vdeg{font:10px var(--mono);color:#B89090;letter-spacing:.04em;
+  padding:0 12px 2px;text-align:center;min-height:14px;line-height:1.4}
+#vhint{font:10px var(--mono);color:#7A4A4A;letter-spacing:.04em;
+  padding:0 12px 8px;text-align:center;line-height:1.5}
+#vhint b{color:#B89090;font-weight:600}
+
+#laneHud{flex:1;font:10px var(--mono);color:var(--hui);letter-spacing:.04em;
+  padding:0 4px 4px;text-align:center;min-height:16px;line-height:1.45}
+#laneHudRow{flex:none;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 12px 4px}
+#laneClear{flex:none;display:none;border:1px solid rgba(232,184,107,.45);background:rgba(28,24,14,.75);
+  color:#E8B86B;font:600 10px var(--mono);padding:4px 10px;border-radius:999px;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+#laneClear.on{display:inline-block}
+#laneHud.compile{color:#E8B86B}
+#laneHud b{color:var(--wen);font-weight:600}
+#laneHud .fable-policy{color:#E8B86B}
+
+.coach-confirm{margin-top:8px;padding:10px 12px;border-radius:10px;border:1px solid rgba(232,184,107,.55);
+  background:rgba(40,32,18,.65);font:11px var(--mono);color:var(--wen);line-height:1.55;
+  box-shadow:0 0 24px rgba(232,184,107,.12)}
+.coach-confirm b{color:#E8B86B;font-weight:600}
+.coach-confirm button{margin-top:6px;margin-right:8px;border:1px solid rgba(232,184,107,.45);
+  background:rgba(18,19,40,.62);color:#E8B86B;font:10px var(--mono);padding:6px 12px;border-radius:8px;cursor:pointer;min-height:44px}
+.coach-confirm button.go{background:#E8B86B;color:#0A0910;font-weight:600;border:none}
+.coach-confirm.done{color:#8FD0A8;border-color:rgba(143,208,168,.35)}
+.coach-confirm.skip{color:var(--an);font-style:italic}
+
+@media (prefers-reduced-motion:reduce){ #conn{transition:none} }
+</style>
+</head>
+<body class="lane-grid"><script>try{var _l=JSON.parse(localStorage.getItem("lane"));document.body.className="lane-"+(_l==="qwen"?"qwen":"grid")}catch(e){}</script>
+<canvas id="sky"></canvas>
+<div id="app">
+  <div id="head">
+    <div id="toprow">
+      <div id="lanes">
+        <button type="button" class="lane on" data-lane="grid">G R I D</button>
+        <button type="button" class="lane" data-lane="qwen">Qwen 3.5</button>
+      </div>
+      <button type="button" id="cfg" aria-label="gateway">·</button>
+    </div>
+    <div id="conn">
+      <input id="gw" spellcheck="false" autocapitalize="off" placeholder="gateway · https://…/v1">
+      <div class="hint">读图模型 (各 lane 独立, 仅带图时切换)</div>
+      <input id="vlg" spellcheck="false" autocapitalize="off" placeholder="grid vision · qwen/qwen3.5-9b">
+      <input id="vlq" spellcheck="false" autocapitalize="off" placeholder="qwen vision · qwen/qwen3.5-9b">
+      <div class="hint">store token (可选, 对应 GRID_STORE_TOKEN)</div>
+      <input id="storetok" type="password" spellcheck="false" autocapitalize="off"
+        placeholder="X-Grid-Token" autocomplete="off">
+      <div id="storest" class="hint">store: —</div>
+      <div class="hint">GridKeyholder (可选 · demo/aster 已由 8515 服务端验签)</div>
+      <div id="kh">
+        <input id="khkey" type="password" spellcheck="false" autocapitalize="off" autocomplete="off"
+          placeholder="keyholder hex · 一次性录入 · 仅存本机">
+        <button type="button" id="khsave">保存</button>
+        <button type="button" id="khclear">清除</button>
+      </div>
+      <div id="khst" class="hint">keyholder: —</div>
+    </div>
+  </div>
+  <div id="m"></div>
+  <div id="down">↓</div>
+  <div id="prev"><img id="previmg" alt=""><button type="button" id="prevx">×</button></div>
+  <div id="c">
+    <button type="button" id="att">＋</button>
+    <input type="file" id="file" accept="image/*">
+    <button type="button" id="mic" aria-label="voice" title="语音">◉</button>
+    <button type="button" id="voiceBarge" aria-label="按住打断" title="按住打断 TTS">⏸</button>
+    <textarea id="i" rows="1" enterkeyhint="send" placeholder="…"></textarea>
+    <div id="codeBackendRow" aria-label="Compile 执行舱">
+      <button type="button" id="backendLocal" class="on">本地</button>
+      <button type="button" id="backendCc">CC</button>
+      <label id="codeBackendPin"><input type="checkbox" id="backendPin"> 记住</label>
+    </div>
+    <button type="button" id="compileMode" title="Compile 模式 → field-compile（金色 C）" aria-label="Compile mode">C</button>
+    <button type="button" id="s">发</button>
+  </div>
+  <div id="laneHudRow">
+    <div id="laneHud" aria-live="polite">ui · loading…</div>
+    <button type="button" id="laneClear" title="清空 GRID store 上下文（field-particle）">清场</button>
+  </div>
+  <div id="vst" aria-live="polite"></div>
+  <div id="vas" aria-live="polite"></div>
+  <div id="vdeg" aria-live="polite"></div>
+  <div id="vhint"><b>语音</b> · Silero VAD · 系统 TTS · 半双工 · 按住 ⏸ 打断 · SenseVoice ASR</div>
+</div>
+<div id="tension-hud" aria-hidden="true"></div>
+
+<script src="/app/tension_hud.js"></script>
+<script src="/app/grid_keyholder.js?v=2026-07-27-kh-ascii"></script>
+<script src="/app/grid_verification_client.js?v=2026-07-27-kh-ascii"></script>
+<script>
+"use strict";
+const PAGE_VER="2026-08-02-mem-archive";
+const VOICE_JS_VER="2026-07-23f";
+const $=s=>document.querySelector(s);
+const $$=s=>document.querySelectorAll(s);
+let mem={};
+const st={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return mem[k]??null}},
+          set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){mem[k]=v}},
+          del(k){try{localStorage.removeItem(k)}catch(e){delete mem[k]}}};
+if(st.get("grid_page_ver")!==PAGE_VER){
+  st.set("grid_page_ver",PAGE_VER);
+  st.del("gw");
+}
+
+const LANES={
+  grid:{model:"demo/aster",vlModel:"qwen/qwen3.5-9b",tag:"grid",placeholder:"…"},
+  qwen:{model:"qwen/qwen3.5-9b",vlModel:"qwen/qwen3.5-9b",tag:"qwen",placeholder:"Qwen 3.5 …"}
+};
+
+function defaultGw(){
+  const o=location.origin;
+  if(o&&o!=="null"&&!o.startsWith("file:")) return o+"/v1";
+  return "http://127.0.0.1:8501/v1";
+}
+function isLocalHost(h){
+  return !h||h==="127.0.0.1"||h==="localhost"||h==="::1";
+}
+function resolveGw(){
+  const def=defaultGw();
+  if(location.hostname.endsWith(".ts.net")) return def;
+  const saved=st.get("gw");
+  if(!saved) return def;
+  try{
+    const u=new URL(saved, location.href);
+    if(isLocalHost(u.hostname)&&!isLocalHost(location.hostname)) return def;
+    return saved;
+  }catch(e){ return def; }
+}
+/** demo/aster — 8515 服务端验签(与 b11 同路径); 浏览器无需 GridKeyholder */
+function useGridVerifyProxy(lane){ return lane==="grid"; }
+function gridVerifyProxyUrl(){
+  if(location.hostname.endsWith(".ts.net")){
+    try{ return new URL("workbench/gateway/v1/chat/completions", location.origin).href; }
+    catch(_e){ return location.origin.replace(/\/+$/,"")+"/workbench/gateway/v1/chat/completions"; }
+  }
+  const host=location.hostname||"127.0.0.1";
+  const proto=location.protocol.startsWith("http")?location.protocol:"http:";
+  return `${proto}//${host}:8515/gateway/v1/chat/completions`;
+}
+function chatCompletionsUrl(lane){
+  if(useGridVerifyProxy(lane)) return gridVerifyProxyUrl();
+  return gw.replace(/\/+$/,"")+"/chat/completions";
+}
+function workbenchHealthUrl(){
+  if(location.hostname.endsWith(".ts.net"))
+    return location.origin.replace(/\/+$/,"")+"/workbench/health";
+  const host=location.hostname||"127.0.0.1";
+  const proto=location.protocol.startsWith("http")?location.protocol:"http:";
+  return `${proto}//${host}:8515/health`;
+}
+
+function loadHist(lane){
+  const key="h:"+lane;
+  let h=st.get(key);
+  if(!h&&lane==="grid"){
+    h=st.get("h");
+    if(h) st.set(key,h);
+  }
+  return Array.isArray(h)?h:[];
+}
+
+/* ── GRID lane → 8501 store (field-particle / field-compile, 7d epoch) ──
+   Qwen 3.5 lane 仍 localStorage，不污染 Aster 记忆线。 */
+const STORE_CHAT_NODE="field-particle";
+const STORE_COMPILE_NODE="field-compile";
+const STORE_ANCHOR="2026-07-16";
+const STORE_EPOCH_DAYS=7;
+/* 7d store keeps all turns; inference uses last N only (matches 8790 chat_memory). */
+const CHAT_CONTEXT_LIMIT=24;
+const COMPILE_CONTEXT_LIMIT=12;
+const INFER_PRIOR_CHAR_CAP=800;
+const INFER_TURN_CAP=6;
+let storeToken=st.get("storeToken")||"";
+let storeOnline=false;
+const gridStoreHist={chat:[],compile:[]};
+let lastGridTask="chat";
+let gridCompileMode=!!st.get("gridCompileMode");
+
+function resolveGridTask(text){
+  if(lane!=="grid") return "chat";
+  if(gridCompileMode) return "compile_json";
+  return classifyTask(text);
+}
+
+function epochStartTs(){
+  const anchor=new Date(STORE_ANCHOR+"T00:00:00");
+  const today=new Date(); today.setHours(0,0,0,0);
+  const msDay=86400000;
+  const days=Math.floor((today-anchor)/msDay);
+  if(days<0) return anchor.getTime()/1000;
+  const idx=Math.floor(days/STORE_EPOCH_DAYS);
+  const start=new Date(anchor);
+  start.setDate(anchor.getDate()+idx*STORE_EPOCH_DAYS);
+  return start.getTime()/1000;
+}
+function classifyTask(text){
+  const low=String(text||"").toLowerCase();
+  if(String(text||"").includes("这是你的日记本")) return "diary";
+  if(low.includes("handoff_protocol")||low.includes("handoff protocol")||String(text||"").includes("交接协议"))
+    return "handoff_protocol";
+  if(low.includes("compile_json")||(low.includes("json")&&/compile|schema|artifact|protocol|handoff/.test(low)))
+    return "compile_json";
+  return "chat";
+}
+function isCompileTask(t){ return t==="compile_json"||t==="handoff_protocol"; }
+function storeLaneKey(task){ return isCompileTask(task)?"compile":"chat"; }
+function storeNodeId(task){ return isCompileTask(task)?STORE_COMPILE_NODE:STORE_CHAT_NODE; }
+function updateLaneHud(previewText){
+  const el=$("#laneHud");
+  if(!el) return;
+  if(lane==="qwen"){
+    el.className="";
+    el.innerHTML="lane <b>qwen</b> · localStorage";
+    return;
+  }
+  const t=resolveGridTask(previewText||$("#i").value.trim()||"");
+  const node=storeNodeId(t);
+  const comp=isCompileTask(t);
+  el.className=comp?"compile":"";
+  const modeHint=gridCompileMode?"Compile 开 · ":"";
+  el.innerHTML=`ui ${PAGE_VER} · ${modeHint}<b>C</b> compile · store <b>${node}</b>`;
+  syncCodeBackendRow();
+}
+function syncCompileModeBtn(){
+  const btn=$("#compileMode");
+  if(!btn) return;
+  document.body.className="lane-"+lane;
+  btn.style.display=lane==="grid"?"":"none";
+  btn.classList.toggle("on",!!gridCompileMode);
+  btn.textContent="C";
+  syncCodeBackendRow();
+}
+function syncCodeBackendRow(){
+  const row=$("#codeBackendRow");
+  if(!row) return;
+  const show=lane==="grid"&&(gridCompileMode||isCompileTask(resolveGridTask($("#i").value.trim()||"")));
+  document.body.classList.toggle("compile-backend",!!show);
+}
+function gridActiveHist(){ return gridStoreHist[storeLaneKey(lastGridTask)]; }
+function storeBase(){ return gw.replace(/\/v1\/?$/,""); }
+function storeHdrs(){
+  const h={"Content-Type":"application/json"};
+  if(storeToken) h["X-Grid-Token"]=storeToken;
+  return h;
+}
+async function purgeStoreNode(nodeId){
+  const r=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(nodeId)}/purge`,{
+    method:"POST",headers:storeHdrs(),body:JSON.stringify({before_ts:Date.now()/1000+86400}),
+  });
+  if(!r.ok) throw new Error("purge "+nodeId+" HTTP "+r.status);
+  return r.json();
+}
+async function clearGridContext(){
+  if(lane!=="grid") return;
+  if(!confirm("清场 = 删除 field-particle / field-compile 当前 epoch 内全部消息。\nGRID 可重新正常回复。继续？")) return;
+  const el=$("#laneHud");
+  if(el) el.textContent="清场中…";
+  try{
+    await purgeStoreNode(STORE_CHAT_NODE);
+    await purgeStoreNode(STORE_COMPILE_NODE);
+    gridStoreHist.chat=[]; gridStoreHist.compile=[];
+    st.set("h:grid",[]); st.remove("h");
+    lastGridTask="chat";
+    if(lane==="grid") renderHist();
+    updateLaneHud();
+    if(el) el.textContent="已清场 · 请再发一条";
+  }catch(e){
+    if(el) el.textContent="清场失败 · "+(e.message||e);
+  }
+}
+async function pullStoreLane(nodeId,key){
+  try{
+    // 热库全量 + 冷库 archive 合并(不按 since_ts 丢旧正文——8501 才是记忆层)
+    const r=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(nodeId)}?limit=500`,
+      {headers:storeHdrs()});
+    if(!r.ok) throw 0;
+    const hot=await r.json();
+    let cold=[];
+    try{
+      const ar=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(nodeId)}/archive?limit=500`,
+        {headers:storeHdrs()});
+      if(ar.ok){
+        const j=await ar.json();
+        cold=Array.isArray(j.messages)?j.messages:[];
+      }
+    }catch(_){}
+    const byKey=new Map();
+    for(const m of [...cold, ...(Array.isArray(hot)?hot:[])]){
+      const k=`${m.role}|${m.ts}|${String(m.content||"").slice(0,64)}`;
+      byKey.set(k,m);
+    }
+    const rows=[...byKey.values()].sort((a,b)=>Number(a.ts||0)-Number(b.ts||0));
+    gridStoreHist[key]=rows.map(m=>({
+      role:m.role,
+      content:scrubMsg(m.content||""),
+    }));
+    storeOnline=true;
+  }catch(e){ storeOnline=false; }
+}
+async function pullGridStore(){
+  await pullStoreLane(STORE_CHAT_NODE,"chat");
+  await pullStoreLane(STORE_COMPILE_NODE,"compile");
+}
+function pushStoreMsgs(task,msgs){
+  const tagged=(msgs||[]).map(m=>({...m,surface:m.surface||"grid-app"}));
+  fetch(`${storeBase()}/store/conversations/${encodeURIComponent(storeNodeId(task))}/messages`,
+    {method:"POST",headers:storeHdrs(),body:JSON.stringify(tagged)})
+    .then(()=>{storeOnline=true}).catch(()=>{storeOnline=false});
+}
+function afterTurn(instruction,draft,task,{test=false}={}){
+  const body={
+    instruction,draft,task,
+    node_id:storeNodeId(task),
+    persona:"GRID",
+    client:"app",
+    auto_coach:false,
+  };
+  if(isCompileTask(task)){
+    body.schema="schema:loose";
+    body.compile_semantics="parse_only";
+  }
+  if(test) body.test=true;
+  fetch(`${storeBase()}/store/field/after_turn`,{
+    method:"POST",headers:storeHdrs(),
+    body:JSON.stringify(body),
+  }).catch(()=>{});
+}
+function finishGridTurn(instruction,draft,task){
+  afterTurn(instruction,draft,task);
+}
+let pendingBackendId="ollama_coder";
+function syncBackendUi(){
+  const local=$("#backendLocal"), cc=$("#backendCc");
+  if(!local||!cc) return;
+  const isCc=pendingBackendId==="cc_cli";
+  local.classList.toggle("on",!isCc);
+  cc.classList.toggle("on",isCc);
+  cc.classList.toggle("cc",isCc);
+}
+function consumeBackendId(task){
+  if(!isCompileTask(task)) return undefined;
+  const id=pendingBackendId;
+  if(!($("#backendPin")&&$("#backendPin").checked)){
+    pendingBackendId="ollama_coder";
+    syncBackendUi();
+  }
+  return id;
+}
+syncBackendUi();
+$("#backendLocal")&&($("#backendLocal").onclick=()=>{ pendingBackendId="ollama_coder"; syncBackendUi(); });
+$("#backendCc")&&($("#backendCc").onclick=()=>{ pendingBackendId="cc_cli"; syncBackendUi(); });
+let pendingCcTask=null;
+async function confirmPendingCc(taskHint,outEl,histLane,taskLane,userText){
+  const task=(taskHint||pendingCcTask||userText||"").trim();
+  if(!task){ outEl.textContent="无 cc_task，无法确认"; return; }
+  pendingCcTask=null;
+  outEl.textContent="CC 确认执行中…";
+  try{
+    const r=await fetch(gw+"/chat/completions",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:textModel(),stream:false,max_tokens:4096,
+        cc_confirmed:true,cc_task:task,
+        messages:[{role:"user",content:"CONFIRM"}]})});
+    if(!r.ok) throw new Error(await readChatError(r)||("HTTP "+r.status));
+    const data=await r.json();
+    const ans=data.choices?.[0]?.message?.content||"";
+    const fr=data.choices?.[0]?.finish_reason||data.grid_meta?.route_outcome||"?";
+    outEl.className="g";
+    outEl.textContent=cleanText(ans)||("(空) finish "+fr);
+    histLane.push({role:"assistant",content:outEl.textContent});
+    if(lane==="grid") pushStoreMsgs(taskLane,[{role:"assistant",content:outEl.textContent}]);
+  }catch(e){
+    outEl.className="g err";
+    outEl.textContent=String(e.message||e);
+  }
+}
+function showCcCandidatePanel(outEl,meta,userText,histLane,taskLane){
+  pendingCcTask=meta?.cc_task_hint||userText||"";
+  outEl.className="g cc-candidate";
+  const btnId="ccConfirm"+Date.now();
+  const reason=meta?.reason||"cc_candidate";
+  outEl.innerHTML=`<div class="cc-candidate-hint">Cloud CC 候选 (${reason}) — 只读分析;点确认后带 cc_confirmed+cc_task 重入</div><button type="button" id="${btnId}">确认 CC</button>`;
+  document.getElementById(btnId).onclick=()=>confirmPendingCc(pendingCcTask,outEl,histLane,taskLane,userText);
+}
+function activeHist(laneId){
+  return laneId==="grid"?gridActiveHist():hist.qwen;
+}
+function lastUserContent(h){
+  for(let i=h.length-1;i>=0;i--){
+    if(h[i].role==="user") return h[i].content||"";
+  }
+  return "";
+}
+async function migrateGridLocalToStore(){
+  const local=loadHist("grid");
+  if(!local.length) return;
+  if(gridStoreHist.chat.length||gridStoreHist.compile.length) return;
+  gridStoreHist.chat=local.map(m=>({
+    role:m.role,
+    content:scrubMsg(m.content||""),
+    img:m.img,
+  }));
+  const rows=local.filter(m=>m.role==="user"||m.role==="assistant")
+    .map(m=>({role:m.role,content:scrubMsg(m.content||"")}));
+  if(rows.length) pushStoreMsgs("chat",rows);
+}
+
+let gw=resolveGw();
+let lane=st.get("lane")==="qwen"?"qwen":"grid";
+if(st.get("lane")==="coach"){ lane="grid"; st.set("lane","grid"); }
+document.body.className="lane-"+lane;
+syncCompileModeBtn();
+const hist={grid:loadHist("grid"),qwen:loadHist("qwen")};
+const pend={grid:null,qwen:null};
+const vlModels={
+  grid:st.get("vlmodel:grid")||LANES.grid.vlModel,
+  qwen:st.get("vlmodel:qwen")||LANES.qwen.vlModel,
+};
+const tensionHud=$("#tension-hud");
+const tensionTrack={grid:FieldTension.createTracker(),qwen:FieldTension.createTracker()};
+let lastTension=st.get("tension")||{};
+function showTension(t){ FieldTension.renderHud(tensionHud,t); }
+if(gw!==st.get("gw")) st.set("gw",gw);
+
+async function bootHealth(){
+  const base=gw.replace(/\/v1\/?$/,"");
+  try{
+    const r=await fetch(base+"/health",{cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    await r.json();
+    if(location.hostname.endsWith(".ts.net")){
+      const want=defaultGw();
+      if(gw!==want){ gw=want; st.set("gw",gw); $("#gw").value=gw; }
+    }
+  }catch(e){
+    if(location.hostname.endsWith(".ts.net")){
+      gw=defaultGw(); st.set("gw",gw); $("#gw").value=gw;
+    }
+  }
+}
+bootHealth().then(async()=>{
+  await pullGridStore();
+  await migrateGridLocalToStore();
+  for(const m of hist.qwen) m.content=scrubMsg(m.content||"");
+  for(const lane of ["chat","compile"]){
+    gridStoreHist[lane]=gridStoreHist[lane].filter(m=>
+      m.role==="user"||scrubMsg(m.content||""));
+  }
+  renderHist();
+  $("#storest").textContent=`store: ${storeOnline?"已连接 · field-particle/compile":"离线"}`;
+});
+
+$("#gw").value=gw;
+$("#vlg").value=vlModels.grid;
+$("#vlq").value=vlModels.qwen;
+$("#storetok").value=storeToken;
+$("#cfg").onclick=()=>$("#conn").classList.toggle("open");
+async function refreshKeyholderHud(){
+  const el=$("#khst");
+  if(!el) return;
+  if(useGridVerifyProxy("grid")){
+    try{
+      const h=await fetch(workbenchHealthUrl()).then(r=>r.json());
+      const ok=!!(h&&h.gateway_verify&&h.gateway_verify.ok);
+      el.textContent=ok
+        ? "demo/aster: 8515 服务端验签 · 无需浏览器钥匙"
+        : "8515 验签未就绪 — 请起 workbench :8515";
+      return;
+    }catch(_e){
+      el.textContent="8515 不可达 — demo/aster 需 start_workbench_8515.sh";
+      return;
+    }
+  }
+  const ok=window.GridKeyholder&&GridKeyholder.hasKey();
+  if(el) el.textContent=ok?"keyholder: 已配置 · device-local-v1":"keyholder: 未配置";
+}
+$("#khsave").onclick=()=>{
+  try{
+    GridKeyholder.saveKeyHex(($("#khkey").value||"").trim());
+    $("#khkey").value="";
+    refreshKeyholderHud();
+    $("#conn").classList.add("open");
+  }catch(e){ alert("钥匙无效: "+(e.message||e)); }
+};
+$("#khclear").onclick=()=>{
+  if(window.GridKeyholder) GridKeyholder.clearKey();
+  refreshKeyholderHud();
+};
+refreshKeyholderHud();
+$("#gw").onchange=e=>{gw=e.target.value.trim();st.set("gw",gw)};
+$("#vlg").onchange=e=>{vlModels.grid=e.target.value.trim();st.set("vlmodel:grid",vlModels.grid)};
+$("#vlq").onchange=e=>{vlModels.qwen=e.target.value.trim();st.set("vlmodel:qwen",vlModels.qwen)};
+$("#storetok").onchange=e=>{storeToken=e.target.value.trim();st.set("storeToken",storeToken);};
+
+function laneCfg(){ return LANES[lane]; }
+function textModel(){ return laneCfg().model; }
+function visionModel(){ return vlModels[lane]||laneCfg().vlModel; }
+
+/* ── 图像: 附件/粘贴 → canvas 降采样重编码 (顺带剥掉 EXIF) ── */
+function scaleImage(file, maxSide, q){
+  return new Promise((res,rej)=>{
+    const img=new Image();
+    img.onload=()=>{
+      const k=Math.min(1, maxSide/Math.max(img.width,img.height));
+      const cv=document.createElement("canvas");
+      cv.width=Math.round(img.width*k); cv.height=Math.round(img.height*k);
+      cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);
+      res(cv.toDataURL("image/jpeg",q));
+    };
+    img.onerror=rej;
+    img.src=URL.createObjectURL(file);
+  });
+}
+async function takeFile(f){
+  if(!f||!f.type.startsWith("image/")) return;
+  pend[lane]={
+    full: await scaleImage(f,1280,0.82),
+    thumb: await scaleImage(f,220,0.7),
+    name: f.name||"image",
+  };
+  syncPreview();
+}
+function clearPreview(){
+  pend[lane]=null;
+  syncPreview();
+}
+function syncPreview(){
+  const p=pend[lane];
+  if(p){
+    $("#previmg").src=p.thumb;
+    $("#prev").style.display="block";
+  }else{
+    $("#prev").style.display="none";
+  }
+}
+$("#att").onclick=()=>{ const f=$("#file"); if(f) f.click(); };
+$("#compileMode").onclick=()=>{
+  gridCompileMode=!gridCompileMode;
+  st.set("gridCompileMode",gridCompileMode);
+  syncCompileModeBtn();
+  updateLaneHud();
+};
+const fileEl=$("#file");
+if(fileEl) fileEl.onchange=e=>{takeFile(e.target.files[0]); e.target.value="";};
+const prevxEl=$("#prevx");
+if(prevxEl) prevxEl.onclick=clearPreview;
+const laneClearEl=$("#laneClear");
+if(laneClearEl) laneClearEl.onclick=()=>void clearGridContext();
+document.addEventListener("paste",e=>{
+  const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith("image/"));
+  if(it) takeFile(it.getAsFile());
+});
+
+function setLane(next){
+  if(next==="coach") next="grid";
+  if(next===lane) return;
+  lane=next;
+  st.set("lane",lane);
+  syncLaneUI();
+  syncPreview();
+  renderHist();
+  showTension(lastTension[lane]||null);
+}
+function syncLaneUI(){
+  $$(".lane").forEach(b=>b.classList.toggle("on",b.dataset.lane===lane));
+  document.body.className="lane-"+lane;
+  $("#m").style.display="block";
+  $("#c").style.display="flex";
+  $("#vst").style.display="block";
+  $("#vas").style.display="block";
+  $("#vdeg").style.display="block";
+  $("#vhint").style.display="block";
+  $("#laneHud").style.display="block";
+  $("#laneHudRow").style.display="flex";
+  $("#laneClear").classList.toggle("on",lane==="grid");
+  syncCompileModeBtn();
+  const cfg=laneCfg();
+  $("#i").placeholder=cfg.placeholder;
+  $("#s").classList.toggle("qwen",lane==="qwen");
+  updateLaneHud();
+}
+$$(".lane").forEach(b=>b.onclick=()=>setLane(b.dataset.lane));
+syncLaneUI();
+try{ showTension(lastTension[lane]||null); }catch(e){}
+
+/* ── 天幕 ── */
+const sky=$("#sky"), ctx=sky.getContext("2d");
+const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+let W=0,H=0,DPR=1,P=[];
+const state={mode:"idle",rate:0,t:0};
+
+function lobeY(nx){
+  const l=Math.exp(-((nx-0.36)**2)/0.028), r=Math.exp(-((nx-0.64)**2)/0.028);
+  const cleft=Math.exp(-((nx-0.5)**2)/0.0009)*0.55;
+  return Math.max(l,r)*(1-cleft);
+}
+function seed(){
+  DPR=Math.min(devicePixelRatio||1,2);
+  W=sky.width=innerWidth*DPR; H=sky.height=innerHeight*DPR;
+  sky.style.width=innerWidth+"px"; sky.style.height=innerHeight+"px";
+  P=[];
+  const N=Math.min(1600,Math.floor(innerWidth*innerHeight/420));
+  for(let i=0;i<N;i++){
+    const nx=Math.random();
+    const depth=Math.pow(Math.random(),2.2);
+    P.push({nx, ny:lobeY(nx)*0.30*depth + Math.random()*0.02,
+      ph:Math.random()*6.283, sz:(Math.random()*1.15+0.35),
+      fall:0, vy:0});
+  }
+}
+function frame(){
+  state.t+=1/60;
+  ctx.clearRect(0,0,W,H);
+  const falling = state.mode==="streaming" ? Math.min(1,state.rate/26) : 0;
+  for(const p of P){
+    let x=p.nx*W, y=p.ny*H;
+    if(!reduce){
+      if(state.mode==="thinking") p.nx += (0.5-p.nx)*0.0016;
+      else if(state.mode==="streaming"){
+        if(p.fall>0){
+          p.vy += 0.00012*(0.5+falling);
+          p.ny += p.vy; p.fall-=1/60;
+          if(p.ny>0.92||p.fall<=0){ p.ny=lobeY(p.nx)*0.30*Math.pow(Math.random(),2.2); p.vy=0; p.fall=0; }
+        }else if(Math.abs(p.nx-0.5)<0.045 && Math.random()<0.004+falling*0.02){
+          p.fall=2.2+Math.random()*2;
+        }
+      }
+      y=p.ny*H + Math.sin(state.t*0.5+p.ph)*1.4*DPR;
+    }
+    const tw = 0.20+0.42*Math.abs(Math.sin(state.t*0.7+p.ph));
+    const a  = p.fall>0 ? Math.min(0.9,tw+0.35) : tw;
+    ctx.fillStyle=`rgba(201,204,234,${a})`;
+    ctx.fillRect(x, y, p.sz*DPR, p.sz*DPR);
+  }
+  requestAnimationFrame(frame);
+}
+seed(); frame();
+let rz; addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(seed,180)});
+
+/* ── 流 ── */
+const M=$("#m");
+function elUser(txt,img){
+  const d=document.createElement("div");
+  d.className="u";
+  if(img){
+    const im=document.createElement("img");
+    im.src=img; im.alt="";
+    d.appendChild(im);
+  }
+  if(txt){
+    const s=document.createElement("span");
+    s.textContent=txt;
+    s.style.whiteSpace="pre-wrap";
+    d.appendChild(s);
+  }
+  M.appendChild(d);
+  return d;
+}
+function el(cls,txt){
+  const d=document.createElement("div");
+  d.className=cls;
+  d.textContent=txt;
+  M.appendChild(d);
+  return d;
+}
+function atBottom(){return M.scrollHeight-M.scrollTop-M.clientHeight<80}
+function toBottom(){M.scrollTop=M.scrollHeight}
+M.addEventListener("scroll",()=>{$("#down").style.display=atBottom()?"none":"block"});
+$("#down").onclick=toBottom;
+
+function renderHist(){
+  M.innerHTML="";
+  const q=lane==="qwen";
+  for(const m of activeHist(lane)){
+    if(m.role==="user") elUser(cleanText(m.content),m.img);
+    else {
+      const body=cleanText(m.content);
+      if(!body) continue;
+      const g=el("g",body);
+      if(q) g.classList.add("qwen");
+      if(m.tele){
+        const t=document.createElement("div");
+        t.className="t";
+        t.innerHTML=m.tele;
+        M.appendChild(t);
+      }
+    }
+  }
+  toBottom();
+}
+
+/* 展示/入库清洗 — 守卫块、VL 套话、图色废话、📷 标记 */
+const _USER_TRIM=/^(?:分析|描述|看看|识别|读)(?:一下|下)?(?:这|此|该)?(?:张|幅|个)?图(?:片|像)?[。．.!！?？]*$/;
+const _NOISE_RES=[
+  /\[Boundary:[\s\S]*?\]/g,
+  /(?:^|\n)\s*(?:抱歉|对不起)[^\n]{0,120}?(?:图|图片|图像|photo|image|视觉)[^\n]*/gi,
+  /(?:^|\n)\s*(?:作为)?(?:一个)?(?:文本|语言|AI|人工智能)?模型[，,]?\s*我(?:无法|不能|没法)[^\n]{0,80}?(?:视觉|图像|图片|图)[^\n]*/gi,
+  /(?:^|\n)\s*(?:由于|因为)[^\n]{0,40}?(?:无法|不能|没法)[^\n]{0,40}?(?:看到|查看|识别)[^\n]{0,40}?(?:图|图片|图像)[^\n]*/gi,
+  /(?:^|\n)\s*(?:我(?:目前|现在)?(?:无法|不能|没法|没有(?:能力|办法)))[^\n]{0,60}?(?:看到|查看|识别|处理|分析)[^\n]{0,40}?(?:您?的?)?(?:图|图片|图像|上传|附件)[^\n]*/gi,
+  /(?:^|\n)\s*(?:这|此|该|这个|这张|这幅)[^\n]{0,24}?(?:图(?:片|像)?)?[^\n]{0,32}?(?:颜色|色彩|色调|colour|color)[^\n]*/gi,
+  /(?:^|\n)\s*(?:从|根据|通过)(?:图|图片|图像|photo|image)[^\n]{0,48}?(?:可以|能|可)?(?:看|观察|分辨|判断)[^\n]*/gi,
+  /(?:^|\n)\s*(?:这(?:是|张|幅)|图中|图片|图像|照片|画面|从图|在图|可以看到|能看到|视觉上)[^\n]*/gi,
+  /(?:^|\n)\s*(?:我(?:来)?(?:看|描述|分析)(?:一下|下)?(?:这|此|该)?(?:张|幅|个)?图)[^\n]*/gi,
+  /(?:^|\n)\s*(?:what|which)\s+(?:color|colour)[^\n]*/gi,
+  /(?:^|\n)\s*(?:the\s+(?:image|picture|photo)|this\s+(?:image|picture|photo))[^\n]{0,80}?(?:colou?r|appears|seems|shows|depicts)[^\n]*/gi,
+  /(?:^|\n)\s*I(?:'m| am| cannot| can't| don't)[^\n]{0,80}?(?:see|view|process|analyze)[^\n]{0,40}?(?:image|picture|photo)[^\n]*/gi,
+];
+const _NOISE_LINE=/^(?:这|此|该|这个|这张|这幅|图中|图片里|图像里|照片里|画面中).{0,48}(?:颜色|色彩|色调|colour|color|看到|识别|分析|描述)|^(?:抱歉|对不起)|^(?:作为)?(?:一个)?(?:文本|语言|AI|人工智能)?模型|^(?:what|which)\s+(?:color|colour)\b|^(?:I(?:'m| am| cannot| can't)).*(?:image|picture|photo)/i;
+function isMachineEnvelope(s){
+  const t=String(s||"").trim();
+  if(!t) return false;
+  if(t.startsWith("{")&&t.includes("anomaly_flags")&&t.includes("candidate_count")) return true;
+  if(t.startsWith("GRID_ABSENT")&&t.includes("NO LIVE GRID SIGNAL")) return true;
+  return false;
+}
+function scrubMsg(s){
+  let t=String(s||"");
+  t=t.replace(/📷/g,"").replace(/\s*\[📷\]\s*/g," ").replace(/\s*\[图\]\s*/g," ");
+  if(_USER_TRIM.test(t.trim())) t="";
+  for(const re of _NOISE_RES) t=t.replace(re,"\n");
+  const kept=[];
+  for(const line of t.split("\n")){
+    const x=line.trim();
+    if(x&&_NOISE_LINE.test(x)) continue;
+    kept.push(line);
+  }
+  t=kept.join("\n").replace(/\n{3,}/g,"\n\n").trim();
+  if(isMachineEnvelope(t)) return "";
+  if(!t) return "";
+  if(/(?:抱歉|对不起|无法|不能|没法).{0,16}(?:看到|查看).{0,16}(?:图|图片|图像)/.test(t)) return "";
+  if(/^(?:这(?:是|张|幅)|图中|图片|图像|照片|画面)/.test(t)&&/(?:颜色|色彩|色调|colou?r)/i.test(t)) return "";
+  return t;
+}
+function cleanText(s){ return scrubMsg(s); }
+
+function stripGuard(s){
+  return cleanText(s);
+}
+
+function contextLimitForTask(task){
+  return isCompileTask(task)?COMPILE_CONTEXT_LIMIT:CHAT_CONTEXT_LIMIT;
+}
+function trimPriorForInfer(text){
+  const t=String(text||"").trim();
+  if(t.length<=INFER_PRIOR_CHAR_CAP) return t;
+  return "…\n"+t.slice(-INFER_PRIOR_CHAR_CAP);
+}
+function priorMessages(curLane, curHist, task){
+  const limit=Math.min(contextLimitForTask(task||"chat"), INFER_TURN_CAP);
+  let rows=curHist.slice(-(limit+1),-1);
+  while(rows.length&&rows[rows.length-1].role==="user") rows.pop();
+  /* Qwen/LM Studio jinja 要求 history 以 user 开头，否则 400 空回 */
+  while(rows.length&&rows[0].role==="assistant") rows.shift();
+  return rows.map(m=>({
+    role:m.role,
+    content:trimPriorForInfer(stripGuard(m.content||"")),
+  })).filter(m=>m.content||m.role==="system");
+}
+
+function buildUserMessage(text, img){
+  /* 只有当前轮携带完整图像; 过往轮次仅 [图] 标记, 避免 base64 撑爆 VL 上下文 */
+  if(img){
+    return {role:"user",content:[
+      {type:"text",text:text||" "},
+      {type:"image_url",image_url:{url:img.full}},
+    ]};
+  }
+  return {role:"user",content:text};
+}
+
+function elStream(cls){
+  const d=document.createElement("div");
+  d.className=cls;
+  M.appendChild(d);
+  return d;
+}
+
+function isBlockedOutput(s){
+  const t=String(s||"");
+  return t.includes("GRID_ABSENT")||/\[Boundary:/.test(t);
+}
+function blockedReplyHint(raw){
+  const t=String(raw||"");
+  if(!t.trim()) return "Gateway 返回空正文 · 确认 LM Studio / 8501 在线";
+  if(/\[Boundary:/.test(t)){
+    const m=t.match(/\[Boundary:([\s\S]*?)\]/);
+    const line=(m?m[1]:t).trim().split("\n").map(x=>x.trim()).find(Boolean)||"contract gate";
+    return `Contract gate · ${line}\n· 点 <b>清场</b> 重置 GRID 上下文后重发`;
+  }
+  if(t.includes("GRID_ABSENT")) return "GRID_ABSENT · 输出被 gate 拦截";
+  return `回复被 sanitize 剥空 · ${t.trim().slice(0,160)}`;
+}
+
+/* iPhone Safari + Tailscale Serve：SSE 常半包/挂死；手机走整包更稳 */
+function useNonStream(){
+  return location.hostname.endsWith(".ts.net")||/iPhone|iPad/i.test(navigator.userAgent||"");
+}
+
+function parseSseChunk(ln){
+  const s=String(ln).trim();
+  if(!s) return null;
+  const mm=s.match(/^data:\s*(.+)/);
+  if(!mm) return null;
+  const payload=mm[1].trim();
+  if(payload==="[DONE]") return {done:true};
+  try{return {obj:JSON.parse(payload)};}catch(e){return null;}
+}
+
+function sha256Hex(text){
+  const enc=new TextEncoder().encode(String(text||""));
+  return crypto.subtle.digest("SHA-256",enc).then(buf=>{
+    return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,"0")).join("");
+  });
+}
+async function reportStreamClientDiag(routeId,acc,domEl,chunkEvents,sseTerminal){
+  if(!routeId) return null;
+  try{
+    const browserHash=await sha256Hex(acc);
+    const domText=domEl?domEl.textContent:"";
+    const domHash=await sha256Hex(domText);
+    const r=await fetch(`${storeBase()}/diag/chat-stream/${encodeURIComponent(routeId)}/client`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        browser_acc_hash:browserHash,
+        browser_acc_char_len:acc.length,
+        browser_acc_utf8_bytes:new TextEncoder().encode(acc).length,
+        dom_rendered_hash:domHash,
+        dom_rendered_char_len:domText.length,
+        chunk_events:chunkEvents,
+        sse_terminal:sseTerminal,
+      }),
+    });
+    return r.ok?await r.json():null;
+  }catch(e){ return null; }
+}
+async function readChatError(r){
+  try{
+    const j=await r.json();
+    if(j.error?.type==="grid_chain_verification_required")
+      return "8515 验签代理不可用 — 确认 workbench :8515 已启动";
+    return j.error?.reason||j.detail||j.error||"";
+  }catch(e){ return ""; }
+}
+
+async function send(){
+  const t=$("#i").value.trim();
+  const img=pend[lane];
+  if(!t&&!img) return;
+  const cur=lane;
+  const cfg=LANES[cur];
+  const task=cur==="grid"?resolveGridTask(t||(img?"[图]":"")):"chat";
+  if(cur==="grid") lastGridTask=task;
+  const h=activeHist(cur);
+  const tin=tensionTrack[cur].begin(t||(img?"[图]":""));
+  pend[cur]=null;
+  syncPreview();
+  $("#i").value=""; $("#i").style.height="auto"; $("#s").disabled=true;
+  const text=t||"";
+  elUser(text, img?img.thumb:null);
+  h.push({role:"user",content:text,img:img?img.thumb:undefined});
+  if(cur==="grid"){
+    if(img) pushStoreMsgs(task,[{role:"system",content:`[文件] ${img.name||"image"}`}]);
+    pushStoreMsgs(task,[{role:"user",content:cleanText(text)||" "}]);
+  }
+  toBottom();
+  const out=elStream("g");
+  if(cur==="qwen") out.classList.add("qwen");
+  out.textContent="推理中…";
+  let acc="", finish="", finishMeta=null, blocked=false, tension;
+  let sseChunkEvents=0, sseTerminal="open";
+  const useModel=img?visionModel():textModel();
+  const t0=performance.now(); let t1=0,n=0;
+  const prior=priorMessages(cur, h, task);
+  const curMsg=buildUserMessage(text, img);
+  const waitMs=img?120000:300000;
+  const doStream=!useNonStream();
+  const maxTok=isCompileTask(task)?4096:8192;
+  const backendId=cur==="grid"?consumeBackendId(task):undefined;
+  if(location.hostname.endsWith(".ts.net")){
+    gw=defaultGw(); st.set("gw",gw); $("#gw").value=gw;
+  }
+  const ctl=new AbortController();
+  const timer=setTimeout(()=>ctl.abort("timeout"),waitMs);
+  const tick=setInterval(()=>{
+    if(!acc) out.textContent=`推理中… ${Math.round((performance.now()-t0)/1000)}s`;
+  },1000);
+  state.mode="thinking";
+  try{
+    let reqBody=Object.assign({model:useModel,
+        messages:[...prior,curMsg],
+        stream:doStream},
+        maxTok?{max_tokens:maxTok}:{},
+        (cur==="grid"&&isCompileTask(task))?{task:task}:{},
+        backendId?{backend_id:backendId}:{},
+        cur==="grid"?{surface:"grid-app"}:{});
+    const chatUrl=chatCompletionsUrl(cur);
+    if(cur==="grid"&&!useGridVerifyProxy(cur)
+       &&GridVerificationClient&&GridVerificationClient.isAsterChatBody(reqBody)){
+      reqBody=await GridVerificationClient.attachToChatBody(reqBody, gw);
+    }
+    const r=await fetch(chatUrl,{method:"POST",
+      signal:ctl.signal,
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(reqBody)});
+    if(r.status===429) throw new Error("HTTP 429 · 推理队列已满，请稍等再发");
+    if(!r.ok){
+      const detail=await readChatError(r);
+      throw new Error(`HTTP ${r.status}${detail?(" · "+detail):""}`);
+    }
+    if(doStream&&r.body){
+      const rd=r.body.getReader(), dec=new TextDecoder(); let buf="";
+      for(;;){
+        const {done,value}=await rd.read(); if(done)break;
+        buf+=dec.decode(value,{stream:true});
+        const lines=buf.split("\n"); buf=lines.pop();
+        for(const ln of lines){
+          const parsed=parseSseChunk(ln);
+          if(!parsed||parsed.done) continue;
+          const ch=parsed.obj?.choices?.[0];
+          const d=ch?.delta?.content;
+          const gm=parsed.obj?.grid_meta;
+          if(gm?.finish_reason) finish=gm.finish_reason;
+          else if(ch?.finish_reason) finish=ch.finish_reason;
+          if(gm) finishMeta=gm;
+          if(isBlockedOutput(acc)) blocked=true;
+          if(d){ if(!t1)t1=performance.now(); n++; sseChunkEvents++;
+            state.mode="streaming";
+            state.rate=n/Math.max(0.001,(performance.now()-t1)/1000);
+            acc+=d;
+            const shown=cleanText(acc);
+            out.textContent=shown;
+            if(atBottom())toBottom(); }
+        }
+      }
+      sseTerminal="reader_done";
+    }else{
+      const data=await r.json();
+      if(data.error) throw new Error(String(data.error.reason||data.error));
+      acc=data.choices?.[0]?.message?.content||"";
+      finish=data.choices?.[0]?.finish_reason||"stop";
+      finishMeta=data.grid_meta||finishMeta;
+      blocked=isBlockedOutput(acc);
+      t1=performance.now();
+      n=Math.max(1,acc.length);
+      acc=cleanText(acc);
+      out.textContent=acc||"推理中…";
+      state.mode="streaming";
+      state.rate=n/Math.max(0.001,(t1-t0)/1000);
+    }
+    const rawAcc=acc;
+    acc=cleanText(acc);
+    if(finish==="cc_candidate"||(finishMeta&&finishMeta.route_outcome==="cc_candidate")){
+      showCcCandidatePanel(out,finishMeta,text,h,task);
+      tension=tensionTrack[cur].finish(tin,t||"[图]",{failed:false,blocked:false,finish});
+      clearTimeout(timer); clearInterval(tick);
+      state.mode="idle"; state.rate=0;
+      $("#s").disabled=false; if(atBottom())toBottom();
+      return;
+    }
+    if(!acc.trim()){
+      if(rawAcc.trim()||blocked){
+        out.className=cur==="qwen"?"g qwen err":"g err";
+        out.textContent=blockedReplyHint(rawAcc);
+      }else out.remove();
+      acc="";
+    }else{
+      out.textContent=acc;
+    }
+    if(acc){
+    const routeId=finishMeta?.route_id||finishMeta?.stream_integrity?.route_id;
+    void reportStreamClientDiag(routeId,acc,out,sseChunkEvents,sseTerminal).then(clientDiag=>{
+      if(clientDiag?.hash_mismatch_layers?.length){
+        console.warn("stream hash mismatch",clientDiag.hash_mismatch_layers,clientDiag.four_way);
+      }
+      window.__LAST_STREAM_DIAG__=clientDiag||{route_id:routeId,finish:finishMeta};
+    });
+    const ttft=t1?Math.round(t1-t0):0;
+    const laneLabel=cur==="grid"
+      ?(isCompileTask(task)
+        ?(backendId==="cc_cli"?"grid · compile · CC":"grid · compile · 本地")
+        :(img?"grid · vl":"grid · aster"))
+      :(img?"qwen 3.5 · vl":"qwen 3.5 · substrate");
+    const costMeta=finishMeta?.cost_usd!=null?` · $${Number(finishMeta.cost_usd).toFixed(3)}`:"";
+    const tele=`<i>${laneLabel}</i>${isCompileTask(task)?" · draft":""} · ${useModel}${costMeta} · ttft ${ttft}ms · ${state.rate.toFixed(1)}tk/s`
+      +` · served_by ${gw.replace(/^https?:\/\//,"").replace(/\/v1\/?$/,"")}`
+      +` · finish ${finish||"?"}`
+      +(finishMeta?.continuation_retry?` · cont×${finishMeta.continuation_attempt||1}`:"");
+    const td=document.createElement("div");
+    td.className="t";
+    td.innerHTML=tele;
+    M.appendChild(td);
+    h.push({role:"assistant",content:acc,tele});
+    if(cur==="grid"){
+      pushStoreMsgs(task,[{role:"assistant",content:acc}]);
+      if(isCompileTask(task)) finishGridTurn(text,acc,task);
+      else afterTurn(text,acc,task);
+    }else{
+      st.set("h:"+cur,h.slice(-80));
+    }
+    }
+    tension=tensionTrack[cur].finish(tin,t||"[图]",{failed:false,blocked,finish});
+  }catch(e){
+    out.className="g err";
+    let msg=acc;
+    if(!msg){
+      const badLocal=isLocalHost(new URL(gw,location.href).hostname)&&!isLocalHost(location.hostname);
+      if(e.name==="AbortError"||String(e.message||"").includes("timeout")){
+        msg=img
+          ? `视觉模型加载/推理超时（>${Math.round(waitMs/1000)}s）— LM Studio 切 VL 模型较慢，请重试或先在 Mac 预载 qwen2.5-vl`
+          : `推理超时（>${Math.round(waitMs/1000)}s）— 确认 LM Studio 在跑 qwen3.5-9b`;
+      }else if(badLocal){
+        gw=defaultGw(); st.set("gw",gw); $("#gw").value=gw;
+        msg=`不能连 127.0.0.1（手机连不到 Mac）— 已改为 ${gw}，请重发`;
+      }else if(String(e.message||"").startsWith("HTTP ")) msg=`${e.message} · ${gw}`;
+      else msg=`连不上 ${gw} — 确认 Tailscale 已开，点 · 核对地址`;
+    }
+    out.textContent=msg;
+    tension=tensionTrack[cur].finish(tin,t||"[图]",{failed:true,blocked:false,finish:null});
+  }
+  clearTimeout(timer);
+  clearInterval(tick);
+  if(tension){
+    lastTension[cur]=tension; st.set("tension",lastTension);
+    if(lane===cur) showTension(tension);
+  }
+  state.mode="idle"; state.rate=0;
+  $("#s").disabled=false; if(atBottom())toBottom();
+}
+(function bindSendUi(){
+  const btn=$("#s"), inp=$("#i");
+  if(!btn) return;
+  const go=()=>void send();
+  btn.addEventListener("click",go);
+  btn.addEventListener("pointerup",e=>{ if(e.pointerType==="touch") go(); });
+  if(inp) inp.addEventListener("keydown",e=>{
+    if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); go(); }
+  });
+})();
+$("#i").addEventListener("input",e=>{
+  e.target.style.height="auto";
+  e.target.style.height=Math.min(138,e.target.scrollHeight)+"px";
+  if(lane==="grid") updateLaneHud();
+});
+syncCompileModeBtn();
+updateLaneHud();
+
+let voice=null;
+const micBtn=$("#mic");
+const bargeBtn=$("#voiceBarge");
+const vst=$("#vst");
+const vas=$("#vas");
+const vdeg=$("#vdeg");
+function voiceHist(){
+  return activeHist(lane).map(m=>({role:m.role,content:m.content||""}));
+}
+function loadVoiceScript(src){
+  return new Promise((resolve,reject)=>{
+    if(document.querySelector(`script[src="${src}"]`)){resolve();return;}
+    const s=document.createElement("script");
+    s.src=src;s.onload=()=>resolve();s.onerror=()=>reject(new Error("script:"+src));
+    document.head.appendChild(s);
+  });
+}
+async function ensureVoiceScripts(){
+  const ver=VOICE_JS_VER;
+  if(typeof GridVoice!=="undefined"&&window.__GRID_VOICE_JS_VER===ver) return;
+  document.querySelectorAll('script[src*="grid_voice.js"]').forEach(el=>el.remove());
+  try{delete window.GridVoice;}catch(_e){window.GridVoice=undefined;}
+  const base=String(gw||resolveGw()).replace(/\/v1\/?$/i,"");
+  await loadVoiceScript(base+"/app/grid_voice.js?v="+encodeURIComponent(ver));
+  window.__GRID_VOICE_JS_VER=ver;
+}
+async function toggleVoice(){
+  try{
+    await ensureVoiceScripts();
+  }catch(e){
+    vst.textContent="voice js 加载失败";
+    return;
+  }
+  if(!voice){
+    voice=new GridVoice({
+      gwV1:gw,
+      getHistory:voiceHist,
+      onTurnState(s){
+        bargeBtn.classList.toggle("on",s==="speaking");
+        vst.textContent=s||"";
+        micBtn.classList.toggle("on",s!=="idle");
+      },
+      onState(s){ /* onTurnState handles UI */ },
+      onAudioSession(line){vas.textContent=line||"";},
+      onDegrade(msg){if(msg)vdeg.textContent=msg;},
+      onAsr(text){if(text)vst.textContent=`asr · ${text.slice(0,80)}`;},
+      onSubtitle(t){if(t&&voice&&voice.turnState==="thinking")vst.textContent=t.slice(0,120);},
+      onTtsStart(msg){
+        const snippet=(msg.text||"").slice(0,60);
+        vst.textContent=`tts:${msg.engine||"speechSynthesis"} · ${snippet}`;
+      },
+      onTtsEnd(){},
+      onAssistant(text,meta){
+        if(!text) return;
+        const cleaned=cleanText(text);
+        if(!cleaned) return;
+        const h=activeHist(lane);
+        const task=lane==="grid"?resolveGridTask(cleaned): "chat";
+        if(lane==="grid") lastGridTask=task;
+        if(meta&&meta.interrupt){
+          for(let i=h.length-1;i>=0;i--){
+            if(h[i].role==="assistant"){h[i].content=cleaned;break;}
+          }
+        }else{
+          h.push({role:"assistant",content:cleaned});
+        }
+        if(lane==="grid"){
+          const cleaned=cleanText(text);
+          if(cleaned) pushStoreMsgs(task,[{role:"assistant",content:cleaned}]);
+          if(cleaned&&isCompileTask(task)) finishGridTurn(lastUserContent(h),cleaned,task);
+          else if(cleaned) afterTurn(lastUserContent(h),cleaned,task);
+        }else{
+          st.set("h:"+lane,h.slice(-80));
+        }
+        renderHist();
+      },
+      onError(msg){vst.textContent=msg;},
+    });
+  }
+  try{
+    const on=await voice.toggle();
+    micBtn.classList.toggle("on",on);
+    vst.textContent=on?"listening":"";
+    if(!on){vas.textContent="";vdeg.textContent="";}
+    else if(typeof gridVoiceAudioSessionStatus==="function"){
+      vas.textContent=gridVoiceAudioSessionStatus();
+    }
+  }catch(e){
+    vst.textContent="mic: "+(e.message||e);
+    micBtn.classList.remove("on");
+  }
+}
+micBtn.onclick=toggleVoice;
+if(bargeBtn){
+  const doBarge=()=>{ if(voice) voice.interrupt(); };
+  bargeBtn.addEventListener("pointerdown",doBarge);
+  bargeBtn.addEventListener("click",doBarge);
+}
+</script>
+</body>
+</html>

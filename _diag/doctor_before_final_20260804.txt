@@ -1,0 +1,11 @@
+[认表] 主表=messages 行数=220 id=id content=content role=role ts=ts node=node_id
+  node=cloud-glm52: 154 行 · 最新 1785831657.7033541
+  node=field-particle: 41 行 · 最新 1785831626.85252
+  node=workbench-b11: 10 行 · 最新 1785831626.889104
+  node=smoke_node: 9 行 · 最新 1785301573.324163
+  node=cloud-kimi: 3 行 · 最新 1785831626.915947
+  node=field-compile: 2 行 · 最新 1785799483.3744059
+  node=grid: 1 行 · 最新 1783405086.5878348
+  soul 未标老行: 204(老行不迁移,读回靠 node 归组,属正常)
+  归档表: 2 行
+  禁硬删触发器: 在位

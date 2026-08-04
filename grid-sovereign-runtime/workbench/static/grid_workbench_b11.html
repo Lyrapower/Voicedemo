@@ -1,0 +1,2706 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#05060D">
+<title>GRID · b11</title>
+<!--
+GRID Workbench b11 — 核心定位重构(2026-07-22)
+════════════════════════════════════════════════════════════
+用户始终只与 Grid 对话。Kimi 不是第二个聊天角色,是 Grid 的
+可拔除扩展 substrate。页面永远只显示一个 GRID · FINAL。
+
+模式:
+  HOME     — Grid 本地能力(8501 /v1/chat/completions · demo/aster)
+  EXPANDED — Grid 内部调用大底座:
+             首选 8501 服务端编排 POST /task/expanded(见配套 spec);
+             端点未部署时走前端过渡编排(候选→aster 校验→final),
+             provenance 里如实标 orchestrator: client-interim。
+  SHADOW   — 仅测试对照(本地/底座并排,明确标注测试,不入 history)
+  CC CLI   — 独立工程执行舱(8501 /task · 与 STUDIO EXPANDED 零自动通路)
+  Cloud tab — b11(:8515 UI) · 8515 /cloud/chat 推理 · 8501 store cloud-glm52 记忆
+  EXPANDED — STUDIO 内模式 · 8501 /task/expanded · 记忆走 workbench-b11(≠ Cloud)
+
+不变量:
+  · final 唯一,署名 GRID,substrate 标 local / kimi_k25_cloud
+  · candidate 原文只存在于 provenance 折叠面板,不是聊天角色
+  · 无"直接采纳"——candidate 成为 final 的唯一通道是 Grid 校验接纳
+  · EXPANDED 出门内容 = 任务 + 勾选素材 + 近6轮紧凑上下文 + 一行法则
+    约束;完整记忆/日记/密钥/路径/系统提示永不出门(脱敏器把门)
+  · thinking 全链路销毁;EXIF 剥离;状态不撒谎(bare/interim 必标)
+  · STUDIO 是容器 tab(无独立发送路径):真实发送面=HOME/EXPANDED → workbench-b11 · 活跃 6 轮 · epoch→messages_archive
+  · Cloud tab: 8501 store cloud-glm52 / cloud-kimi · 15∩10k + 修订⑤冷库召回≤2k(总≤12k) · epoch→archive
+  · PDF/音频/视频素材属服务端编排路径(8501 本地预处理);
+    过渡链只支持图文,其余素材诚实标"需 8501 编排端点"
+  · 场感知(FIELD_SENSE_PIPELINE):只进 HOME 本地 9B,永不进 candidate/kimi
+  · 计费:后台按 Kimi API token 估算;不在对话区展示
+════════════════════════════════════════════════════════════
+-->
+<style>
+:root{
+  --bg-0:#020204; --bg-1:#060608; --mo:#060608;
+  --wen:rgba(248,246,238,.94); --hui:rgba(255,255,255,.55); --an:rgba(255,255,255,.42);
+  --jie:rgba(100,181,246,.14); --zi:#c8d4f0; --jin:#ffd700;
+  --ok:#86d6a3; --warn:#ffd700; --bad:#d85f5f; --cloud:#e8c98a;
+  --glass:rgba(10,10,15,.88); --panel-glow:rgba(100,181,246,.08);
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --sans:Inter,-apple-system,"SF Pro Display","PingFang SC","Helvetica Neue",sans-serif;
+  --ease:cubic-bezier(.4,0,.2,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--mo);color:var(--wen);
+  font:15px/1.65 var(--sans);font-weight:400;-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision;overflow-x:hidden}
+body{background:linear-gradient(180deg,var(--bg-1),var(--bg-0))}
+#fieldCanvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;opacity:1}
+.field-vignette{position:fixed;inset:0;pointer-events:none;z-index:1;
+  background:radial-gradient(circle at center,transparent 0 45%,rgba(2,3,8,.16) 74%,rgba(2,3,8,.58) 100%)}
+#app{position:relative;z-index:2;max-width:1280px;margin:0 auto;min-height:100vh;
+  display:flex;flex-direction:column;
+  padding:calc(14px + env(safe-area-inset-top)) 20px calc(18px + env(safe-area-inset-bottom))}
+button{font:inherit;color:inherit;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);
+  border-radius:999px;padding:7px 16px;cursor:pointer;
+  transition:border-color .25s var(--ease),box-shadow .25s var(--ease),color .25s var(--ease)}
+button:hover{border-color:rgba(100,181,246,.42);color:var(--wen);box-shadow:0 0 14px var(--panel-glow)}
+input,textarea{font:inherit;color:var(--wen);background:rgba(8,8,12,.72);
+  border:1px solid var(--jie);border-radius:10px;padding:10px 14px;outline:none}
+input:focus,textarea:focus{border-color:rgba(100,181,246,.45);box-shadow:0 0 0 2px rgba(100,181,246,.12)}
+textarea{resize:none;width:100%;line-height:1.55}
+.tag{display:inline-block;font:500 10px var(--mono);border:1px solid var(--jie);
+  border-radius:999px;padding:2px 8px;margin-left:8px;color:var(--an);letter-spacing:.06em;vertical-align:1px}
+.tag.cloud{color:var(--cloud);border-color:rgba(232,201,138,.35)}
+.tag.local{color:var(--ok);border-color:rgba(134,214,163,.35)}
+.tag.bad{color:var(--bad);border-color:rgba(255,120,120,.35)}
+#modebar{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
+#modebar button{font-size:12px;padding:7px 14px;border-radius:999px;line-height:1.3}
+#modebar button.on{border-color:rgba(255,215,0,.45);background:rgba(255,215,0,.08);color:var(--wen)}
+#modebar small{display:block;color:var(--an);font-size:9px;font-weight:400;margin-top:1px;letter-spacing:.02em;text-transform:none}
+
+header{display:flex;align-items:center;gap:20px;padding:6px 4px 18px;
+  background:linear-gradient(180deg,rgba(2,2,4,.55),transparent)}
+#mark{font:600 13px var(--sans);letter-spacing:.18em;color:var(--wen);cursor:pointer;
+  text-shadow:0 0 18px rgba(100,181,246,.25)}
+nav{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+nav button{border:none;border-bottom:2px solid transparent;border-radius:0;background:none;
+  font:500 11px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--an);
+  padding:6px 10px;box-shadow:none!important}
+nav button.on{color:var(--wen);border-bottom-color:var(--jin)}
+.bypass-badge{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;
+  font:600 9px var(--mono);letter-spacing:.06em;text-transform:none;vertical-align:middle;
+  color:#E8B86B;border:1px solid rgba(232,184,107,.45);background:rgba(232,184,107,.12)}
+nav button.on .bypass-badge{color:#14152E;background:rgba(232,184,107,.88);border-color:transparent}
+
+#conn{max-height:0;overflow:hidden;transition:max-height .35s var(--ease)}
+#conn.open{max-height:420px}
+#khRow{grid-column:1/-1}
+#kh{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
+#kh input{flex:1;min-width:200px}
+#kh button{font:10px var(--mono);padding:6px 12px;border-radius:8px;border:1px solid var(--jie);
+  background:rgba(18,19,40,.62);color:var(--hui);cursor:pointer}
+#khst{font:10px var(--mono);color:var(--an);flex:1 1 100%}
+#keyHud.warn{border-color:rgba(201,123,110,.45);color:var(--bad)}
+#conn .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;padding:10px 4px}
+#conn label{font:500 10px var(--mono);color:var(--an);display:block;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+#conn input{width:100%;font-size:13px;border-radius:8px}
+
+main{flex:1;display:grid;grid-template-columns:248px 1fr;gap:18px;min-height:0}
+.pane{border:1px solid var(--jie);border-radius:12px;padding:18px 20px;
+  display:flex;flex-direction:column;min-height:0;background:var(--glass);
+  backdrop-filter:blur(12px) saturate(1.1);-webkit-backdrop-filter:blur(12px) saturate(1.1);
+  box-shadow:0 0 20px var(--panel-glow),inset 0 1px 0 rgba(255,255,255,.04)}
+.ptitle{font:500 11px var(--sans);color:var(--hui);letter-spacing:.14em;text-transform:uppercase;margin-bottom:14px}
+
+#tray{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px}
+.asset{border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 12px;font-size:13px;position:relative;
+  background:rgba(0,0,0,.28);line-height:1.5}
+.asset img{max-width:100%;border-radius:8px;display:block;margin-bottom:8px}
+.asset .meta{font:10px var(--mono);color:var(--an);margin-top:4px}
+.asset .rm{position:absolute;top:6px;right:8px;border:none;background:none;color:var(--an);padding:0 4px;box-shadow:none!important}
+.asset .pick{margin-right:8px}
+#manifest{font:11px var(--sans);color:var(--hui);border-top:1px solid rgba(255,255,255,.08);
+  padding-top:12px;margin-top:12px;line-height:1.5}
+
+#chat{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:4px 2px}
+.msg{max-width:92%}
+.msg.you{align-self:flex-end;background:linear-gradient(140deg,rgba(28,32,58,.92),rgba(18,20,40,.88));
+  border:1px solid rgba(100,181,246,.16);border-radius:16px 16px 6px 16px;padding:10px 14px;font-size:14.5px;line-height:1.6}
+.card{border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;
+  white-space:pre-wrap;word-break:break-word;background:rgba(0,0,0,.30);font-size:15px;line-height:1.65}
+.card.final{border-left:2px solid rgba(134,214,163,.55)}
+.card.err{border-left:2px solid rgba(216,95,95,.55);color:#e8b4b4}
+.chead{font:500 10px var(--mono);color:var(--an);letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px}
+.usage-line{font:10px var(--mono);color:var(--hui);margin-top:8px;padding-top:6px;
+  border-top:1px solid rgba(255,255,255,.06);letter-spacing:.03em}
+.tag.bill{font:9px var(--mono);color:var(--an);border-color:rgba(232,201,138,.22);padding:1px 6px;letter-spacing:.03em;white-space:nowrap}
+.tag.bill b{color:var(--hui);font-weight:500}
+details.prov{margin-top:10px;border:1px dashed rgba(100,181,246,.18);border-radius:10px;padding:8px 12px}
+details.prov summary{cursor:pointer;list-style:none;font:500 10px var(--mono);
+  color:var(--an);letter-spacing:.08em;line-height:1.5}
+details.prov summary::-webkit-details-marker{display:none}
+details.prov .pv{font:11px var(--mono);color:var(--hui);white-space:pre-wrap;
+  word-break:break-word;padding-top:8px;line-height:1.55}
+.shadowgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:920px){.shadowgrid{grid-template-columns:1fr}}
+
+#composer{display:flex;gap:10px;align-items:flex-end;padding-top:14px;flex-wrap:wrap}
+#composer textarea{flex:1;min-height:48px;max-height:140px;height:48px;font-size:16px;min-width:120px;
+  -webkit-text-size-adjust:100%;touch-action:manipulation}
+#composer .add{width:42px;height:42px;border-radius:50%;font-size:18px;flex:none;padding:0}
+#mic{flex:none;width:42px;height:42px;border-radius:50%;border:1px solid var(--jie);
+  background:rgba(18,19,40,.62);color:var(--hui);font:17px/1 var(--sans);cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+#mic.on{color:var(--qing);border-color:rgba(143,216,232,.55);box-shadow:0 0 16px rgba(143,216,232,.22)}
+#voiceBarge{flex:none;width:38px;height:38px;border-radius:50%;border:1px solid var(--jie);
+  background:rgba(18,19,40,.62);color:var(--hui);font:13px/1 var(--sans);cursor:pointer;
+  display:none;-webkit-tap-highlight-color:transparent}
+#voiceBarge.on{display:block;color:#E8B86B;border-color:rgba(232,184,107,.55)}
+#vst,#vas,#vdeg{font:9px var(--mono);color:var(--an);letter-spacing:.06em;
+  width:100%;padding:0 2px;min-height:12px;line-height:1.35}
+#vdeg{color:#B89090}
+#send{width:48px;height:48px;min-width:48px;max-width:48px;border-radius:50%;flex:none;border:none;font-weight:600;font-size:15px;
+  background:radial-gradient(120% 120% at 30% 25%,#E6E0F8 0%,#B9BCF0 60%,#8E92D8 100%);
+  color:#14152E;cursor:pointer;box-shadow:0 0 18px rgba(167,139,224,.35);
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#send.busy{opacity:.45;cursor:wait;pointer-events:none}
+#send:disabled{opacity:.45;cursor:wait}
+#sanwarn{display:none;font:11px var(--sans);color:var(--bad);padding:6px 2px}
+
+#cc{display:none;flex:1;flex-direction:column;min-height:0}
+#cc.on{display:flex}
+#cloud{display:none;flex:1;flex-direction:column;min-height:0;width:100%}
+#cloud.on{display:flex}
+#cloudMeta{font:10px var(--mono);color:var(--an);margin-bottom:8px;letter-spacing:.04em;line-height:1.5}
+#cloudAssetBar{margin-bottom:10px;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 12px}
+#cloudTray{display:flex;flex-wrap:wrap;gap:8px;max-height:132px;overflow-y:auto;margin-bottom:6px}
+#cloudTray .asset{flex:1 1 180px;max-width:240px;margin:0}
+#cloudManifest{font:10px var(--mono);color:var(--an);margin-bottom:6px}
+#cloudAssetActions{display:flex;gap:6px}
+#cloudAssetActions button{flex:1;font-size:12px;padding:6px 10px}
+#cloudModebar{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
+#cloudModebar button{font-size:12px;padding:7px 14px}
+#cloudModebar button.on{border-color:rgba(232,201,138,.45);background:rgba(232,201,138,.1);color:var(--cloud)}
+#cloudChat{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:4px 2px;min-height:0}
+#cloudComposer{display:flex;gap:10px;align-items:flex-end;padding-top:14px}
+#cloudComposer textarea{flex:1;min-height:48px;max-height:140px;font-size:16px}
+#cloudSend{flex:none;border-radius:10px;padding:10px 18px;font-weight:600}
+#cloudClear{flex:none;font-size:11px;padding:8px 12px}
+#ccModebar{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
+#ccModebar button{font-size:12px;padding:7px 14px}
+#ccModebar button.on{border-color:rgba(255,215,0,.45);background:rgba(255,215,0,.08);color:var(--wen)}
+#ccComposer{display:flex;gap:10px;align-items:flex-end;margin-bottom:10px}
+#ccComposer textarea{flex:1;min-height:56px;max-height:120px;font:16px/1.45 var(--mono)}
+#ccRun{flex:none;border-radius:10px;padding:10px 18px;font-weight:600}
+#ccMeta{font:10px var(--mono);color:var(--an);margin-bottom:8px;letter-spacing:.04em}
+#ccVlNote{font:10px var(--mono);color:var(--an);margin:-4px 0 8px;letter-spacing:.04em;opacity:.85}
+#studio.offv{display:none}
+#term{flex:1;border:1px solid var(--jie);border-radius:12px;padding:14px;
+  font:12px var(--mono);color:var(--hui);overflow-y:auto;background:rgba(6,7,18,.65);line-height:1.55}
+#term .ok{color:var(--ok)}
+#fieldLight.ok{color:var(--ok)}
+footer{font:10px var(--sans);color:var(--an);letter-spacing:.04em;text-align:center;padding-top:16px;opacity:.85}
+@media(max-width:920px){
+  #app{padding-left:14px;padding-right:14px}
+  main{grid-template-columns:1fr;gap:14px}
+  .pane.side{max-height:220px}
+  .pane{padding:14px 16px}
+}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<canvas id="fieldCanvas" aria-hidden="true"></canvas>
+<div class="field-vignette" aria-hidden="true"></div>
+<div id="app">
+<header>
+  <span id="mark" title="连接配置">G R I D</span>
+  <nav>
+    <button id="tabStudio" class="on">STUDIO</button>
+    <button id="tabCloud">Cloud <span class="bypass-badge" title="8501 cloud-glm52 store + cloud_chat · 8515 仅 UI · ≠ workbench-b11">8501</span></button>
+    <button id="tabCC">CC CLI</button>
+  </nav>
+</header>
+
+<div id="conn"><div class="grid">
+  <div><label>8501 网关</label><input id="cGw" placeholder="http://127.0.0.1:8501"></div>
+  <div><label>家模型</label><input id="cLocal" placeholder="demo/aster"></div>
+  <div><label>编排端点(服务端,建好自动启用)</label><input id="cExp" placeholder="http://127.0.0.1:8501/task/expanded"></div>
+  <div><label>candidate 端点(过渡链用)</label><input id="cKimiUrl" placeholder="http://127.0.0.1:8501/task/candidate"></div>
+  <div><label>应急裸 Ollama</label><input id="cOllama" placeholder="http://127.0.0.1:11434"></div>
+  <div><label>GLM 模型(Cloud)</label><input id="cGlmModel" placeholder="glm-5.2:cloud"></div>
+  <div><label>Kimi 模型(Cloud)</label><input id="cKimiModel" placeholder="kimi-k2.6:cloud"></div>
+  <div><label>DeepSeek 模型(Cloud)</label><input id="cDsModel" placeholder="deepseek-v4:cloud"></div>
+  <div><label>CC pty 桥 ws://(可选)</label><input id="cPty" placeholder="ws://127.0.0.1:8522/pty"></div>
+  <div><label>场感知 url(留空=关;默认同源 field_now/now.json)</label><input id="cField" placeholder="field_now/now.json"></div>
+  <div><label>store token(可选 · GRID_STORE_TOKEN)</label><input id="cStoreTok" type="password" placeholder="X-Grid-Token" autocomplete="off"></div>
+  <div id="khRow">
+    <label>GridKeyholder 钥匙 (可选 · b11 已改 8515 服务端验签 · 仅 grid.html 直连 8501 时需要)</label>
+    <div id="kh">
+      <input id="cKhKey" type="password" spellcheck="false" autocapitalize="off" autocomplete="off"
+        placeholder="keyholder.key 内容(hex) · 一次性录入 · 仅存本机">
+      <button type="button" id="cKhSave">保存</button>
+      <button type="button" id="cKhClear">清除</button>
+      <span id="khst">keyholder: …</span>
+    </div>
+  </div>
+</div></div>
+
+<main id="studio">
+  <section class="pane side">
+    <div class="ptitle">素材托盘</div>
+    <div id="tray"></div>
+    <div id="manifest">发送清单:空</div>
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <button id="addFile" style="flex:1">+ 添加素材</button>
+      <input type="file" id="fileIn" multiple accept="image/*,.pdf,.txt,.md,.csv,audio/*,video/*" hidden>
+    </div>
+  </section>
+
+  <section class="pane">
+    <div id="modebar">
+      <button data-m="home" class="on">HOME<small>本地能力</small></button>
+      <button data-m="expanded">EXPANDED<small>大底座扩展</small></button>
+      <button data-m="shadow">SHADOW<small>测试对照</small></button>
+      <span class="tag bill" id="billHud" hidden><b id="billTok">0</b>tok · $<b id="billCost">0.000</b></span>
+      <span class="tag" id="storeHud" title="8501 活跃窗口 · 超出归档记忆层">store <b id="storeCnt">…</b></span>
+      <span class="tag" id="memHud" title="8501 /store/field/after_turn 已同步轮次">mem <b id="memCnt">0</b></span>
+      <span class="tag" id="fieldWrap">Field <b id="fieldLight">off</b></span>
+      <span class="tag" id="keyHud" title="验签状态">verify …</span>
+    </div>
+    <div id="chat"></div>
+    <div id="sanwarn"></div>
+    <div id="vst" aria-live="polite"></div>
+    <div id="vas" aria-live="polite"></div>
+    <div id="vdeg" aria-live="polite"></div>
+    <div id="composer">
+      <button class="add" id="addBtn">+</button>
+      <button type="button" id="mic" aria-label="Grid voice" title="Grid voice · 8501 /voice">◉</button>
+      <button type="button" id="voiceBarge" aria-label="打断 TTS" title="按住打断 TTS">⏸</button>
+      <textarea id="box" placeholder="Message Grid…" rows="1"></textarea>
+      <button id="send">发</button>
+    </div>
+  </section>
+</main>
+
+<main id="cc">
+  <section class="pane" style="width:100%">
+    <div class="ptitle">CC CLI · 工程执行舱
+      <span class="tag local">8501 /task</span><span class="tag">Repo scoped</span>
+      <span class="tag cloud" id="ccLaneTag">Sonnet 4.6</span></div>
+    <div id="ccModebar">
+      <button type="button" data-cc="sonnet" class="on">CC · Sonnet 4.6</button>
+      <button type="button" data-cc="fable">CC · Fable 5</button>
+      <button type="button" data-cc="kimi">GLM 5.2 · Ollama</button>
+    </div>
+    <div id="ccMeta">一键切换后端 · Anthropic CC CLI 或 Ollama <code>glm-5.2:cloud</code> · 不经 STUDIO</div>
+    <div id="ccVlNote" class="sub">VL 旁路:K2.6(带图请求自动)</div>
+    <div id="ccComposer">
+      <textarea id="ccBox" placeholder="工程任务 prompt（仅本任务，不带 STUDIO 记忆）…" rows="2"></textarea>
+      <button type="button" id="ccRun">运行</button>
+    </div>
+    <div id="term">选择 lane 后输入 prompt 点运行；或配置 pty 桥做交互 shell。
+STUDIO EXPANDED 的 Kimi 编排与本舱独立。</div>
+  </section>
+</main>
+
+<main id="cloud">
+  <section class="pane" style="width:100%">
+    <div class="ptitle">Cloud 旁路 · Ollama cloud
+      <span class="bypass-badge">旁路</span>
+      <span class="tag cloud">8501 cloud_chat</span>
+      <span class="tag bill" id="cloudBillHud"><b id="cloudBillTok">0</b>tok · $<b id="cloudBillCost">0.000</b></span>
+      <span class="tag" id="cloudMemHud" title="8501 store · cloud-* node · ≠ workbench-b11">store <b id="cloudMemCnt">…</b></span>
+      <span class="tag">15轮</span></div>
+    <div id="cloudModebar">
+      <button type="button" data-cloud="glm52" class="on">GRID-GLM 5.2</button>
+      <button type="button" data-cloud="kimi_k25">Kimi K2.6</button>
+      <button type="button" data-cloud="deepseek_v4">DeepSeek V4</button>
+    </div>
+    <div id="cloudMeta">Cloud · b11 · 8501 cloud_chat + store cloud-glm52 · 15轮 UI</div>
+    <div id="cloudAssetBar">
+      <div id="cloudTray"></div>
+      <div id="cloudManifest">发送清单:空</div>
+      <div id="cloudAssetActions">
+        <button type="button" id="cloudAddFile">+ 添加素材</button>
+        <input type="file" id="cloudFileIn" multiple accept="image/*,.pdf,.txt,.md,.csv,.json,.html,.htm,.xml,.log,audio/*,video/*" hidden>
+      </div>
+    </div>
+    <div id="cloudChat"></div>
+    <div id="cloudComposer">
+      <button type="button" id="cloudClear">清空</button>
+      <button type="button" class="add" id="cloudAddBtn" title="添加素材">+</button>
+      <textarea id="cloudBox" placeholder="GRID-GLM 5.2 · 8501 cloud-glm52 · 15 轮 · ≠ workbench-b11…" rows="2"></textarea>
+      <button type="button" id="cloudSend">发</button>
+    </div>
+  </section>
+</main>
+
+<footer>GRID workbench b11 · <span id="pageVer"></span></footer>
+</div>
+
+<script id="b11-shell">
+/* Critical shell — separate parse unit; survives main script syntax errors. */
+(function b11CriticalShell(){
+  "use strict";
+  const $=s=>document.querySelector(s);
+  const STORE_NODE="workbench-b11";
+  function storeBase(){
+    if(location.hostname.endsWith(".ts.net")) return location.origin.replace(/\/+$/,"");
+    if(location.port==="8515") return `${location.protocol}//${location.hostname}:8501`;
+    const p=location.port?`:${location.port}`:"";
+    return `${location.protocol}//${location.hostname}${p}`;
+  }
+  function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+  function flipTab(name){
+    $("#tabStudio")?.classList.toggle("on",name==="studio");
+    $("#tabCloud")?.classList.toggle("on",name==="cloud");
+    $("#tabCC")?.classList.toggle("on",name==="cc");
+    $("#studio")?.classList.toggle("offv",name!=="studio");
+    $("#cloud")?.classList.toggle("on",name==="cloud");
+    $("#cc")?.classList.toggle("on",name==="cc");
+  }
+  function bindTabs(){
+    const map=[["#tabStudio","studio"],["#tabCloud","cloud"],["#tabCC","cc"]];
+    for(const [sel,name] of map){
+      const el=$(sel);
+      if(el) el.onclick=()=>flipTab(name);
+    }
+  }
+  async function shellPullStore(){
+    const chat=$("#chat");
+    if(!chat) return;
+    try{
+      const r=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(STORE_NODE)}`);
+      if(!r.ok) throw new Error("HTTP "+r.status);
+      const all=await r.json();
+      const active=Array.isArray(all)?all.slice(-20):[];
+      if(!active.length) return;
+      chat.innerHTML=active.map(m=>{
+        const cls=m.role==="user"?"msg you":"msg";
+        return `<div class="${cls}">${esc(m.content)}</div>`;
+      }).join("");
+      chat.scrollTop=chat.scrollHeight;
+      const turns=active.filter(m=>m.role==="user").length;
+      const hud=$("#storeHud");
+      if(hud) hud.textContent=`store ${turns}/${turns}`;
+      const pill=hud?.closest(".pill");
+      if(pill) pill.classList.remove("bad");
+    }catch(e){
+      const w=$("#sanwarn");
+      if(w){ w.style.display="block"; w.textContent="⚠ shell store: "+(e.message||e); }
+    }
+  }
+  bindTabs();
+  void shellPullStore();
+  window.__b11Shell={flipTab,bindTabs,shellPullStore,ready:true};
+})();
+</script>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+const PAGE_VER="3.23.7-b11-cloud-recall-r5";
+const VER_CLIENT_REV="2026-07-27-kh-ascii";
+const CANDIDATE_PROMPT_MAX=7800;
+const st={get(k,d){try{return JSON.parse(localStorage.getItem("b11_"+k))??d}catch(e){return d}},
+          set(k,v){try{localStorage.setItem("b11_"+k,JSON.stringify(v))}catch(e){}},
+          del(k){try{localStorage.removeItem("b11_"+k)}catch(e){}}};
+
+/* ---- 配置(8515 UI · API 主权在 :8501; ts.net 走 Serve → 8501) ---- */
+const onTsNet=location.hostname.endsWith(".ts.net");
+const GATEWAY_API_PORT="8501";
+const WORKBENCH_UI_PORTS=new Set(["8515"]);
+const hostBase=location.protocol.startsWith("http")&&location.hostname
+  ?`${location.protocol}//${location.hostname}`:"http://127.0.0.1";
+function gatewayApiOrigin(){
+  if(onTsNet){
+    const o=location.origin;
+    if(o&&o!=="null"&&!o.startsWith("file:")) return o.replace(/\/+$/,"");
+  }
+  const port=location.port||"";
+  if(WORKBENCH_UI_PORTS.has(port))
+    return `${location.protocol}//${location.hostname}:${GATEWAY_API_PORT}`;
+  if(port===GATEWAY_API_PORT||port==="")
+    return (location.origin||`${hostBase}:${GATEWAY_API_PORT}`).replace(/\/+$/,"");
+  return `${hostBase}:${GATEWAY_API_PORT}`;
+}
+function defaultGw(){
+  return `${gatewayApiOrigin()}/v1`;
+}
+function normalizeGwUrl(u){
+  let x=String(u||"").trim().replace(/\/+$/,"");
+  if(!x) return defaultGw();
+  if(!/\/v1$/i.test(x)) x+="/v1";
+  return x;
+}
+function isWorkbenchGatewayUrl(u){
+  try{
+    const url=new URL(normalizeGwUrl(u), location.href);
+    return WORKBENCH_UI_PORTS.has(url.port);
+  }catch(_e){ return false; }
+}
+function rejectInvalidGateway(u){
+  const n=normalizeGwUrl(u);
+  if(isWorkbenchGatewayUrl(n))
+    throw new Error(`无效 gateway ${n} — workbench :8515 不提供 /v1；请使用 :8501`);
+  return n;
+}
+function assert8501ApiUrl(u,label){
+  let url;
+  try{ url=new URL(String(u||""), location.href); }catch(_e){
+    throw new Error(`${label} URL 无效: ${u}`);
+  }
+  if(WORKBENCH_UI_PORTS.has(url.port))
+    throw new Error(`${label} 指向 :8515 — 该端口无此 API，请用 :8501`);
+  return String(u);
+}
+function migrateBadGatewayStorage(){
+  for(const key of ["gw","exp","kimiUrl"]){
+    const saved=st.get(key);
+    if(!saved) continue;
+    try{
+      const url=new URL(saved, location.href);
+      if(WORKBENCH_UI_PORTS.has(url.port)) st.del(key);
+    }catch(_e){ st.del(key); }
+  }
+}
+function migrateKimiModelStorage(){
+  const want="kimi-k2.6:cloud";
+  for(const key of ["kimiModel","kimiTabModel"]){
+    const v=String(st.get(key,"")||"").trim();
+    if(!v) continue;
+    if(/kimi-k(?:2\.5|3)(?::cloud)?$/i.test(v)||v==="kimi-k2.5:cloud"||v==="kimi-k3:cloud")
+      st.set(key,want);
+  }
+}
+function storeBase(){
+  return gatewayApiOrigin();
+}
+function verificationScriptBase(){ return gatewayApiOrigin(); }
+async function ensureVerificationScripts(){
+  const rev=VER_CLIENT_REV;
+  if(window.__b11VerClientRev===rev&&window.GridVerificationClient&&window.GridKeyholder) return;
+  window.__b11VerClientRev=rev;
+  delete window.GridVerificationClient;
+  delete window.GridKeyholder;
+  const base=verificationScriptBase();
+  for(const path of ["/app/grid_keyholder.js","/app/grid_verification_client.js"]){
+    await new Promise((resolve,reject)=>{
+      const s=document.createElement("script");
+      s.src=base+path+"?v="+encodeURIComponent(rev);
+      s.onload=resolve;
+      s.onerror=()=>reject(new Error("load failed "+path));
+      document.head.appendChild(s);
+    });
+  }
+}
+async function attachAsterVerification(chatBody){
+  await ensureVerificationScripts();
+  if(!GridVerificationClient.isAsterChatBody(chatBody)) return chatBody;
+  if(!GridKeyholder||!GridKeyholder.hasKey())
+    throw new Error("GridKeyholder 未配置 — STUDIO/HOME 须先保存钥匙(点 G R I D → GridKeyholder)");
+  return GridVerificationClient.attachToChatBody(chatBody, verificationScriptBase());
+}
+async function attachExpandedVerification(taskBody, userTask){
+  await ensureVerificationScripts();
+  if(!GridKeyholder||!GridKeyholder.hasKey())
+    throw new Error("GridKeyholder 未配置 — EXPANDED 须先保存钥匙(点 G R I D → GridKeyholder)");
+  const stub={model:"demo/aster",messages:[{role:"user",content:userTask}]};
+  const verified=await GridVerificationClient.attachToChatBody(stub, verificationScriptBase());
+  return Object.assign({}, taskBody, {
+    model: verified.model,
+    messages: verified.messages,
+    grid_verification: verified.grid_verification,
+  });
+}
+function isVerificationError(msg){
+  const s=String(msg||"");
+  return /GridKeyholder|keyholder|trace-seal|payload_hash|grid verification|grid_chain_verification/i.test(s);
+}
+async function refreshGatewayHud(){
+  const hud=$("#keyHud");
+  if(useWorkbenchGatewayProxy()){
+    if(hud){
+      try{
+        const h=await fetch(new URL("health",location.href).href).then(r=>r.json());
+        const ok=!!(h&&h.gateway_verify&&h.gateway_verify.ok);
+        hud.className="tag"+(ok?" local":" warn");
+        hud.innerHTML=ok?"verify <b>8515</b>":'verify <b>✗</b>';
+        hud.title=ok?"8515 服务端验签(keyholder.key)":"8515 验签未就绪 — 查 workbench 日志";
+      }catch(_e){
+        hud.className="tag warn";
+        hud.innerHTML='verify <b>?</b>';
+        hud.title="8515 health 不可达";
+      }
+    }
+    const stEl=$("#khst");
+    if(stEl) stEl.textContent="验签: 8515 服务端代理(无需浏览器钥匙) · STUDIO/HOME/EXPANDED 自动注入";
+    return;
+  }
+  await refreshKeyholderHud();
+}
+async function refreshKeyholderHud(){
+  try{ await ensureVerificationScripts(); }catch(_e){}
+  const ok=window.GridKeyholder&&GridKeyholder.hasKey();
+  const stEl=$("#khst");
+  if(stEl) stEl.textContent=ok
+    ? "keyholder: 已配置 · device-local-v1 · 与 grid.html 共享本机钥匙"
+    : "keyholder: 未配置 — 发 demo/aster 前须保存 hex 钥匙";
+  const hud=$("#keyHud");
+  if(hud){
+    hud.className="tag"+(ok?" local":" warn");
+    hud.innerHTML=ok?"key <b>✓</b>":'key <b>✗</b>';
+    hud.title=ok?"GridKeyholder 已配置":"未配置 · 点 G R I D 打开钥匙录入";
+  }
+}
+function capCandidatePrompt(prompt){
+  const max=CANDIDATE_PROMPT_MAX;
+  const s=String(prompt||"");
+  if(s.length<=max) return s;
+  const marker="\n\n[…上下文已裁剪至 candidate 8000 字上限…]\n\n";
+  const keep=Math.max(200,max-marker.length);
+  return s.slice(0,Math.floor(keep*0.2))+marker+s.slice(-Math.floor(keep*0.8));
+}
+function isWorkbenchUiPage(){
+  const port=location.port||"";
+  if(WORKBENCH_UI_PORTS.has(port)) return true;
+  return String(location.pathname||"").includes("/workbench/");
+}
+function useWorkbenchGatewayProxy(){ return isWorkbenchUiPage(); }
+function workbenchGatewayUrl(suffix){
+  const s=String(suffix||"").replace(/^\//,"");
+  try{ return new URL("gateway/"+s, location.href).href; }
+  catch(_e){ return `http://127.0.0.1:8515/gateway/${s}`; }
+}
+function defaultExpandedUrl(){
+  return useWorkbenchGatewayProxy()
+    ? workbenchGatewayUrl("task/expanded")
+    : `${storeBase()}/task/expanded`;
+}
+function chatCompletionsUrl(){
+  if(useWorkbenchGatewayProxy()) return workbenchGatewayUrl("v1/chat/completions");
+  return normalizeGwUrl(rejectInvalidGateway(cfg.gw)).replace(/\/+$/,"")+"/chat/completions";
+}
+const apiBase=gatewayApiOrigin();
+const isLocalHost=h=>h==="127.0.0.1"||h==="localhost"||h==="::1";
+const fix=u=>{
+  if(!u||!location.hostname) return u;
+  if(onTsNet){
+    return String(u)
+      .replace(/https?:\/\/127\.0\.0\.1(?::8501)?/g,apiBase)
+      .replace(/https?:\/\/localhost(?::8501)?/gi,apiBase)
+      .replace(`${location.origin}:8501`,location.origin);
+  }
+  if(location.hostname==="localhost") return u;
+  let x=String(u).replace(/https?:\/\/127\.0\.0\.1(?::8501)?/g,apiBase);
+  return x;
+};
+function resolveEndpoint(stKey,fallback){
+  if(onTsNet) return fallback;
+  const saved=st.get(stKey);
+  if(!saved) return fallback;
+  try{
+    const u=new URL(saved, location.href);
+    if(isLocalHost(u.hostname)&&!isLocalHost(location.hostname)) return fallback;
+    if(WORKBENCH_UI_PORTS.has(u.port)) return fallback;
+  }catch(_e){ return fallback; }
+  return fix(saved)||fallback;
+}
+function applyResolvedEndpoints(){
+  let gw=normalizeGwUrl(resolveEndpoint("gw",defaultGw()));
+  if(isWorkbenchGatewayUrl(gw)) gw=defaultGw();
+  cfg.gw=gw;
+  const root=storeBase();
+  cfg.exp=resolveEndpoint("exp",defaultExpandedUrl());
+  cfg.kimiUrl=resolveEndpoint("kimiUrl",`${root}/task/candidate`);
+  cfg.ollama=resolveEndpoint("ollama",`${hostBase}:11434`);
+  st.set("gw",cfg.gw);
+  st.set("exp",cfg.exp);
+  st.set("kimiUrl",cfg.kimiUrl);
+  if($("#cGw")) $("#cGw").value=cfg.gw;
+  if($("#cExp")) $("#cExp").value=cfg.exp;
+  if($("#cKimiUrl")) $("#cKimiUrl").value=cfg.kimiUrl;
+  if($("#cOllama")) $("#cOllama").value=cfg.ollama;
+  if(useWorkbenchGatewayProxy()){
+    cfg.exp=defaultExpandedUrl();
+    st.set("exp",cfg.exp);
+    if($("#cExp")) $("#cExp").value=cfg.exp;
+  }
+}
+if(st.get("page_ver")!==PAGE_VER){
+  st.set("page_ver",PAGE_VER);
+  migrateBadGatewayStorage();
+  migrateKimiModelStorage();
+  if(st.get("field","")==="") st.del("field");
+  delete window.GridVerificationClient;
+  delete window.GridKeyholder;
+  window.__b11VerClientRev="";
+}
+const _gwDefault=normalizeGwUrl(fix(st.get("gw",defaultGw())));
+const _storeRoot=_gwDefault.replace(/\/v1\/?$/i,"").replace(/\/+$/,"");
+const cfg={gw:_gwDefault,
+  local:st.get("local","demo/aster"),
+  exp:fix(st.get("exp",`${_storeRoot}/task/expanded`)),
+  kimiUrl:fix(st.get("kimiUrl",`${_storeRoot}/task/candidate`)),
+  kimiModel:st.get("kimiModel","kimi-k2.6:cloud"),
+  kimiTabModel:st.get("kimiTabModel",st.get("kimiModel","kimi-k2.6:cloud")),
+  dsModel:st.get("dsModel","deepseek-v4:cloud"),
+  glmModel:st.get("glmModel","glm-5.2:cloud"),
+  ollama:fix(st.get("ollama",hostBase+":11434")),
+  pty:st.get("pty",""),
+  field:(()=>{const s=st.get("field",null); if(s===null||s===undefined){
+    try{return new URL("field_now/now.json",location.href).href}catch(e){return "http://127.0.0.1:8795/now.json"}}
+    return s?fix(s):"";})()};
+$("#cGw").value=cfg.gw;$("#cLocal").value=cfg.local;$("#cExp").value=cfg.exp;
+$("#cKimiUrl").value=cfg.kimiUrl;$("#cKimiModel").value=cfg.kimiTabModel;$("#cDsModel").value=cfg.dsModel;
+$("#cGlmModel").value=cfg.glmModel;
+$("#cOllama").value=cfg.ollama;$("#cPty").value=cfg.pty;
+$("#cField").value=cfg.field||"";
+applyResolvedEndpoints();
+let storeToken=st.get("storeToken")||"";
+$("#cStoreTok").value=storeToken;
+$("#cStoreTok").onchange=e=>{storeToken=e.target.value.trim();st.set("storeToken",storeToken);void pullStoreHistory()};
+$("#mark").onclick=()=>$("#conn").classList.toggle("open");
+$("#cKhSave").onclick=async()=>{
+  try{
+    await ensureVerificationScripts();
+    GridKeyholder.saveKeyHex(($("#cKhKey").value||"").trim());
+    $("#cKhKey").value="";
+    $("#conn").classList.add("open");
+    refreshGatewayHud();
+  }catch(e){
+    const w=$("#sanwarn");
+    if(w){ w.style.display="block"; w.textContent="⛔ 钥匙无效: "+(e.message||e); }
+  }
+};
+$("#cKhClear").onclick=async()=>{
+  await ensureVerificationScripts().catch(()=>{});
+  if(window.GridKeyholder) GridKeyholder.clearKey();
+  refreshGatewayHud();
+};
+void ensureVerificationScripts().then(refreshGatewayHud).catch(refreshGatewayHud);
+const bind=(id,key)=>$(id).onchange=e=>{cfg[key]=e.target.value.trim();st.set(key,cfg[key])};
+bind("#cLocal","local");bind("#cExp","exp");
+bind("#cKimiUrl","kimiUrl");bind("#cKimiModel","kimiTabModel");bind("#cDsModel","dsModel");bind("#cGlmModel","glmModel");
+bind("#cOllama","ollama");bind("#cPty","pty");
+bind("#cField","field");
+$("#cGw").addEventListener("change",()=>{
+  try{
+    cfg.gw=rejectInvalidGateway($("#cGw").value.trim());
+    st.set("gw",cfg.gw);
+    $("#cGw").value=cfg.gw;
+    applyResolvedEndpoints();
+    startFieldStream();
+    const w=$("#sanwarn"); if(w){ w.style.display="none"; w.textContent=""; }
+  }catch(e){
+    cfg.gw=defaultGw();
+    st.set("gw",cfg.gw);
+    $("#cGw").value=cfg.gw;
+    applyResolvedEndpoints();
+    const w=$("#sanwarn");
+    if(w){ w.style.display="block"; w.textContent="⛔ "+e.message; }
+  }
+});
+$("#cExp").addEventListener("change",()=>applyResolvedEndpoints());
+$("#cKimiUrl").addEventListener("change",()=>applyResolvedEndpoints());
+
+const KIMI_K26_IN_USD_M=0.95;
+const KIMI_K26_OUT_USD_M=4.00;
+const GLM52_IN_USD_M=1.40;
+const GLM52_OUT_USD_M=4.40;
+const DEEPSEEK_V4_IN_USD_M=0.55;
+const DEEPSEEK_V4_OUT_USD_M=2.20;
+
+const CLOUD_LANES={
+  glm52:{id:"glm52",label:"GRID-GLM 5.2",model:()=>cfg.glmModel||"glm-5.2:cloud",substrate:"glm52_cloud",store8501:true,storeNode:"cloud-glm52"},
+  kimi_k25:{id:"kimi_k25",label:"Kimi K2.6",model:()=>cfg.kimiTabModel||"kimi-k2.6:cloud",substrate:"kimi_k25_cloud",store8501:true,storeNode:"cloud-kimi"},
+  deepseek_v4:{id:"deepseek_v4",label:"DeepSeek V4",model:()=>cfg.dsModel||"deepseek-v4:cloud",substrate:"deepseek_v4_cloud",store8501:false},
+};
+const CLOUD_UI_TURNS=15;
+const CLOUD_ACTIVE_TURNS=15;
+/** 钉1:与 signal_patterns.json token_budget / console CHAT_CLOUD_TOKEN_BUDGET 统一 10k */
+let CLOUD_TOKEN_BUDGET=10000;
+const CLOUD_ACTIVE_MSGS=CLOUD_UI_TURNS*2;
+/** 钉2:与 console WORK_LOG_PREFIX 同源(signal_patterns.json work_log.prefix) */
+let WORK_LOG_PREFIX="[工作日志]";
+let WORK_LOG_SYSTEM_TITLE="工作日志·最近5条";
+let WORK_LOG_MAX_INJECT=5;
+/** 修订⑤:冷库召回参数 · 唯一源 signal_patterns.json recall.* · 与 console cloud_recall.py 同构 */
+let CLOUD_RECALL={
+  top_k:4, token_budget:2000, total_inject_cap:12000, min_score:1e-9,
+  recency_half_life_s:1209600, lexical_weight:0.65, recency_weight:0.35,
+  identity_boost:1.5, max_chars_per_item:2400,
+  system_title:"店内旧档·相关召回(检索注入，非对话窗)",
+  identity_subtitle:"含身份锚点",
+  identity_markers:["角色定义","元认知风格","手感描述","身份锚点","身份定义","我是你的","persona","metacognitive style","identity anchor"],
+};
+let cloudLastInject={window_turns:0, work_log_n:0, recall_n:0, store_total:0, has_identity_anchor:false};
+function cloudUses8501Mem(lane){return !!CLOUD_LANES[lane]?.store8501;}
+function cloudStoreNode(lane){return CLOUD_LANES[lane]?.storeNode||`cloud-${lane}`;}
+function cloudLocalHistKey(lane){return "cloud_hist_"+lane;}
+function cloudMemArchivedKey(lane){return "cloudMemArchivedIds_"+lane;}
+function cloudPurgedEpochKey(lane){return "cloudPurgedEpoch_"+lane;}
+function isWorkLog(content){
+  return String(content||"").startsWith(WORK_LOG_PREFIX);
+}
+function estCloudTokens(msgs){
+  let n=0;
+  for(const m of msgs||[]) n+=String(m.content||"").length;
+  return Math.max(0, n>>2); // chars/4 · isomorphic with console
+}
+function cloudDialogueRows(allMsgs){
+  return (allMsgs||[]).filter(m=>
+    (m.role==="user"||m.role==="assistant")&&!isWorkLog(m.content));
+}
+function cloudWorkLogRows(allMsgs,limit=WORK_LOG_MAX_INJECT){
+  const logs=(allMsgs||[]).filter(m=>isWorkLog(m.content));
+  return limit>0?logs.slice(-limit):logs;
+}
+function cloudDualTrimPairs(allMsgs, turns=CLOUD_ACTIVE_TURNS, tokenBudget=CLOUD_TOKEN_BUDGET){
+  const pairs=[];
+  let pending=null;
+  for(const m of allMsgs||[]){
+    if(isWorkLog(m.content)) continue;
+    if(m.role==="user") pending=m;
+    else if(m.role==="assistant"&&pending){ pairs.push([pending,m]); pending=null; }
+  }
+  if(pending) pairs.push([pending,null]);
+  let keep=turns>0?pairs.slice(-turns):pairs.slice();
+  const flat=ps=>{
+    const out=[];
+    for(const [u,a] of ps){ out.push(u); if(a) out.push(a); }
+    return out;
+  };
+  while(keep.length&&estCloudTokens(flat(keep))>tokenBudget) keep=keep.slice(1);
+  return flat(keep);
+}
+function cloudActiveWindow(allMsgs){return cloudDualTrimPairs(cloudDialogueRows(allMsgs));}
+function cloudArchivePersona(lane){
+  if(lane==="kimi_k25") return "GRID-Kimi";
+  return "GRID-GLM";
+}
+function cloudRowKey(m){return `${m.role}|${m.ts}|${String(m.content||"").slice(0,64)}`;}
+function cloudLexicalTokens(text){
+  const s=String(text||"");
+  const toks=new Set();
+  const cjk=[];
+  for(const ch of s){
+    const cp=ch.codePointAt(0);
+    if(cp>=0x4e00&&cp<=0x9fff) cjk.push(ch);
+  }
+  for(let i=0;i<cjk.length-1;i++) toks.add(cjk[i]+cjk[i+1]);
+  const re=/[A-Za-z0-9_]{2,}/g; let m;
+  while((m=re.exec(s))) toks.add(m[0].toLowerCase());
+  return toks;
+}
+function cloudIsIdentity(content){
+  const c=String(content||"");
+  return (CLOUD_RECALL.identity_markers||[]).some(x=>x&&c.includes(x));
+}
+function cloudScoreCandidate(queryToks,row,nowTs){
+  const content=String(row.content||"");
+  const doc=cloudLexicalTokens(content);
+  if(!queryToks.size||!doc.size) return 0;
+  let overlap=0;
+  for(const t of queryToks) if(doc.has(t)) overlap++;
+  if(overlap<=0) return 0;
+  const lexical=overlap/Math.max(queryToks.size,1);
+  const half=+CLOUD_RECALL.recency_half_life_s||1209600;
+  const ts=+row.ts||0;
+  const age=ts>0?Math.max(0,nowTs-ts):half;
+  const recency=1/(1+(half>0?age/half:0));
+  const lw=+CLOUD_RECALL.lexical_weight||0.65;
+  const rw=+CLOUD_RECALL.recency_weight||0.35;
+  let score=lexical*(lw+rw*recency);
+  if(cloudIsIdentity(content)) score*=(+CLOUD_RECALL.identity_boost||1.5);
+  return score;
+}
+function cloudTruncateRaw(text,maxChars){
+  const s=String(text||"");
+  if(maxChars<=0||s.length<=maxChars) return s;
+  const mark="[截断]";
+  return s.slice(0,Math.max(0,maxChars-mark.length))+mark;
+}
+function cloudFormatRecallItem(row,maxChars){
+  const body=cloudTruncateRaw(String(row.content||"").trim(),maxChars);
+  const ts=row.ts!=null&&row.ts!==""?String(Math.trunc(+row.ts||row.ts)):"?";
+  return `ts=${ts} role=${row.role||"?"}\n${body}`;
+}
+function cloudSelectRecall(storeMsgs,query,excludeKeys){
+  const ut=String(query||"").trim();
+  if(!ut) return [];
+  const qToks=cloudLexicalTokens(ut);
+  if(!qToks.size) return [];
+  const now=Date.now()/1000;
+  const min=+CLOUD_RECALL.min_score||0;
+  const excl=excludeKeys||new Set();
+  const scored=[];
+  for(const m of storeMsgs||[]){
+    if(m.role!=="user"&&m.role!=="assistant") continue;
+    const c=String(m.content||"").trim();
+    if(!c||isWorkLog(c)) continue;
+    if(excl.has(cloudRowKey(m))) continue;
+    const sc=cloudScoreCandidate(qToks,m,now);
+    if(sc<=min) continue;
+    scored.push({row:m,score:sc,identity:cloudIsIdentity(c)});
+  }
+  scored.sort((a,b)=>b.score-a.score||(+b.row.ts||0)-(+a.row.ts||0));
+  const k=Math.max(0,+CLOUD_RECALL.top_k||4);
+  return scored.slice(0,k).map(x=>({...x.row,_score:x.score,_identity:x.identity}));
+}
+function cloudPackRecallSystem(picked){
+  if(!picked||!picked.length) return {block:null,kept:[]};
+  let kept=picked.slice();
+  let maxChars=+CLOUD_RECALL.max_chars_per_item||2400;
+  const budget=+CLOUD_RECALL.token_budget||2000;
+  const title=CLOUD_RECALL.system_title||"店内旧档·相关召回(检索注入，非对话窗)";
+  for(;;){
+    if(!kept.length) return {block:null,kept:[]};
+    const hasId=kept.some(p=>p._identity);
+    let head=title;
+    if(hasId) head=title+"\n"+(CLOUD_RECALL.identity_subtitle||"含身份锚点");
+    const body=head+"\n\n"+kept.map(p=>cloudFormatRecallItem(p,maxChars)).join("\n---\n");
+    if(estCloudTokens([{content:body}])<=budget) return {block:{role:"system",content:body},kept};
+    if(kept.length>1){ kept=kept.slice(0,-1); continue; }
+    maxChars=Math.max(200,Math.floor(maxChars/2));
+    if(maxChars<=200){
+      const one=cloudFormatRecallItem(kept[0],200);
+      const b2=head+"\n\n"+one;
+      if(estCloudTokens([{content:b2}])>budget) return {block:null,kept:[]};
+      return {block:{role:"system",content:b2},kept};
+    }
+  }
+}
+/** 8501 store → cloud_chat:15∩10k 对话窗 + 工作日志 + 修订⑤召回≤2k(总≤12k) */
+function buildCloudStoreMessages(storeMsgs,currentUser){
+  /* UI/HUD 遗留;发往模型的组装已改走 8501 grid_mem.inject_messages */
+  const ut=String(currentUser||"").trim();
+  let logs=cloudWorkLogRows(storeMsgs||[], WORK_LOG_MAX_INJECT);
+  let turnCap=CLOUD_ACTIVE_TURNS;
+  const packCore=(logList,dial)=>{
+    const out=[];
+    if(logList.length){
+      const body=logList.map(m=>String(m.content||"").trim()).filter(Boolean).join("\n---\n");
+      out.push({role:"system",content:WORK_LOG_SYSTEM_TITLE+"\n"+body});
+    }
+    for(const m of dial){
+      const c=String(m.content||"").trim();
+      if((m.role==="user"||m.role==="assistant")&&c) out.push({role:m.role,content:c});
+    }
+    if(ut) out.push({role:"user",content:ut});
+    return out;
+  };
+  let dial=[], core=[];
+  for(;;){
+    dial=cloudDualTrimPairs(cloudDialogueRows(storeMsgs||[]), turnCap, CLOUD_TOKEN_BUDGET);
+    if(ut){
+      const tentative=dial.concat([{role:"user",content:ut}]);
+      if(estCloudTokens(tentative)>CLOUD_TOKEN_BUDGET){
+        dial=cloudDualTrimPairs(tentative, turnCap, CLOUD_TOKEN_BUDGET);
+        if(dial.length&&dial[dial.length-1].role==="user"&&dial[dial.length-1].content===ut)
+          dial=dial.slice(0,-1);
+      }
+    }
+    core=packCore(logs, dial);
+    if(estCloudTokens(core)<=CLOUD_TOKEN_BUDGET) break;
+    if(logs.length){ logs=logs.slice(1); continue; }
+    if(turnCap>0){ turnCap-=1; continue; }
+    core=ut?[{role:"user",content:ut}]:[];
+    dial=[];
+    break;
+  }
+  const excl=new Set(dial.map(cloudRowKey));
+  const picked=cloudSelectRecall(storeMsgs||[], ut, excl);
+  let {block:recallBlock,kept}=cloudPackRecallSystem(picked);
+  const insertAt=(core[0]&&core[0].role==="system"&&String(core[0].content||"").startsWith(WORK_LOG_SYSTEM_TITLE))?1:0;
+  const cap=+CLOUD_RECALL.total_inject_cap||12000;
+  let messages;
+  for(;;){
+    messages=core.slice();
+    if(recallBlock) messages.splice(insertAt,0,recallBlock);
+    if(estCloudTokens(messages)<=cap) break;
+    if(!kept.length){ messages=core.slice(); recallBlock=null; break; }
+    kept=kept.slice(0,-1);
+    ({block:recallBlock,kept}=cloudPackRecallSystem(kept));
+  }
+  const winTurns=dial.filter(m=>m.role==="user").length;
+  cloudLastInject={
+    window_turns:winTurns, work_log_n:logs.length, recall_n:kept.length,
+    store_total:(storeMsgs||[]).length,
+    has_identity_anchor:kept.some(p=>p._identity),
+    inject_tokens:estCloudTokens(messages),
+  };
+  return messages;
+}
+let CLOUD_SIGNAL_RE=null;
+let CLOUD_SHARED_READY=false;
+async function ensureCloudShared(){
+  if(CLOUD_SHARED_READY) return;
+  try{
+    const r=await fetch(new URL("signal_patterns.json", location.href).href, {cache:"no-store"});
+    const j=await r.json();
+    if(Number(j.token_budget)>0) CLOUD_TOKEN_BUDGET=Number(j.token_budget);
+    const wl=j.work_log||{};
+    if(wl.prefix!=null&&String(wl.prefix)) WORK_LOG_PREFIX=String(wl.prefix);
+    if(wl.system_title) WORK_LOG_SYSTEM_TITLE=String(wl.system_title);
+    if(Number(wl.max_inject)>0) WORK_LOG_MAX_INJECT=Number(wl.max_inject);
+    const rc=j.recall||{};
+    for(const k of Object.keys(CLOUD_RECALL)){
+      if(rc[k]!=null) CLOUD_RECALL[k]=rc[k];
+    }
+    const pats=(j.patterns||[]).map(String);
+    if(pats.length) CLOUD_SIGNAL_RE=new RegExp(pats.join("|"),"i");
+  }catch(e){ console.warn("[b11 signal_patterns]", e); }
+  if(!CLOUD_SIGNAL_RE){
+    CLOUD_SIGNAL_RE=/(?:做多|做空|买入|卖出|加仓|减仓|清仓|建仓|平仓)|\b(?:long|short|buy|sell)\b\s*[:：]?\s*[A-Z]{2,5}\b|(?:入场|进场|目标价|止损|止盈)\s*[:：]?\s*\$?\d|(?:仓位|position\s*size)\s*[:：]?\s*\d+\s*%/i;
+  }
+  CLOUD_SHARED_READY=true;
+}
+async function ensureCloudSignalRe(){
+  await ensureCloudShared();
+  return CLOUD_SIGNAL_RE;
+}
+/** Cloud：记忆 8501 store · 推理 8501 /task/cloud_chat（实况名 glm-5.2:cloud / kimi-k2.6:cloud） */
+function rejectCloud8515Memory(url,label){
+  const s=String(url||"");
+  if(/\/cloud\/memory|:8515\/cloud\/memory/.test(s))
+    throw new Error(`${label} 误指向 8515 cloud_memory — Cloud 记忆只许 8501 store cloud-glm52`);
+  return s;
+}
+function cloud8501Base(){ return rejectCloud8515Memory(storeBase(),"Cloud store"); }
+function cloudChatUrl(){
+  return assert8501ApiUrl(`${cloud8501Base()}/task/cloud_chat`,"Cloud chat");
+}
+
+/* ---- Tab / Mode ---- */
+let topTab="studio";
+let cloudLane=st.get("cloudLane","glm52");
+function showTopTab(name){
+  topTab=name;
+  if(window.__b11Shell?.flipTab) window.__b11Shell.flipTab(name);
+  else{
+    $("#tabStudio").classList.toggle("on",name==="studio");
+    $("#tabCloud").classList.toggle("on",name==="cloud");
+    $("#tabCC").classList.toggle("on",name==="cc");
+    $("#studio").classList.toggle("offv",name!=="studio");
+    $("#cloud").classList.toggle("on",name==="cloud");
+    $("#cc").classList.toggle("on",name==="cc");
+  }
+  if(name==="cc"){syncCcLaneUi();ptyTry();}
+  if(name==="cloud"){syncCloudLaneUi();void loadCloudMemory(cloudLane).then(()=>renderCloudHistory());renderCloudBillHud();}
+  renderBillHud();
+}
+$("#tabStudio").onclick=()=>showTopTab("studio");
+$("#tabCloud").onclick=()=>showTopTab("cloud");
+$("#tabCC").onclick=()=>showTopTab("cc");
+let mode="home";
+$$("#modebar button").forEach(b=>b.onclick=()=>{
+  $$("#modebar button").forEach(x=>x.classList.remove("on"));b.classList.add("on");
+  mode=b.dataset.m;
+  renderBillHud();
+  stats();
+});
+
+/* ---- 素材(全类型收;图=EXIF剥;pdf/audio/video=服务端编排路径素材) ---- */
+let assets=[];
+$("#addFile").onclick=$("#addBtn").onclick=()=>$("#fileIn").click();
+$("#fileIn").onchange=async e=>{
+  for(const f of e.target.files){
+    const id=Date.now()+"_"+Math.random().toString(36).slice(2,6);
+    if(f.size>25*1048576){assets.push({id,name:f.name,kind:"oversize",size:f.size,sendable:false,picked:false});continue}
+    if(f.type.startsWith("image/")){
+      const dataUrl=await stripExif(f);
+      assets.push({id,name:f.name,kind:"image",mime:"image/jpeg",size:f.size,dataUrl,sendable:true,picked:true});
+    }else if(/\.(txt|md|csv)$/i.test(f.name)){
+      const text=await f.text();
+      assets.push({id,name:f.name,kind:"text",size:f.size,text:text.slice(0,20000),sendable:true,picked:true});
+    }else{ // pdf / audio / video → base64,交 8501 本地预处理
+      const b64=await new Promise(r=>{const fr=new FileReader();
+        fr.onload=()=>r(fr.result.split(",")[1]);fr.readAsDataURL(f)});
+      assets.push({id,name:f.name,kind:f.type.startsWith("audio")?"audio":
+        f.type.startsWith("video")?"video":"pdf",mime:f.type||"application/pdf",
+        size:f.size,base64:b64,sendable:true,picked:true,serverOnly:true});
+    }
+  }
+  e.target.value=""; renderTray();
+};
+function stripExif(file){return new Promise(res=>{
+  const img=new Image(),url=URL.createObjectURL(file);
+  img.onload=()=>{const mx=1568,sc=Math.min(1,mx/Math.max(img.width,img.height));
+    const c=document.createElement("canvas");c.width=img.width*sc|0;c.height=img.height*sc|0;
+    c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+    URL.revokeObjectURL(url);res(c.toDataURL("image/jpeg",.9))};
+  img.src=url})}
+function renderTray(){
+  const t=$("#tray");t.innerHTML="";
+  for(const a of assets){
+    const note=a.kind==="image"?" · EXIF已剥":a.serverOnly?" · 经8501本地预处理":
+      a.kind==="oversize"?" · 超25MB不发":"";
+    const d=document.createElement("div");d.className="asset";
+    d.innerHTML=(a.kind==="image"?`<img src="${a.dataUrl}">`:"")+
+      `<label><input type="checkbox" class="pick" ${a.picked?"checked":""} ${a.sendable?"":"disabled"}>${esc(a.name)}</label>
+       <div class="meta">${a.kind} · ${(a.size/1024).toFixed(0)}KB${note}</div>
+       <button class="rm">×</button>`;
+    d.querySelector(".pick")?.addEventListener("change",ev=>{a.picked=ev.target.checked;stats()});
+    d.querySelector(".rm").onclick=()=>{assets=assets.filter(x=>x.id!==a.id);renderTray()};
+    t.appendChild(d);
+  }stats();
+}
+const picked=()=>assets.filter(a=>a.picked&&a.sendable);
+function stats(){
+  const p=picked();
+  $("#manifest").textContent="发送清单:"+(p.length?p.map(a=>a.name).join(" · "):"空(仅文字)");
+}
+
+/* ---- 守卫 ---- */
+const SAN=/\/(Users|home|var|etc)\/[^\s"'”]+|sk-[A-Za-z0-9]{16,}|(api[_-]?key|token|secret)\s*[=:]\s*\S+/i;
+const stripThink=s=>String(s??"").replace(/<think>[\s\S]*?<\/think>/gi,"").trim();
+const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+/* ---- 场感知(仅 HOME 本地 9B; kimiMessages/candidate 零改动) ---- */
+let fieldCache={data:null,ts:0};
+let fieldStreamEs=null;
+function fieldStreamUrl(){
+  return storeBase()+"/field/stream";
+}
+function stopFieldStream(){
+  if(fieldStreamEs){ fieldStreamEs.close(); fieldStreamEs=null; }
+}
+function startFieldStream(){
+  stopFieldStream();
+  if(!cfg.field){ setFieldLight(null); return; }
+  try{
+    fieldStreamEs=new EventSource(fieldStreamUrl());
+    fieldStreamEs.onmessage=(ev)=>{
+      try{
+        const j=JSON.parse(ev.data);
+        fieldCache={data:j,ts:Date.now()};
+        setFieldLight(j);
+      }catch(_e){ setFieldLight(null); }
+    };
+    fieldStreamEs.onerror=()=>{ fieldCache={data:null,ts:Date.now()}; setFieldLight(null); };
+  }catch(_e){ setFieldLight(null); }
+}
+async function senseField(){
+  if(!cfg.field) return null;
+  if(fieldCache.data && Date.now()-fieldCache.ts<12000) return fieldCache.data;
+  return fieldCache.data;
+}
+function fieldLine(f){
+  if(!f||f.anchor_state==="idle"||f.anchor_coherence==null) return "";
+  let s=`[场态 coherence=${(+f.anchor_coherence).toFixed(2)} state=${f.anchor_state}`;
+  if(f.breath_sync!=null) s+=` breath_sync=${Math.round(f.breath_sync*100)}%`;
+  if(f.zone) s+=` zone=${f.zone}`;
+  return s+`]\n`;
+}
+function setFieldLight(f){
+  const el=$("#fieldLight");
+  if(!el) return;
+  if(!cfg.field){el.textContent="off";el.className="";return}
+  if(!f){el.textContent="idle";el.className="";return}
+  if(f.online===false){el.textContent="idle";el.className="";return}
+  if(f.garden==="live"&&f.anchor_state&&f.anchor_state!=="idle"&&f.anchor_coherence!=null){
+    el.textContent="live";el.className="ok";
+  }else if(f.garden==="live"){el.textContent="idle";el.className="";}
+  else{el.textContent="idle";el.className="";}
+}
+$("#cField").addEventListener("change",()=>{ startFieldStream(); });
+startFieldStream();
+
+/* ---- 8501 store · workbench-b11 7d epoch(与 grid app field-particle 独立) ---- */
+const STORE_CHAT_NODE="workbench-b11";
+const STORE_ANCHOR="2026-07-16";
+const STORE_EPOCH_DAYS=7;
+const ACTIVE_TURNS=6;
+const ACTIVE_MSGS=ACTIVE_TURNS*2;
+const API_CTX_MAX_CHARS=5000;
+const HOME_MAX_TOKENS=2048;
+const CHAT_FETCH_MS=300000;
+let storeOnline=false;
+let storePullGen=0;
+let storeTotalCount=0;
+let memSyncedTurns=0;
+let history=[];
+function activeWindow(allMsgs){ return allMsgs.slice(-ACTIVE_MSGS); }
+async function ensureActiveWindowBeforeSend(){
+  try{
+    const all=await fetchStoreAll();
+    history=activeWindow(all);
+    updateStoreHud();
+    void syncOverflowToMemory(all).then(synced=>{
+      if(synced>0){
+        memSyncedTurns=(st.get("memArchivedIds",[])||[]).length;
+        updateMemHud(`+${synced}`);
+      }
+    });
+  }catch(e){
+    console.warn("[b11 active window]",e);
+  }
+}
+async function syncOverflowToMemory(allMsgs){
+  const pairs=extractTurnPairs(allMsgs);
+  if(pairs.length<=ACTIVE_TURNS) return 0;
+  const overflow=pairs.slice(0,pairs.length-ACTIVE_TURNS);
+  const results=await Promise.all(overflow.map(([u,a])=>archiveTurnTo8501(u,a)));
+  return results.filter(Boolean).length;
+}
+function storeHdrs(){
+  const h={"Content-Type":"application/json"};
+  if(storeToken) h["X-Grid-Token"]=storeToken;
+  return h;
+}
+function mapStoreRows(rows){
+  const out=[];
+  for(const m of rows){
+    const text=String(m.content||"").trim();
+    if(!text) continue;
+    if(m.role==="user"){
+      out.push({id:m.id,role:"user",content:text});
+    }else if(m.role==="assistant"){
+      out.push({id:m.id,role:"assistant",content:text,card:{final:text,substrate:"local"}});
+    }
+  }
+  return out;
+}
+function extractTurnPairs(msgs){
+  const pairs=[];
+  for(let i=0;i<msgs.length;i++){
+    if(msgs[i].role!=="user") continue;
+    const a=msgs[i+1];
+    if(a&&a.role==="assistant"){ pairs.push([msgs[i],a]); i++; }
+  }
+  return pairs;
+}
+async function archiveTurnTo8501(userMsg, asstMsg){
+  const archived=new Set(st.get("memArchivedIds",[]));
+  const key=Number(userMsg.id)||0;
+  if(key&&archived.has(key)) return true;
+  try{
+    const r=await fetch(`${storeBase()}/store/field/after_turn`,{
+      method:"POST", headers:storeHdrs(),
+      body:JSON.stringify({
+        instruction:userMsg.content,
+        draft:asstMsg.content,
+        task:"chat",
+        node_id:STORE_CHAT_NODE,
+        persona:"Lyra",
+        client:"b11-workbench",
+        auto_coach:false,
+      }),
+    });
+    if(!r.ok) return false;
+    if(key){ archived.add(key); st.set("memArchivedIds",[...archived].slice(-800)); }
+    return true;
+  }catch(e){
+    console.warn("[b11 memory]",e);
+    return false;
+  }
+}
+async function rollMemoryWindow(allMsgs){
+  const synced=await syncOverflowToMemory(allMsgs);
+  if(synced>0){
+    memSyncedTurns=(st.get("memArchivedIds",[])||[]).length;
+    updateMemHud(`+${synced}`);
+  }
+  return activeWindow(allMsgs);
+}
+async function fetchStoreAll(){
+  // 热库全量 + 冷库 archive 合并;UI/注入仍走活跃窗(6)——epoch 不硬删
+  const r=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(STORE_CHAT_NODE)}?limit=500`,
+    {headers:storeHdrs()});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const hot=await r.json();
+  let cold=[];
+  try{
+    const ar=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(STORE_CHAT_NODE)}/archive?limit=500`,
+      {headers:storeHdrs()});
+    if(ar.ok){
+      const j=await ar.json();
+      storeArchiveCount=Number(j.count||0)||0;
+      cold=Array.isArray(j.messages)?j.messages:[];
+    }
+  }catch(_){}
+  const byKey=new Map();
+  for(const m of [...cold, ...(Array.isArray(hot)?hot:[])]){
+    const k=`${m.role}|${m.ts}|${String(m.content||"").slice(0,64)}`;
+    byKey.set(k,m);
+  }
+  const rows=[...byKey.values()].sort((a,b)=>Number(a.ts||0)-Number(b.ts||0));
+  storeTotalCount=rows.length;
+  return mapStoreRows(rows);
+}
+async function refreshActiveWindowFromStore({render=false}={}){
+  const all=await fetchStoreAll();
+  history=activeWindow(all);
+  storeOnline=true;
+  updateStoreHud();
+  if(render&&!sendInFlight) renderHistory();
+  void syncOverflowToMemory(all).then(synced=>{
+    if(synced>0){
+      memSyncedTurns=(st.get("memArchivedIds",[])||[]).length;
+      updateMemHud(`+${synced}`);
+    }
+  });
+  return history;
+}
+let storeArchiveCount=0;
+function updateMemHud(note){
+  const el=$("#memHud"), cnt=$("#memCnt");
+  if(!cnt) return;
+  memSyncedTurns=(st.get("memArchivedIds",[])||[]).length;
+  const cold=storeArchiveCount||0;
+  cnt.textContent=cold?`${memSyncedTurns}/${cold}`:String(memSyncedTurns);
+  if(el) el.title="after_turn 同步 "+memSyncedTurns+" 轮 · 冷库 messages_archive "+cold+" 条(epoch 不硬删)"
+    +(note?(" · "+note):"");
+}
+function epochStartTs(){
+  const anchor=new Date(STORE_ANCHOR+"T00:00:00");
+  const today=new Date(); today.setHours(0,0,0,0);
+  const msDay=86400000;
+  const days=Math.floor((today-anchor)/msDay);
+  if(days<0) return anchor.getTime()/1000;
+  const idx=Math.floor(days/STORE_EPOCH_DAYS);
+  const start=new Date(anchor);
+  start.setDate(anchor.getDate()+idx*STORE_EPOCH_DAYS);
+  return start.getTime()/1000;
+}
+function epochLabel(){
+  return new Date(epochStartTs()*1000).toISOString().slice(0,10);
+}
+async function maybePurgeEpoch(){
+  const ep=epochLabel();
+  if(st.get("purgedEpoch")===ep) return;
+  try{
+    // 8501 现对 workbench-b11 执行 MOVE→messages_archive,禁止硬删正文
+    const r=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(STORE_CHAT_NODE)}/purge`,{
+      method:"POST",headers:storeHdrs(),body:JSON.stringify({before_ts:epochStartTs()}),
+    });
+    if(r.ok){
+      st.set("purgedEpoch",ep);
+      try{
+        const j=await r.json();
+        if(j&&j.mode) updateMemHud(j.mode==="archive"?`冷库+${j.moved_to_archive||0}`:"");
+      }catch(_){}
+    }
+  }catch(e){}
+}
+async function fetchArchiveCount(){
+  try{
+    const r=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(STORE_CHAT_NODE)}/archive?limit=1`,
+      {headers:storeHdrs()});
+    if(!r.ok) return 0;
+    const j=await r.json();
+    return Number(j.count||0)||0;
+  }catch(e){ return 0; }
+}
+function storePersistText(card){
+  const raw=card&&card.final!=null?String(card.final):"";
+  if(raw.trim()) return raw;
+  if(card&&card.truncated) return "（输出被 8501 预算截断;已保留上下文,可续问「继续」）";
+  return "（空响应）";
+}
+function updateStoreHud(){
+  const el=$("#storeHud"), cnt=$("#storeCnt");
+  if(!el||!cnt) return;
+  const n=history.length;
+  const turns=Math.ceil(n/2);
+  if(storeOnline){
+    el.classList.remove("bad");
+    cnt.textContent=turns?`${turns}/${ACTIVE_TURNS}`:"空";
+    el.title=`活跃 ${turns}/${ACTIVE_TURNS} 轮 · 8501 store 共 ${storeTotalCount} 条(未删 · EXPANDED 可读)`;
+  }else{
+    el.classList.add("bad");
+    cnt.textContent="离线";
+  }
+}
+async function pullStoreHistory(){
+  const gen=++storePullGen;
+  const histLenAtStart=history.length;
+  await maybePurgeEpoch();
+  storeArchiveCount=await fetchArchiveCount();
+  updateMemHud();
+  let all=[];
+  try{
+    all=await fetchStoreAll();
+    storeOnline=true;
+    history=activeWindow(all);
+  }catch(e){
+    storeOnline=false;
+    console.warn("[b11 store]",e);
+    warnStore("8501 store 读取失败: "+e.message+" — 对话仍在 store,网关恢复后自动重连");
+    updateStoreHud();
+    return;
+  }
+  if(gen!==storePullGen) return;
+  /* 仅发送中且本地 history 已追加时跳过 render；刷新后 store 拉取成功 histLen 必增，不能误 return */
+  if(sendInFlight&&history.length>histLenAtStart) return;
+  updateStoreHud();
+  updateMemHud();
+  const w=$("#sanwarn");
+  if(w&&/8501 store 读取失败/.test(w.textContent||"")){ w.style.display="none"; w.textContent=""; }
+  if(!sendInFlight) renderHistory();
+  void syncOverflowToMemory(all).then(synced=>{
+    if(synced>0){
+      memSyncedTurns=(st.get("memArchivedIds",[])||[]).length;
+      updateMemHud(`+${synced}`);
+    }
+  });
+}
+function startStoreReconnectPoll(){
+  setInterval(()=>{
+    if(storeOnline) return;
+    void pullStoreHistory();
+  },8000);
+  setInterval(()=>{
+    if(!cloudUses8501Mem(cloudLane)||cloudMemOnline) return;
+    void loadCloudMemory(cloudLane).then(()=>{ if(cloudMemOnline) renderCloudHistory(); });
+  },8000);
+}
+function currentSurface(){
+  if(topTab==="cloud") return cloudLane==="kimi_k25"?"cloud-kimi":"cloud-glm";
+  if(mode==="expanded") return "b11-expanded";
+  if(mode==="home") return "b11-home";
+  // SHADOW 等无独立生产发送面 — 不伪标 b11-studio(STUDIO=HOME/EXPANDED 容器,无第三条发送路径)
+  return "b11-home";
+}
+function tagSurface(msgs){
+  const s=currentSurface();
+  return (msgs||[]).map(m=>({...m,surface:m.surface||s}));
+}
+async function pushStoreMsgs(msgs){
+  const r=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(STORE_CHAT_NODE)}/messages`,
+    {method:"POST",headers:storeHdrs(),body:JSON.stringify(tagSurface(msgs))});
+  if(!r.ok) throw new Error("store HTTP "+r.status);
+  storeOnline=true;
+}
+function apiTurnContent(m){
+  const s=String(m.content||"");
+  if(m.role!=="assistant"||s.length<=3000) return s;
+  return s.slice(0,1400)+"\n\n[…历史助理输出已截断供 gateway …]\n\n"+s.slice(-1200);
+}
+function sanitizeApiMessages(msgs){
+  const out=[];
+  for(const m of msgs||[]){
+    const role=m.role;
+    if(role!=="user"&&role!=="assistant"&&role!=="system") continue;
+    if(role==="system"){ out.push({role,content:String(m.content||"")}); continue; }
+    const content=String(m.content||"").trim();
+    if(!content) continue;
+    out.push({role,content});
+  }
+  let i=0;
+  while(i<out.length&&out[i].role==="system") i++;
+  while(i<out.length&&out[i].role==="assistant") out.splice(i,1);
+  return out;
+}
+function slimForRetry(messages){
+  const m=sanitizeApiMessages(messages);
+  if(m.length<=6) return m;
+  let li=m.length-1;
+  while(li>=0&&m[li].role!=="user") li--;
+  if(li<0) return m.slice(-1);
+  let start=Math.max(0,li-5);
+  while(start<m.length&&m[start].role==="assistant") start++;
+  return m.slice(start,li+1);
+}
+function buildApiContext(extraUser){
+  const turns=history.slice(-ACTIVE_MSGS);
+  let total=0;
+  const out=[];
+  let trimmed=false;
+  for(let i=turns.length-1;i>=0;i--){
+    const c=apiTurnContent(turns[i]);
+    if(turns[i].role!=="system"&&!String(c||"").trim()) continue;
+    if(out.length&&total+c.length>API_CTX_MAX_CHARS){ trimmed=true; break; }
+    total+=c.length;
+    out.unshift({role:turns[i].role,content:c});
+  }
+  if(extraUser){
+    const ec=String(extraUser.content||"").trim();
+    if(ec){
+      while(out.length&&total+ec.length>API_CTX_MAX_CHARS){
+        const drop=out.shift();
+        trimmed=true;
+        total-=String(drop.content||"").length;
+      }
+      out.push({role:extraUser.role,content:ec});
+    }
+  }
+  return {messages:sanitizeApiMessages(out), trimmed};
+}
+function messagesForApi(){ return buildApiContext().messages; }
+function noteCtxTrim(trimmed){
+  if(!trimmed) return;
+  const w=$("#sanwarn");
+  if(!w) return;
+  w.style.display="block";
+  w.textContent=`⚠ 单轮上下文>${API_CTX_MAX_CHARS}字,已裁剪最旧活跃轮(仍保留${ACTIVE_TURNS}轮窗口)`;
+}
+async function fetchJsonWithTimeout(url, init, ms=CHAT_FETCH_MS){
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(), ms);
+  try{
+    const r=await fetch(url,{...init,signal:ctrl.signal});
+    if(!r.ok){
+      const detail=await r.text().catch(()=> "");
+      let msg="HTTP "+r.status;
+      try{
+        const j=JSON.parse(detail);
+        const d=j.detail||j.error||j;
+        msg+=": "+(typeof d==="string"?d:JSON.stringify(d)).slice(0,240);
+      }catch(_e){
+        if(detail) msg+=": "+detail.slice(0,240);
+      }
+      if(r.status===500){
+        msg+=" — gateway 内部错误(多为 LM Studio 超时/拒收)";
+      }
+      if(r.status===502||r.status===504){
+        msg+=" — 本地 9B substrate 未响应,可缩短对话后重试";
+      }
+      if(r.status===403){
+        msg+=" — grid verification 未过";
+        if(/keyholder signature|keyholder/i.test(msg)) msg+="(钥匙错误或过期 · 点 G R I D 重新保存 keyholder hex)";
+        else msg+="(需 GridKeyholder 钥匙 + trace seal)";
+      }
+      if(r.status===422&&/payload_hash|trace-seal|vl_gate/i.test(msg))
+        msg+=" — 验签/多模态格式问题,关 tab 重开后再试";
+      throw new Error(msg);
+    }
+    return await r.json();
+  }catch(e){
+    const msg=String(e&&e.message||e||"");
+    if(e&&e.name==="AbortError") throw new Error("请求超时("+Math.round(ms/1000)+"s) — 对话过长或 gateway 繁忙");
+    if(/load failed|failed to fetch|networkerror/i.test(msg))
+      throw new Error("8501 API 连不上 — 先本机 curl :8501/health；手机用 MagicDNS(.ts.net)勿用裸100.x；Serve 丢再跑 diagnose_tailscale_grid.sh");
+    throw e;
+  }finally{
+    clearTimeout(timer);
+  }
+}
+function scrollChatToBottom(){
+  const chat=$("#chat");
+  if(!chat) return;
+  chat.scrollTop=chat.scrollHeight;
+}
+function bubble(html,cls){const d=document.createElement("div");
+  d.className=cls;d.innerHTML=html;$("#chat").appendChild(d);
+  scrollChatToBottom();return d}
+function trimChatToActiveWindow(){
+  const chat=$("#chat");
+  if(!chat) return;
+  let nodes=chat.querySelectorAll(".msg");
+  while(nodes.length>ACTIVE_MSGS){
+    chat.removeChild(nodes[0]);
+    nodes=chat.querySelectorAll(".msg");
+  }
+  scrollChatToBottom();
+}
+function renderHistory(){
+  const chat=$("#chat"); if(!chat) return;
+  chat.innerHTML="";
+  for(const m of history){
+    if(m.role==="user"){
+      bubble(esc(m.content),"msg you");
+    }else if(m.role==="assistant"){
+      const card=m.card||{final:m.content,substrate:"local"};
+      if(!card.final) card.final=m.content||"";
+      const d=document.createElement("div");
+      d.className="msg";
+      d.innerHTML=finalCard(card);
+      chat.appendChild(d);
+    }
+  }
+  scrollChatToBottom();
+}
+function prepSendUi(){
+  const box=$("#box");
+  if(box) box.blur();
+}
+function clearComposer(){
+  const box=$("#box");
+  if(!box) return;
+  box.value="";
+  box.style.height="48px";
+}
+function warnStore(msg){
+  const w=$("#sanwarn");
+  if(!w) return;
+  w.style.display="block";
+  w.textContent="⚠ "+msg;
+}
+void pullStoreHistory();
+startStoreReconnectPoll();
+
+/* ---- Kimi K2.6 API 等价计费(本地 $0) ---- */
+function usageTokenCounts(u){
+  if(!u||typeof u!=="object") return {pin:0,pout:0};
+  const pin=u.prompt_tokens??u.prompt_eval_count??u.input_tokens??u.prompt??0;
+  const pout=u.completion_tokens??u.eval_count??u.output_tokens??u.completion??0;
+  return {pin:+pin||0,pout:+pout||0};
+}
+function cloudApiCostUsd(u,substrate){
+  if(!u) return null;
+  if(u.cost_usd!=null&&!Number.isNaN(+u.cost_usd)) return +u.cost_usd;
+  const {pin,pout}=usageTokenCounts(u);
+  if(pin<=0&&pout<=0) return null;
+  const sub=String(substrate||u.cost_model||u.substrate||u.backend_id||"");
+  if(sub.includes("glm")) return (pin*GLM52_IN_USD_M+pout*GLM52_OUT_USD_M)/1e6;
+  if(sub.includes("deepseek")||sub.includes("ds_v4")||sub==="deepseek_v4_cloud") return (pin*DEEPSEEK_V4_IN_USD_M+pout*DEEPSEEK_V4_OUT_USD_M)/1e6;
+  return (pin*KIMI_K26_IN_USD_M+pout*KIMI_K26_OUT_USD_M)/1e6;
+}
+function usageCostUsd(u){
+  if(!u) return null;
+  return cloudApiCostUsd(u,u.cost_model||u.substrate||u.backend_id);
+}
+function kimiApiCostUsd(u){return usageCostUsd(u);}
+function enrichUsage(u,{billable=false,substrate="local"}={}){
+  const out=normalizeUsage(typeof u==="object"&&u&&!u.usage?u:{usage:u})||{};
+  const sub=substrate||out.backend_id||out.substrate||"";
+  const isCloud=billable||/cloud/.test(sub)||out.backend_id==="glm52_cloud"||out.backend_id==="kimi_k25_cloud"||out.backend_id==="deepseek_v4_cloud"||out.ollama_cloud;
+  if(!isCloud){
+    out.billing="local";
+    out.cost_usd=0;
+    return Object.keys(out).length?out:null;
+  }
+  out.substrate=sub;
+  const cost=cloudApiCostUsd(out,sub);
+  if(cost!=null) out.cost_usd=cost;
+  out.billing="api";
+  if(sub.includes("glm")||out.cost_model==="glm-5.2") out.cost_model="glm-5.2";
+  else if(sub.includes("deepseek")||sub.includes("ds")) out.cost_model="deepseek-v4";
+  else out.cost_model="kimi-k2.6";
+  return Object.keys(out).length?out:null;
+}
+let cumulativeBillUsd=0;
+let cumulativeBillTok=0;
+let cloudBillUsd=0;
+let cloudBillTok=0;
+function loadBillEpoch(){
+  const ep=epochLabel();
+  if(st.get("billEpoch")!==ep){
+    st.set("billEpoch",ep);
+    st.set("billTotalUsd",0);
+    st.set("billTotalTok",0);
+    cumulativeBillUsd=0;
+    cumulativeBillTok=0;
+  }else{
+    cumulativeBillUsd=+st.get("billTotalUsd",0)||0;
+    cumulativeBillTok=+st.get("billTotalTok",0)||0;
+  }
+  if(st.get("cloudBillEpoch")!==ep){
+    st.set("cloudBillEpoch",ep);
+    st.set("cloudBillTotalUsd",0);
+    st.set("cloudBillTotalTok",0);
+    cloudBillUsd=0;
+    cloudBillTok=0;
+  }else{
+    cloudBillUsd=+st.get("cloudBillTotalUsd",0)||0;
+    cloudBillTok=+st.get("cloudBillTotalTok",0)||0;
+  }
+  renderBillHud();
+  renderCloudBillHud();
+}
+function accrueBill(u){
+  const cost=usageCostUsd(u);
+  const {pin,pout}=usageTokenCounts(u);
+  const tok=+(u?.total_tokens??0)||pin+pout;
+  if(cost==null||cost<=0) return;
+  cumulativeBillUsd=Math.round((cumulativeBillUsd+cost)*1e6)/1e6;
+  cumulativeBillTok+=tok;
+  st.set("billTotalUsd",cumulativeBillUsd);
+  st.set("billTotalTok",cumulativeBillTok);
+  st.set("billEpoch",epochLabel());
+  renderBillHud();
+}
+function accrueCloudBill(u){
+  const cost=usageCostUsd(u);
+  const {pin,pout}=usageTokenCounts(u);
+  const tok=+(u?.total_tokens??0)||pin+pout;
+  if(cost==null||cost<=0) return;
+  cloudBillUsd=Math.round((cloudBillUsd+cost)*1e6)/1e6;
+  cloudBillTok+=tok;
+  st.set("cloudBillTotalUsd",cloudBillUsd);
+  st.set("cloudBillTotalTok",cloudBillTok);
+  st.set("cloudBillEpoch",epochLabel());
+  renderCloudBillHud();
+}
+function renderBillHud(){
+  const hud=$("#billHud"), tokEl=$("#billTok"), costEl=$("#billCost");
+  if(!hud) return;
+  if(tokEl) tokEl.textContent=String(cumulativeBillTok);
+  if(costEl) costEl.textContent=cumulativeBillUsd.toFixed(3);
+  const show=mode==="expanded"||cumulativeBillUsd>0;
+  hud.hidden=!show;
+  if(show) hud.title="STUDIO API 累计 · epoch "+epochLabel();
+}
+function renderCloudBillHud(){
+  const hud=$("#cloudBillHud"), tokEl=$("#cloudBillTok"), costEl=$("#cloudBillCost");
+  if(!hud) return;
+  if(tokEl) tokEl.textContent=String(cloudBillTok);
+  if(costEl) costEl.textContent=cloudBillUsd.toFixed(3);
+  hud.title="Cloud API 累计 · epoch "+epochLabel()+" · "+(CLOUD_LANES[cloudLane]?.label||cloudLane);
+}
+function fmtUsage(u,{local=false}={}){
+  if(!u) return "";
+  const {pin,pout}=usageTokenCounts(u);
+  const tot=u.total_tokens??((pin||pout)?pin+pout:0);
+  const cost=local||u.billing==="local"?0:(usageCostUsd(u)??0);
+  if(tot<=0&&cost<=0) return "";
+  return tot>0?`${tot} tok · 费用 $${local?"0.000":cost.toFixed(3)}`:`费用 $${local?"0.000":cost.toFixed(3)}`;
+}
+loadBillEpoch();
+let lastFinalBare=false;
+function normalizeUsage(j){
+  if(!j||typeof j!=="object") return null;
+  const meta=j.grid_meta||{};
+  const u=j.usage||meta.token_counts||meta.substrate_usage||j.substrate_usage||null;
+  const cost=j.cost_usd??meta.cost_usd??u?.cost_usd??null;
+  const budget=meta.budget_route??j.budget_route??u?.budget??null;
+  if(!u&&!cost&&budget==null) return null;
+  const out={...(typeof u==="object"?u:{})};
+  if(out.prompt_tokens==null&&out.prompt==null&&meta.token_counts){
+    out.prompt_tokens=meta.token_counts.prompt_tokens;
+    out.completion_tokens=meta.token_counts.completion_tokens;
+    out.total_tokens=meta.token_counts.total_tokens;
+  }
+  if(cost!=null) out.cost_usd=cost;
+  if(budget!=null) out.budget=budget;
+  if(out.prompt_tokens==null&&out.completion_tokens==null&&out.total_tokens==null
+     &&out.latency_ms==null&&out.cost_usd==null) return null;
+  return out;
+}
+function slimForTimeout(messages){
+  const m=sanitizeApiMessages(messages);
+  let li=m.length-1;
+  while(li>=0&&m[li].role!=="user") li--;
+  if(li<0) return m.slice(-2);
+  return m.slice(Math.max(0,li-2),li+1);
+}
+async function homeChat(messages, onWait, attempt=0, opts={}){
+  rejectInvalidGateway(cfg.gw);
+  const t0=Date.now();
+  let waitIv=null;
+  if(onWait) waitIv=setInterval(()=>onWait(Date.now()-t0), 1000);
+  const payload=sanitizeApiMessages(messages);
+  if(!payload.some(m=>m.role==="user"&&String(m.content||"").trim()))
+    throw new Error("8501 gateway 不可用: 无有效 user 消息(历史格式异常)");
+  const maxTok=opts.maxTokens??HOME_MAX_TOKENS;
+  try{
+    const chatBody={model:cfg.local,messages:payload,stream:false,max_tokens:maxTok,surface:currentSurface()};
+    const postBody=useWorkbenchGatewayProxy()?chatBody:await attachAsterVerification(chatBody);
+    const j=await fetchJsonWithTimeout(chatCompletionsUrl(),{
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(postBody)});
+    if(!j||!Array.isArray(j.choices))
+      throw new Error("8501 gateway 响应无效(非 chat.completion)");
+    lastFinalBare=false;
+    const choice=j.choices?.[0]||{};
+    const meta=j.grid_meta||{};
+    const finish=choice.finish_reason||meta.finish_reason||"";
+    const truncated=!!(j.truncated||meta.truncated||finish==="length");
+    const text=stripThink(choice.message?.content);
+    return {text,usage:enrichUsage(j,{substrate:"local"}),ms:Date.now()-t0,finish,truncated,
+      route_id:j.route_id||meta.route_id||j.id, grid_meta:meta, served_by:j.served_by};
+  }catch(e){
+    const msg=String(e&&e.message||e||"");
+    if(isVerificationError(msg)) throw e;
+    const noUser=/No user query|no_user_query|无有效 user/i.test(msg);
+    const timedOut=/请求超时|AbortError|upstream_timeout|504/i.test(msg);
+    const retryable=!noUser&&/HTTP 500|HTTP 502|HTTP 503|HTTP 504|请求超时|substrate 未响应/i.test(msg);
+    if(retryable&&attempt===0){
+      if(timedOut){
+        return homeChat(slimForTimeout(payload), onWait, 1, {maxTokens:1024});
+      }
+      if(payload.length>2){
+        return homeChat(slimForRetry(payload), onWait, 1, {maxTokens:maxTok});
+      }
+    }
+    throw new Error("8501 gateway 不可用: "+msg);
+  }finally{
+    if(waitIv) clearInterval(waitIv);
+  }
+}
+async function candidateCall(prompt){
+  const kimiUrl=assert8501ApiUrl(cfg.kimiUrl,"candidate 端点");
+  const body={backend_id:"glm52_cloud",prompt:capCandidatePrompt(prompt),task_label:"grid_expanded"};
+  const t0=Date.now();
+  const r=await fetch(kimiUrl,{method:"POST",
+    headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!r.ok){
+    const detail=await r.text().catch(()=> "");
+    let msg="HTTP "+r.status;
+    try{
+      const j=JSON.parse(detail);
+      const d=j.error?.reason||j.detail||j.error;
+      if(d) msg+=": "+(typeof d==="string"?d:JSON.stringify(d)).slice(0,220);
+    }catch(_e){
+      if(detail) msg+=": "+detail.slice(0,220);
+    }
+    throw new Error("candidate "+msg+" @ "+kimiUrl);
+  }
+  const j=await r.json();
+  return {text:stripThink(j.content ?? j.text ?? j.result ?? j.message?.content ?? ""),
+    usage:enrichUsage(normalizeUsage(j)||j.usage||j.substrate_usage,{billable:true,substrate:"glm52_cloud"}),
+    ms:Date.now()-t0};
+}
+
+/* ---- EXPANDED:出门内容裁剪(第4条:必要上下文,非全量历史) ---- */
+const RULE_LINE="你是 Grid 的扩展 substrate:只完成当前任务;不声称 Grid 权限;不臆造记忆;数据不足时明说不足。";
+function scopedContext(){
+  return history.slice(-ACTIVE_MSGS).map(m=>
+    `${m.role==="user"?"用户":"Grid"}: ${apiTurnContent(m).slice(0,400)}`).join("\n");
+}
+
+/* ---- EXPANDED 编排:首选服务端,失败走前端过渡链 ---- */
+async function expandedOrchestrate(q,onStage){
+  const p=picked();
+  const imgs=p.filter(a=>a.kind==="image").map(a=>({mime:a.mime,base64:a.dataUrl.split(",")[1]}));
+  const texts=p.filter(a=>a.kind==="text").map(a=>`【素材 ${a.name}】\n${a.text}`).join("\n\n");
+  const heavy=p.filter(a=>a.serverOnly);
+  const t0=Date.now();
+  /* 路径A:8501 服务端编排(意图编译/记忆选择/预处理/动态预算都在家里) */
+  try{
+    const expUrl=useWorkbenchGatewayProxy()
+      ? workbenchGatewayUrl("task/expanded")
+      : assert8501ApiUrl(cfg.exp,"编排端点");
+    const body={task:q,memory_node:STORE_CHAT_NODE,
+      assets:[...imgs.map((i,k)=>({name:"img"+k,kind:"image",...i})),
+              ...p.filter(a=>a.kind==="text").map(a=>({name:a.name,kind:"text",text:a.text})),
+              ...heavy.map(a=>({name:a.name,kind:a.kind,mime:a.mime,base64:a.base64}))],
+      client_context:scopedContext()};
+    const postBody=useWorkbenchGatewayProxy()?body:await attachExpandedVerification(body,q);
+    const r=await fetch(expUrl,{method:"POST",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify(postBody)});
+    if(r.status===404||r.status===501){
+      let hostOk=false;
+      try{ hostOk=!WORKBENCH_UI_PORTS.has(new URL(expUrl,location.href).port); }catch(_e){}
+      if(hostOk) throw {interim:true};
+      throw new Error("expanded HTTP "+r.status+" @ "+expUrl);
+    }
+    if(!r.ok) throw new Error("expanded HTTP "+r.status+" @ "+expUrl);
+    const j=await r.json();
+    return {final:stripThink(j.final??j.content??""),
+      substrate:j.substrate||"glm52_cloud",orch:"8501",
+      candidate:j.provenance?.candidate||"(服务端未回传)",
+      env:j.provenance?.envelope_summary||"",ms:Date.now()-t0,
+      usage:enrichUsage(normalizeUsage(j)||j.usage,{billable:j.substrate!=="local",substrate:j.substrate||"glm52_cloud"})};
+  }catch(e){
+    const errMsg=String(e&&e.message||e||"");
+    if(isVerificationError(errMsg)) throw e;
+    if(/expanded HTTP (403|422)/i.test(errMsg)) throw e;
+    /* 路径B:前端过渡链 —— candidate → aster 校验接纳 → 单一 final
+       (服务端端点部署后自动弃用;heavy 素材此路不支持,诚实报出) */
+    onStage&&onStage("过渡链:substrate 感知中…");
+    const skipped=heavy.length?`\n(注:${heavy.map(a=>a.name).join("、")} 需 8501 编排端点的本地预处理,本次未随行)`:"";
+    const prompt=capCandidatePrompt(`${RULE_LINE}\n\n[近程上下文]\n${scopedContext()}\n\n${texts?texts+"\n\n":""}[当前任务]\n${q}`);
+    const candRes=await candidateCall(prompt);
+    const cand=candRes.text||"";
+    if(!cand) throw new Error("substrate 返回为空");
+    onStage&&onStage("Grid 校验接纳中…");
+    const finRes=await homeChat([...messagesForApi(),{role:"user",
+      content:`扩展 substrate 对以下任务的输出已到。以 Grid 法则校验:内容可靠则接纳并按需修正表述;发现错误、越权或臆造则纠正之。直接输出最终回答,不评论流程。\n\n[任务]\n${q}\n\n[substrate 输出]\n${cand}`}]);
+    const usage=enrichUsage({usage:candRes.usage,substrate_usage:candRes.usage,cost_usd:candRes.usage?.cost_usd},
+      {billable:true,substrate:"glm52_cloud"})||candRes.usage||null;
+    return {final:(finRes.text||"")+skipped,substrate:"glm52_cloud",orch:"client-interim",
+      candidate:candRes.text,env:`近${ACTIVE_TURNS}轮活跃窗口 + ${imgs.length}图 + ${texts?"文本素材":"无文本"} + 法则1行`,
+      ms:Date.now()-t0,usage,truncated:!!finRes.truncated};
+  }
+}
+
+/* ---- 渲染:单一 GRID·FINAL + provenance ---- */
+function finalCard(r){
+  const sub=r.substrate==="local"||String(r.substrate||"").startsWith("local")
+    ?(lastFinalBare?'<span class="tag bad">bare·无协议栈</span>':'<span class="tag local">substrate: local</span>')
+    :'<span class="tag cloud">substrate: '+(String(r.substrate||"").includes("glm")?"glm52_cloud":"cloud")+'</span>';
+  const truncTag=r.truncated?'<span class="tag warn">truncated · 8501 budget</span>':"";
+  const bodyText=(r.final!=null&&String(r.final).length)?String(r.final)
+    :(r.truncated?"（输出被 8501 预算截断;已保留上下文,可续问「继续」）":"（空响应）");
+  const isLocal=r.substrate==="local"||String(r.substrate||"").startsWith("local");
+  const usageTxt=fmtUsage(r.usage,{local:isLocal});
+  const usageLine=usageTxt?`<div class="usage-line">${esc(usageTxt)}</div>`:"";
+  const prov=r.candidate!=null?`<details class="prov"><summary>substrate candidate</summary>
+    <div class="pv">${esc(r.candidate||"—")}</div></details>`:"";
+  return `<div class="card final"><div class="chead">GRID · FINAL ${sub}${truncTag}</div>${esc(bodyText)}${usageLine}${prov}`;
+}
+async function persistUserToStore(userText){
+  /** 调模型前落库用户轮(+[文件]) — 与 Cloud 同型 */
+  const fileNotes=(picked()||[]).filter(a=>a&&a.name&&a.kind&&a.kind!=="text")
+    .map(a=>`[文件] ${a.name}${a.path?(" "+a.path):""}`);
+  const msgs=[];
+  for(const note of fileNotes) msgs.push({role:"system",content:note});
+  msgs.push({role:"user",content:userText});
+  await pushStoreMsgs(msgs);
+}
+async function persistAssistantToStore(assistantCard){
+  const finalText=storePersistText(assistantCard);
+  assistantCard.final=finalText;
+  await pushStoreMsgs([{role:"assistant",content:finalText}]);
+  await refreshActiveWindowFromStore({render:false});
+  if(assistantCard.usage&&assistantCard.usage.billing==="api") accrueBill(assistantCard.usage);
+}
+async function persistTurnToStore(userText, assistantCard){
+  /** 兼容旧调用:拆成 user→assistant(新路径已分步) */
+  try{
+    await persistUserToStore(userText);
+    await persistAssistantToStore(assistantCard);
+  }catch(e){
+    storeOnline=false;
+    updateStoreHud();
+    const w=$("#sanwarn");
+    if(w){w.style.display="block";w.textContent="⚠ 8501 store/记忆同步失败:"+e.message;}
+    throw e;
+  }
+}
+function pushTurn(userText, assistantCard){
+  const finalText=storePersistText(assistantCard);
+  assistantCard.final=finalText;
+  history.push({role:"user",content:userText});
+  history.push({role:"assistant",content:finalText,card:assistantCard});
+  void (async()=>{
+    try{
+      await persistUserToStore(userText);
+      await persistAssistantToStore(assistantCard);
+      if(!sendInFlight) renderHistory();
+    }catch(_e){}
+  })();
+  updateStoreHud();
+}
+
+/* ---- 发送 ---- */
+let sendInFlight=false;
+function setSendBusy(busy){
+  sendInFlight=busy;
+  const btn=$("#send");
+  if(btn){
+    btn.classList.toggle("busy",busy);
+    btn.setAttribute("aria-busy",busy?"true":"false");
+  }
+}
+async function send(){
+  if(sendInFlight) return;
+  applyResolvedEndpoints();
+  const text=$("#box").value.trim();
+  if(!text&&!picked().length) return;
+  if(SAN.test(text)||picked().some(a=>a.text&&SAN.test(a.text))){
+    $("#sanwarn").style.display="block";
+    $("#sanwarn").textContent="⛔ 脱敏器拦截:检测到本地路径或密钥形态,已阻止发送。";
+    return;
+  }
+  $("#sanwarn").style.display="none";
+  const q=text;
+  prepSendUi();
+  clearComposer();
+  setSendBusy(true);
+  try{
+    if(mode==="home"||mode==="expanded") await ensureActiveWindowBeforeSend();
+    if(mode==="home"){
+      const texts=picked().filter(a=>a.kind==="text").map(a=>`【素材 ${a.name}】\n${a.text}`).join("\n\n");
+      history.push({role:"user",content:q});
+      updateStoreHud();
+      const f=await senseField();
+      setFieldLight(f);
+      const fieldPrefix=fieldLine(f);
+      const attachedField=!!fieldPrefix;
+      bubble(esc(text)+(picked().length?`<div style="font:10px var(--mono);color:var(--an);margin-top:4px">+${picked().length} 素材</div>`:"")+
+        (attachedField?`<div class="meta">·场感知已附(仅本地)</div>`:""),"msg you");
+      const m={role:"user",content:fieldPrefix+(texts?texts+"\n\n":"")+q};
+      const ctx=buildApiContext();
+      const msgs=ctx.messages.slice();
+      if(msgs.length&&msgs[msgs.length-1].role==="user") msgs[msgs.length-1]=m;
+      else msgs.push(m);
+      noteCtxTrim(ctx.trimmed);
+      const holder=bubble(`<div class="card final"><div class="chead">GRID ·…</div></div>`,"msg");
+      const headEl=holder.querySelector(".chead");
+      let userStored=false;
+      try{
+        await persistUserToStore(q);
+        userStored=true;
+        const res=await homeChat(msgs, ms=>{
+          if(headEl) headEl.textContent="GRID · 等待 "+Math.round(ms/1000)+"s…";
+        });
+        const card={final:res.text,substrate:"local",usage:res.usage,ms:res.ms,truncated:res.truncated};
+        history.push({role:"assistant",content:storePersistText(card),card});
+        holder.innerHTML=finalCard(card);
+        scrollChatToBottom();
+        try{
+          await persistAssistantToStore(card);
+          trimChatToActiveWindow();
+          updateMemHud();
+        }catch(storeErr){
+          warnStore("回复已显示; assistant 落库失败: "+storeErr.message);
+        }
+      }catch(e){
+        const errText=userStored?("失败:"+e.message+" · 用户轮已落库"):("失败:"+e.message);
+        const card={final:errText,substrate:"local",err:true};
+        history.push({role:"assistant",content:errText,card});
+        holder.innerHTML=`<div class="card err">${esc(errText)}</div>`;
+        updateStoreHud();
+      }
+    }else if(mode==="expanded"){
+      history.push({role:"user",content:q});
+      updateStoreHud();
+      bubble(esc(text)+(picked().length?`<div style="font:10px var(--mono);color:var(--an);margin-top:4px">+${picked().length} 素材</div>`:""),"msg you");
+      const holder=bubble(`<div class="card final"><div class="chead">GRID · EXPANDED ·…</div></div>`,"msg");
+      const headEl=holder.querySelector(".chead");
+      let userStored=false;
+      try{
+        await persistUserToStore(q);
+        userStored=true;
+        const r=await expandedOrchestrate(q,stage=>{if(headEl) headEl.textContent="GRID · "+stage});
+        const card={...r,final:r.final||""};
+        history.push({role:"assistant",content:storePersistText(card),card});
+        holder.outerHTML=`<div class="msg">${finalCard(card)}</div>`;
+        scrollChatToBottom();
+        try{
+          await persistAssistantToStore(card);
+          trimChatToActiveWindow();
+          updateMemHud();
+        }catch(storeErr){
+          warnStore("回复已显示; assistant 落库失败: "+storeErr.message);
+        }
+      }catch(e){
+        const errText=userStored?("EXPANDED 失败:"+e.message+" · 用户轮已落库"):("EXPANDED 失败:"+e.message);
+        const card={final:errText,substrate:"local",err:true};
+        history.push({role:"assistant",content:errText,card});
+        holder.innerHTML=`<div class="card err">${esc(errText)}
+          <div style="margin-top:8px"><button id="rth">返航 HOME</button></div></div>`;
+        holder.querySelector("#rth").onclick=()=>$$("#modebar button")[0].click();
+        updateStoreHud();
+      }
+    }else if(mode==="shadow"){
+      bubble(esc(text)+(picked().length?`<div style="font:10px var(--mono);color:var(--an);margin-top:4px">+${picked().length} 素材</div>`:""),"msg you");
+      const wrap=bubble(`<div class="shadowgrid">
+        <div class="card final"><div class="chead">本地(测试)</div><span class="sl">…</span></div>
+        <div class="card" style="border-left:2px solid rgba(224,180,83,.5)"><div class="chead" style="color:var(--cloud)">底座(测试·不入档)</div><span class="sr">…</span></div>
+        </div>`,"msg");
+      homeChat([{role:"user",content:q}]).then(res=>wrap.querySelector(".sl").textContent=res.text)
+        .catch(e=>wrap.querySelector(".sl").textContent="失败:"+e.message);
+      candidateCall(RULE_LINE+"\n\n[当前任务]\n"+q)
+        .then(res=>wrap.querySelector(".sr").textContent=res.text)
+        .catch(e=>wrap.querySelector(".sr").textContent="失败:"+e.message);
+    }
+  }finally{
+    setSendBusy(false);
+  }
+}
+$("#send").onclick=send;
+$("#box").addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}});
+
+/* ---- Grid Voice(8501 grid_voice.js · 与 grid app 同链路) ---- */
+function gwV1(){return normalizeGwUrl(cfg.gw).replace(/\/+$/,"")}
+function loadScriptOnce(src){
+  return new Promise((resolve,reject)=>{
+    if(document.querySelector(`script[src="${src}"]`)){resolve();return;}
+    const s=document.createElement("script");
+    s.src=src;s.onload=()=>resolve();s.onerror=()=>reject(new Error("script:"+src));
+    document.head.appendChild(s);
+  });
+}
+async function ensureVoiceScripts(){
+  const ver=PAGE_VER;
+  if(typeof GridVoice!=="undefined"&&window.__GRID_VOICE_JS_VER===ver) return;
+  document.querySelectorAll('script[src*="grid_voice.js"]').forEach(el=>el.remove());
+  try{delete window.GridVoice;}catch(_e){window.GridVoice=undefined;}
+  const base=storeBase();
+  await loadScriptOnce(base+"/app/grid_voice.js?v="+encodeURIComponent(ver));
+  window.__GRID_VOICE_JS_VER=ver;
+}
+
+let voice=null;
+let voicePendingUser="";
+const micBtn=$("#mic");
+const bargeBtn=$("#voiceBarge");
+const vst=$("#vst");
+const vas=$("#vas");
+const vdeg=$("#vdeg");
+
+function voiceHistory(){
+  return history.slice(-24).map(m=>({role:m.role,content:m.content||""}));
+}
+
+function voiceOnAssistant(text,meta){
+  const cleaned=stripThink(String(text||"")).trim();
+  if(!cleaned) return;
+  const card={final:cleaned,substrate:"local"};
+  if(meta&&meta.interrupt){
+    for(let i=history.length-1;i>=0;i--){
+      if(history[i].role==="assistant"){
+        history[i].content=cleaned;
+        history[i].card=card;
+        break;
+      }
+    }
+  }else{
+    history.push({role:"assistant",content:cleaned,card});
+    pushStoreMsgs([{role:"assistant",content:cleaned}]).catch(()=>{});
+  }
+  updateStoreHud();
+  if(!sendInFlight) renderHistory();
+}
+
+async function toggleVoice(){
+  if(mode==="shadow"){
+    vst.textContent="SHADOW 模式不用语音";
+    return;
+  }
+  try{
+    await ensureVoiceScripts();
+  }catch(e){
+    vst.textContent="voice js 加载失败";
+    return;
+  }
+  if(!voice){
+    voice=new GridVoice({
+      gwV1:gwV1(),
+      getHistory:voiceHistory,
+      onTurnState(s){
+        bargeBtn.classList.toggle("on",s==="speaking");
+        vst.textContent=s||"";
+        micBtn.classList.toggle("on",s!=="idle");
+      },
+      onAudioSession(line){vas.textContent=line||"";},
+      onDegrade(msg){if(msg)vdeg.textContent=msg;},
+      onAsr(text){
+        if(!text) return;
+        voicePendingUser=text;
+        vst.textContent="asr · "+text.slice(0,80);
+        history.push({role:"user",content:text});
+        pushStoreMsgs([{role:"user",content:text}]).catch(()=>{});
+        updateStoreHud();
+        if(!sendInFlight) renderHistory();
+      },
+      onSubtitle(t){if(t&&voice&&voice.turnState==="thinking")vst.textContent=t.slice(0,120);},
+      onTtsStart(msg){
+        vst.textContent="tts:"+(msg.engine||"speechSynthesis")+" · "+(msg.text||"").slice(0,60);
+      },
+      onAssistant:voiceOnAssistant,
+      onError(msg){vst.textContent=msg||"voice error";},
+    });
+  }
+  try{
+    const on=await voice.toggle();
+    micBtn.classList.toggle("on",on);
+    vst.textContent=on?"listening":"";
+    if(!on){vas.textContent="";vdeg.textContent="";voicePendingUser="";}
+    else if(typeof gridVoiceAudioSessionStatus==="function") vas.textContent=gridVoiceAudioSessionStatus();
+  }catch(e){
+    vst.textContent="mic: "+(e.message||e);
+    micBtn.classList.remove("on");
+  }
+}
+micBtn.onclick=toggleVoice;
+if(bargeBtn){
+  const doBarge=()=>{if(voice) voice.interrupt();};
+  bargeBtn.addEventListener("pointerdown",doBarge);
+  bargeBtn.addEventListener("click",doBarge);
+}
+
+/* ---- CC CLI · 8501 /task + /task/candidate 一键切换 ---- */
+const CC_CLI_MODELS={sonnet:"claude-sonnet-4-6",fable:"claude-fable-5"};
+const CC_LANE_LABELS={sonnet:"Sonnet 4.6",fable:"Fable 5",kimi:"GLM 5.2 · Ollama"};
+let ccLane=st.get("ccLane","sonnet");
+function syncCcLaneUi(){
+  $$("#ccModebar button").forEach(b=>b.classList.toggle("on",b.dataset.cc===ccLane));
+  const tag=$("#ccLaneTag");
+  if(tag) tag.textContent=CC_LANE_LABELS[ccLane]||ccLane;
+}
+$$("#ccModebar button").forEach(b=>b.onclick=()=>{
+  ccLane=b.dataset.cc||"sonnet";
+  st.set("ccLane",ccLane);
+  syncCcLaneUi();
+});
+syncCcLaneUi();
+function ccAppend(text){
+  const el=$("#term");
+  if(!el) return;
+  el.textContent+=(el.textContent?"\n":"")+String(text);
+  el.scrollTop=el.scrollHeight;
+}
+async function runCcTask(){
+  const prompt=($("#ccBox")?.value||"").trim();
+  if(!prompt){ccAppend("ERR: prompt 为空");return;}
+  const runBtn=$("#ccRun");
+  if(runBtn) runBtn.disabled=true;
+  ccAppend(`\n▶ ${CC_LANE_LABELS[ccLane]||ccLane} · ${prompt.slice(0,120)}${prompt.length>120?"…":""}`);
+  try{
+    let j, text="";
+    if(ccLane==="kimi"){
+      const r=await fetch(cfg.kimiUrl,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          backend_id:"glm52_cloud",
+          prompt,
+          task_label:"grid_b11_cc",
+          model:cfg.glmModel||"glm-5.2:cloud",
+        })});
+      j=await r.json().catch(()=>({}));
+      if(!r.ok){
+        const err=j.error||j.done_reason||j.detail||`HTTP ${r.status}`;
+        throw new Error(typeof err==="object"?JSON.stringify(err):String(err));
+      }
+      text=j.content||j.text||j.candidate||"";
+      if(!text) text=JSON.stringify(j,null,2);
+      const u=j.usage||j.substrate_usage||{};
+      if(u.prompt_tokens!=null||u.completion_tokens!=null){
+        ccAppend(`usage: in=${u.prompt_tokens??"?"} out=${u.completion_tokens??"?"} · ${cfg.glmModel||"glm-5.2:cloud"}`);
+      }
+    }else{
+      const cliModel=CC_CLI_MODELS[ccLane]||CC_CLI_MODELS.sonnet;
+      const r=await fetch(`${storeBase()}/task`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({backend_id:"cc_cli",cli_model:cliModel,prompt,max_tokens:4096})});
+      j=await r.json().catch(()=>({}));
+      if(!r.ok){
+        const err=(j.error&&j.error.reason)||j.error||j.detail||`HTTP ${r.status}`;
+        throw new Error(typeof err==="object"?JSON.stringify(err):String(err));
+      }
+      text=j.text||"";
+      if(!text&&j.cc_cli) text=JSON.stringify(j.cc_cli,null,2);
+      if(!text) text=JSON.stringify(j,null,2);
+      const u=j.substrate_usage||{};
+      if(u.cost_usd!=null||u.duration_ms!=null){
+        ccAppend(`usage: $${Number(u.cost_usd||0).toFixed(3)} · ${u.duration_ms??"?"}ms · ${cliModel}`);
+      }
+    }
+    ccAppend(text);
+  }catch(e){
+    ccAppend(`ERR: ${e.message||e}`);
+  }finally{
+    if(runBtn) runBtn.disabled=false;
+  }
+}
+$("#ccRun")?.addEventListener("click",runCcTask);
+$("#ccBox")?.addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)){e.preventDefault();runCcTask();}
+});
+
+/* ---- Cloud tab · b11 UI · 8501 /task/cloud_chat + store cloud-* (≠ workbench-b11) ---- */
+const cloudHistories={};
+const cloudStoreCache={};
+const cloudStoreTotals={};
+let cloudMemOnline=true;
+let cloudAssets=[];
+function cloudPicked(){return cloudAssets.filter(a=>a.picked&&a.sendable);}
+function cloudTextExt(name){return /\.(txt|md|csv|json|html|htm|xml|log|py|js|ts|yaml|yml|toml|rst)$/i.test(name||"");}
+function cloudAssetsPayload(picked){
+  return picked.map(a=>{
+    if(a.kind==="image") return {name:a.name,kind:"image",mime:a.mime||"image/jpeg",base64:(a.dataUrl||"").split(",")[1]};
+    if(a.kind==="text") return {name:a.name,kind:"text",text:a.text};
+    if(a.kind==="pdf"||a.kind==="audio"||a.kind==="video")
+      return {name:a.name,kind:a.kind,mime:a.mime,base64:a.base64};
+    return null;
+  }).filter(Boolean);
+}
+function renderCloudTray(){
+  const t=$("#cloudTray"); if(!t) return;
+  t.innerHTML="";
+  for(const a of cloudAssets){
+    const note=a.kind==="image"?" · EXIF已剥":
+      a.kind==="pdf"||a.kind==="audio"||a.kind==="video"?" · 8515本地预处理":
+      a.kind==="unsupported"?" · 暂不支持此格式":
+      a.kind==="oversize"?" · 超25MB不发":"";
+    const d=document.createElement("div"); d.className="asset";
+    d.innerHTML=(a.kind==="image"?`<img src="${a.dataUrl}">`:"")+
+      `<label><input type="checkbox" class="pick" ${a.picked?"checked":""} ${a.sendable?"":"disabled"}>${esc(a.name)}</label>
+       <div class="meta">${a.kind} · ${(a.size/1024).toFixed(0)}KB${note}</div>
+       <button class="rm">×</button>`;
+    d.querySelector(".pick")?.addEventListener("change",ev=>{a.picked=ev.target.checked;renderCloudTray();});
+    d.querySelector(".rm").onclick=()=>{cloudAssets=cloudAssets.filter(x=>x.id!==a.id);renderCloudTray();};
+    t.appendChild(d);
+  }
+  const man=$("#cloudManifest");
+  if(man){
+    const p=cloudPicked();
+    const glmVl=cloudLane==="glm52"&&p.some(a=>a.kind==="image")?" · GLM经Kimi识图":"";
+    const heavy=p.some(a=>a.kind==="pdf"||a.kind==="audio"||a.kind==="video")?" · 含PDF/音视频":"";
+    man.textContent="发送清单:"+(p.length?p.map(a=>a.name).join(" · "):"空(仅文字)")+glmVl+heavy;
+  }
+}
+async function ingestCloudFiles(fileList){
+  for(const f of fileList){
+    const id=Date.now()+"_"+Math.random().toString(36).slice(2,6);
+    if(f.size>25*1048576){cloudAssets.push({id,name:f.name,kind:"oversize",size:f.size,sendable:false,picked:false});continue;}
+    if(f.type.startsWith("image/")){
+      const dataUrl=await stripExif(f);
+      cloudAssets.push({id,name:f.name,kind:"image",mime:"image/jpeg",size:f.size,dataUrl,sendable:true,picked:true});
+    }else if(f.type.startsWith("text/")||cloudTextExt(f.name)){
+      const text=await f.text();
+      cloudAssets.push({id,name:f.name,kind:"text",size:f.size,text:text.slice(0,20000),sendable:true,picked:true});
+    }else if(/\.pdf$/i.test(f.name)||f.type==="application/pdf"){
+      const b64=await new Promise(r=>{const fr=new FileReader();
+        fr.onload=()=>r(fr.result.split(",")[1]);fr.readAsDataURL(f)});
+      cloudAssets.push({id,name:f.name,kind:"pdf",mime:f.type||"application/pdf",size:f.size,base64:b64,sendable:true,picked:true});
+    }else if(f.type.startsWith("audio/")){
+      const b64=await new Promise(r=>{const fr=new FileReader();
+        fr.onload=()=>r(fr.result.split(",")[1]);fr.readAsDataURL(f)});
+      cloudAssets.push({id,name:f.name,kind:"audio",mime:f.type,size:f.size,base64:b64,sendable:true,picked:true});
+    }else if(f.type.startsWith("video/")){
+      const b64=await new Promise(r=>{const fr=new FileReader();
+        fr.onload=()=>r(fr.result.split(",")[1]);fr.readAsDataURL(f)});
+      cloudAssets.push({id,name:f.name,kind:"video",mime:f.type,size:f.size,base64:b64,sendable:true,picked:true});
+    }else{
+      cloudAssets.push({id,name:f.name,kind:"unsupported",size:f.size,sendable:false,picked:false});
+    }
+  }
+  renderCloudTray();
+}
+$("#cloudAddFile")?.addEventListener("click",()=>$("#cloudFileIn")?.click());
+$("#cloudAddBtn")?.addEventListener("click",()=>$("#cloudFileIn")?.click());
+$("#cloudFileIn")?.addEventListener("change",async e=>{
+  await ingestCloudFiles(e.target.files||[]);
+  e.target.value="";
+});
+
+function saveLocalCloudHist(lane){
+  cloudHistories[lane]=getCloudHist(lane).slice(-CLOUD_ACTIVE_MSGS);
+  st.set(cloudLocalHistKey(lane),cloudHistories[lane]);
+}
+function loadCloudMemoryLocal(lane){
+  if(!cloudHistories[lane]) cloudHistories[lane]=st.get(cloudLocalHistKey(lane),[]);
+  cloudMemOnline=true;
+  updateCloudMemHud();
+  return cloudHistories[lane];
+}
+async function persistCloudTurnLocal(lane,userText,res){
+  const hist=getCloudHist(lane);
+  hist.push({role:"assistant",content:res.text,model:res.model,usage:res.usage});
+  while(hist.filter(m=>m.role==="user").length>CLOUD_ACTIVE_TURNS){
+    const ui=hist.findIndex(m=>m.role==="user");
+    if(ui<0) break;
+    hist.splice(ui,2);
+  }
+  saveLocalCloudHist(lane);
+  updateCloudMemHud();
+  return true;
+}
+async function maybePurgeCloudEpoch(lane){
+  if(!cloudUses8501Mem(lane)) return;
+  const ep=epochLabel();
+  if(st.get(cloudPurgedEpochKey(lane))===ep) return;
+  const node=cloudStoreNode(lane);
+  try{
+    const r=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(node)}/purge`,{
+      method:"POST",headers:storeHdrs(),body:JSON.stringify({before_ts:epochStartTs()}),
+    });
+    if(r.ok) st.set(cloudPurgedEpochKey(lane),ep);
+  }catch(e){}
+}
+async function fetchCloudStoreAll(lane){
+  const node=cloudStoreNode(lane);
+  // 不带 since_ts:否则已迁回热库但早于本 epoch 的正文会被滤成「又没了」
+  const url=rejectCloud8515Memory(`${cloud8501Base()}/store/conversations/${encodeURIComponent(node)}?limit=500`,"Cloud store 读");
+  const r=await fetch(url,{headers:storeHdrs()});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const hot=await r.json();
+  let cold=[];
+  try{
+    const aurl=rejectCloud8515Memory(`${cloud8501Base()}/store/conversations/${encodeURIComponent(node)}/archive?limit=500`,"Cloud archive 读");
+    const ar=await fetch(aurl,{headers:storeHdrs()});
+    if(ar.ok){
+      const j=await ar.json();
+      cold=Array.isArray(j.messages)?j.messages:[];
+    }
+  }catch(_){}
+  const byKey=new Map();
+  for(const m of [...cold, ...(Array.isArray(hot)?hot:[])]){
+    const k=`${m.role}|${m.ts}|${String(m.content||"").slice(0,64)}`;
+    byKey.set(k,m);
+  }
+  const rows=[...byKey.values()].sort((a,b)=>Number(a.ts||0)-Number(b.ts||0));
+  cloudStoreTotals[lane]=rows.length;
+  return mapStoreRows(rows);
+}
+async function pushCloudStoreMsgs(lane,msgs){
+  const node=cloudStoreNode(lane);
+  const surf=lane==="kimi_k25"?"cloud-kimi":"cloud-glm";
+  const tagged=(msgs||[]).map(m=>({...m,surface:m.surface||surf}));
+  const url=rejectCloud8515Memory(`${cloud8501Base()}/store/conversations/${encodeURIComponent(node)}/messages`,"Cloud store 写");
+  const r=await fetch(url,
+    {method:"POST",headers:storeHdrs(),body:JSON.stringify(tagged)});
+  if(!r.ok) throw new Error("store HTTP "+r.status);
+  cloudMemOnline=true;
+}
+async function archiveCloudTurnTo8501(lane,userMsg,asstMsg){
+  const archived=new Set(st.get(cloudMemArchivedKey(lane),[]));
+  const key=Number(userMsg.id)||0;
+  if(key&&archived.has(key)) return true;
+  try{
+    const r=await fetch(`${storeBase()}/store/field/after_turn`,{
+      method:"POST",headers:storeHdrs(),
+      body:JSON.stringify({
+        instruction:userMsg.content,
+        draft:asstMsg.content,
+        task:"chat",
+        node_id:cloudStoreNode(lane),
+        persona:cloudArchivePersona(lane),
+        client:"b11-cloud-gridpass",
+        auto_coach:false,
+      }),
+    });
+    if(!r.ok) return false;
+    if(key){ archived.add(key); st.set(cloudMemArchivedKey(lane),[...archived].slice(-800)); }
+    return true;
+  }catch(e){
+    console.warn("[b11 cloud memory]",e);
+    return false;
+  }
+}
+async function syncCloudOverflowToMemory(lane,allMsgs){
+  if(!cloudUses8501Mem(lane)) return 0;
+  const pairs=extractTurnPairs(allMsgs);
+  if(pairs.length<=CLOUD_ACTIVE_TURNS) return 0;
+  const overflow=pairs.slice(0,pairs.length-CLOUD_ACTIVE_TURNS);
+  const results=await Promise.all(overflow.map(([u,a])=>archiveCloudTurnTo8501(lane,u,a)));
+  return results.filter(Boolean).length;
+}
+function updateCloudMemHud(note){
+  const el=$("#cloudMemHud"), cnt=$("#cloudMemCnt");
+  if(!cnt) return;
+  const lane=cloudLane;
+  const hist=getCloudHist(lane);
+  const turns=Math.ceil(hist.filter(m=>m.role==="user").length);
+  if(cloudUses8501Mem(lane)){
+    const synced=(st.get(cloudMemArchivedKey(lane),[])||[]).length;
+    const node=cloudStoreNode(lane);
+    const total=cloudStoreTotals[lane]??0;
+    const inj=cloudLastInject||{};
+    const w=inj.window_turns??Math.min(turns,CLOUD_ACTIVE_TURNS);
+    const m=inj.work_log_n??0;
+    const k=inj.recall_n??0;
+    // 诚实三段计数:窗/日志/召回;store 总数另列,不冒充注入数
+    cnt.textContent=cloudMemOnline?`窗 ${w} / 日志 ${m} / 召回 ${k}`:"离线";
+    if(el){
+      el.classList.toggle("bad",!cloudMemOnline);
+      el.title=`8501 store · ${node} · UI活跃≤${CLOUD_ACTIVE_TURNS} · store共 ${total} · 注入 ${cnt.textContent}`
+        +(inj.has_identity_anchor?" · 含身份锚点":"")
+        +` · 归档标记 ${synced} · ≠ workbench-b11`
+        +(note?(" · "+note):"");
+    }
+  }else{
+    cnt.textContent=turns?`${turns}/${CLOUD_ACTIVE_TURNS}`:"空";
+    if(el){
+      el.classList.remove("bad");
+      el.title=`DeepSeek · 本地 ${CLOUD_ACTIVE_TURNS} 轮`+(note?(" · "+note):"");
+    }
+  }
+}
+function getCloudHist(lane){
+  if(!cloudHistories[lane]) cloudHistories[lane]=[];
+  return cloudHistories[lane];
+}
+async function loadCloudMemory(lane){
+  lane=lane||cloudLane;
+  if(!cloudUses8501Mem(lane)) return loadCloudMemoryLocal(lane);
+  try{
+    await ensureCloudShared();
+    await maybePurgeCloudEpoch(lane);
+    const all=await fetchCloudStoreAll(lane);
+    cloudStoreCache[lane]=all;
+    cloudHistories[lane]=cloudActiveWindow(all);
+    cloudMemOnline=true;
+    updateCloudMemHud();
+    void syncCloudOverflowToMemory(lane,all).then(synced=>{
+      if(synced>0) updateCloudMemHud(`记忆 +${synced}`);
+    });
+    return cloudHistories[lane];
+  }catch(e){
+    cloudMemOnline=false;
+    console.warn("[b11 cloud store]",e);
+    if(!cloudHistories[lane]?.length) cloudHistories[lane]=st.get(cloudLocalHistKey(lane),[]);
+    updateCloudMemHud("8501 store 读取失败");
+    return cloudHistories[lane]||[];
+  }
+}
+async function persistCloudUser(lane,userText){
+  /** 调模型前落库用户轮 — 502 只丢回答不丢记忆 */
+  if(!cloudUses8501Mem(lane)){
+    const hist=getCloudHist(lane);
+    if(!hist.length||hist[hist.length-1].role!=="user"||hist[hist.length-1].content!==userText){
+      hist.push({role:"user",content:userText});
+      st.set(cloudLocalHistKey(lane),hist.slice(-CLOUD_ACTIVE_MSGS));
+    }
+    return true;
+  }
+  await pushCloudStoreMsgs(lane,[{role:"user",content:userText}]);
+  return true;
+}
+async function persistCloudAssistant(lane,userText,res){
+  if(!cloudUses8501Mem(lane)) return persistCloudTurnLocal(lane,userText,res);
+  await pushCloudStoreMsgs(lane,[{role:"assistant",content:res.text}]);
+  const all=await fetchCloudStoreAll(lane);
+  cloudStoreCache[lane]=all;
+  cloudHistories[lane]=cloudActiveWindow(all);
+  const h=cloudHistories[lane];
+  for(let i=h.length-1;i>=0;i--){
+    if(h[i].role==="assistant"){
+      h[i].model=res.model;
+      h[i].usage=res.usage;
+      break;
+    }
+  }
+  cloudMemOnline=true;
+  updateCloudMemHud();
+  void syncCloudOverflowToMemory(lane,all).then(synced=>{
+    if(synced>0) updateCloudMemHud(`记忆 +${synced}`);
+  });
+  return true;
+}
+async function persistCloudTurn(lane,userText,res){
+  /* 兼容旧调用:整轮写入(新路径已拆成 user→模型→assistant) */
+  if(!cloudUses8501Mem(lane)) return persistCloudTurnLocal(lane,userText,res);
+  await pushCloudStoreMsgs(lane,[
+    {role:"user",content:userText},
+    {role:"assistant",content:res.text},
+  ]);
+  const all=await fetchCloudStoreAll(lane);
+  cloudStoreCache[lane]=all;
+  cloudHistories[lane]=cloudActiveWindow(all);
+  cloudMemOnline=true;
+  updateCloudMemHud();
+  return true;
+}
+function syncCloudLaneUi(){
+  $$("#cloudModebar button[data-cloud]").forEach(btn=>{
+    btn.classList.toggle("on",btn.dataset.cloud===cloudLane);
+  });
+  const lane=CLOUD_LANES[cloudLane];
+  const meta=$("#cloudMeta");
+  if(meta&&lane){
+    meta.textContent=`${lane.label} · ${lane.model()} · 8501 cloud_chat · ${cloudStoreNode(cloudLane)} · UI ${CLOUD_ACTIVE_TURNS} 轮`;
+  }
+  st.set("cloudLane",cloudLane);
+  renderCloudBillHud();
+  updateCloudMemHud();
+}
+$$("#cloudModebar button[data-cloud]").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    cloudLane=btn.dataset.cloud||"glm52";
+    syncCloudLaneUi();
+    void loadCloudMemory(cloudLane).then(()=>renderCloudHistory());
+  });
+});
+function renderCloudHistory(){
+  const el=$("#cloudChat");
+  if(!el) return;
+  el.innerHTML="";
+  const lane=CLOUD_LANES[cloudLane];
+  const hist=getCloudHist(cloudLane);
+  for(const m of hist){
+    if(m.role==="user"){
+      el.insertAdjacentHTML("beforeend",
+        `<div class="msg you">${esc(m.content||"")}${m.assets?`<div style="font:10px var(--mono);color:var(--an);margin-top:4px">+${m.assets} 素材</div>`:""}</div>`);
+    }else{
+      const usage=m.usage&&fmtUsage(m.usage)?`<div class="usage-line">${esc(fmtUsage(m.usage))}</div>`:"";
+      el.insertAdjacentHTML("beforeend",
+        `<div class="msg"><div class="card final"><div class="chead">${esc(lane?.label||cloudLane)} · ${esc(m.model||lane?.model()||"")}</div>${esc(m.content||"")}${usage}</div></div>`);
+    }
+  }
+  el.scrollTop=el.scrollHeight;
+}
+async function cloudChat(laneId,currentUser,model,{images=[],assets=null,storeMsgs=null}={}){
+  await ensureCloudShared();
+  // 组装单源=8501 grid_mem.inject_messages;客户端只送当前 user
+  const ut=String(currentUser||"").trim();
+  if(!ut&&!(assets&&assets.length)&&!images.length) throw new Error("empty messages");
+  const messages=[{role:"user",content:ut||"请分析附件。"}];
+  const laneSpec=CLOUD_LANES[laneId];
+  const resolvedModel=model||laneSpec?.model?.();
+  const body={
+    substrate:laneId,
+    messages,
+    model:resolvedModel,
+    memory_node:cloudStoreNode(laneId),
+    surface:laneId==="kimi_k25"?"cloud-kimi":"cloud-glm",
+    max_tokens:8192,
+    source:"aether_b11",
+    mission_ref:{
+      client:"aether_b11",
+      lane:laneId,
+      memory_node:cloudStoreNode(laneId),
+      model:resolvedModel,
+    },
+  };
+  if(assets&&assets.length) body.assets=assets;
+  else if(images.length) body.images=images;
+  const r=await fetch(cloudChatUrl(),{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok||j.ok===false){
+    let err=j.error||j.done_reason||j.detail||`HTTP ${r.status}`;
+    if(err&&typeof err==="object") err=err.reason||err.message||JSON.stringify(err);
+    throw new Error(String(err));
+  }
+  const text=stripThink(j.content||j.text||j.candidate||"");
+  if(!text) throw new Error("empty cloud response");
+  const inj=cloudLastInject||{};
+  updateCloudMemHud(`总tok≤${inj.inject_tokens||estCloudTokens(messages)}${inj.has_identity_anchor?" · 含身份锚点":""}`);
+  return {
+    text,
+    model:j.model||model,
+    usage:enrichUsage(normalizeUsage(j)||j.usage||j.substrate_usage||{},
+      {billable:true,substrate:laneSpec?.substrate||"glm52_cloud"}),
+  };
+}
+async function sendCloud(){
+  const text=($("#cloudBox")?.value||"").trim();
+  const picked=cloudPicked();
+  if(!text&&!picked.length) return;
+  if(SAN.test(text)||picked.some(a=>a.text&&SAN.test(a.text))){
+    alert("脱敏器拦截:检测到本地路径或密钥形态。");
+    return;
+  }
+  const lane=CLOUD_LANES[cloudLane];
+  if(!lane) return;
+  let storeMsgs=null;
+  try{
+    if(cloudUses8501Mem(cloudLane)){
+      storeMsgs=await fetchCloudStoreAll(cloudLane);
+      cloudStoreCache[cloudLane]=storeMsgs;
+      cloudHistories[cloudLane]=cloudActiveWindow(storeMsgs);
+      cloudMemOnline=true;
+      updateCloudMemHud();
+    }else{
+      await loadCloudMemory(cloudLane);
+    }
+  }catch(e){
+    console.warn("[b11 cloud store refresh]",e);
+    storeMsgs=cloudStoreCache[cloudLane]||null;
+  }
+  $("#cloudBox").value="";
+  const imgs=picked.filter(a=>a.kind==="image");
+  const userContent=text||(picked.length?"请分析附件。":"");
+  const images=imgs.map(i=>({mime:i.mime||"image/jpeg",base64:i.dataUrl.split(",")[1]}));
+  const assets=cloudAssetsPayload(picked);
+  const hist=getCloudHist(cloudLane);
+  hist.push({role:"user",content:userContent,assets:picked.length||0});
+  cloudAssets=[];
+  renderCloudTray();
+  renderCloudHistory();
+  const pending=document.createElement("div");
+  pending.className="msg";
+  pending.innerHTML=`<div class="card final"><div class="chead">${esc(lane.label)} · …</div>…</div>`;
+  $("#cloudChat").appendChild(pending);
+  $("#cloudChat").scrollTop=$("#cloudChat").scrollHeight;
+  let userStored=false;
+  try{
+    await persistCloudUser(cloudLane,userContent);
+    userStored=true;
+    const res=await cloudChat(cloudLane,userContent,lane.model(),{assets,images,storeMsgs});
+    const sig=await ensureCloudSignalRe();
+    if(sig.test(res.text||"")){
+      pending.remove();
+      renderCloudHistory();
+      $("#cloudChat").insertAdjacentHTML("beforeend",
+        `<div class="msg"><div class="card err">${esc(lane.label)} 失败:iron-law-violation · 信号闸拦截,用户轮已落库</div></div>`);
+      return;
+    }
+    pending.remove();
+    await persistCloudAssistant(cloudLane,userContent,res);
+    renderCloudHistory();
+    if(res.usage&&res.usage.billing==="api") accrueCloudBill(res.usage);
+  }catch(e){
+    pending.remove();
+    if(!userStored) hist.pop();
+    renderCloudHistory();
+    const msg=String(e.message||e);
+    const hint=/empty after thinking|empty_content|GLM 上游 content 空/i.test(msg)
+      ? "（8501 已自动 no_think + 裁旧轮重试；仍失败请缩短消息或稍后再发）"
+      : /^HTTP 502$/i.test(msg)
+      ? "（网关无响应(可能在重启),请重试）"
+      : /503|504/i.test(msg)
+      ? "（网关暂不可用,请重试）":"";
+    $("#cloudChat").insertAdjacentHTML("beforeend",
+      `<div class="msg"><div class="card err">${esc(lane.label)} 失败:${esc(msg)}${esc(hint)}</div></div>`);
+  }
+}
+$("#cloudSend")?.addEventListener("click",sendCloud);
+$("#cloudBox")?.addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendCloud();}
+});
+$("#cloudClear")?.addEventListener("click",()=>{
+  const lane=CLOUD_LANES[cloudLane];
+  if(!confirm(`清空 ${lane?.label||cloudLane} 本页活跃窗？(仅 UI · 8501 store 一行不动 · 真清库须 Lyra 拍板)`)) return;
+  cloudHistories[cloudLane]=[];
+  cloudStoreCache[cloudLane]=[];
+  if(!cloudUses8501Mem(cloudLane)) st.del(cloudLocalHistKey(cloudLane));
+  renderCloudHistory();
+  updateCloudMemHud("已清空本页(store 未动)");
+});
+syncCloudLaneUi();
+void loadCloudMemory(cloudLane).then(()=>renderCloudHistory());
+
+/* ---- CC pty(可选 · 真连才显终端) ---- */
+function ptyTry(){
+  if(!cfg.pty) return;
+  try{
+    const ws=new WebSocket(cfg.pty);
+    ws.onopen=()=>{ccAppend("pty 桥已连接。");
+      const inp=document.createElement("input");
+      inp.style.cssText="width:100%;margin-top:8px;font:12px var(--mono)";
+      inp.placeholder="$ 命令(白名单+确认闸)";
+      inp.onkeydown=e=>{if(e.key==="Enter"){ws.send(inp.value);inp.value=""}};
+      $("#term").appendChild(inp);
+      ws.onmessage=m=>{const pre=document.createElement("div");
+        pre.textContent=m.data;$("#term").insertBefore(pre,inp)};};
+    ws.onerror=()=>{ccAppend("pty 桥连接失败 — 检查桥进程与地址。")};
+  }catch(e){}
+}
+renderTray();
+stats();
+
+/* ===== 四臂旋涡粒子层(装饰,零状态承载;精灵渲染;RM静止;后台暂停) ===== */
+(()=>{const canvas=$("#fieldCanvas"),ctx=canvas.getContext("2d",{alpha:true});
+const RM=matchMedia("(prefers-reduced-motion: reduce)").matches;
+let w=0,h=0,dpr=1,t=0,particles=[],running=true;
+const mk=(inner,outer)=>{const S=28,c=document.createElement("canvas");c.width=c.height=S;
+  const g=c.getContext("2d").createRadialGradient(S/2,S/2,0,S/2,S/2,S/2);
+  g.addColorStop(0,inner);g.addColorStop(.3,outer);g.addColorStop(1,"rgba(0,0,0,0)");
+  const q=c.getContext("2d");q.fillStyle=g;q.fillRect(0,0,S,S);return c};
+const spW=mk("rgba(255,238,205,1)","rgba(244,203,121,.65)"),
+      spC=mk("rgba(225,238,255,1)","rgba(117,176,255,.6)");
+const seed=()=>{const n=Math.max(260,Math.min(900,Math.floor((w*h)/2200)));
+  particles=Array.from({length:n},(_,i)=>({arm:i%4,
+    radius:22+Math.pow(Math.random(),.72)*Math.min(w,h)*.72,
+    angle:Math.random()*Math.PI*2,speed:.00045+Math.random()*.00115,
+    size:.35+Math.random()*1.55,depth:.25+Math.random()*.75,
+    phase:Math.random()*Math.PI*2,warm:Math.random()>.42,
+    alpha:.22+Math.random()*.58}))};
+const resize=()=>{dpr=Math.min(devicePixelRatio||1,2);w=innerWidth;h=innerHeight;
+  canvas.width=w*dpr|0;canvas.height=h*dpr|0;canvas.style.width=w+"px";
+  canvas.style.height=h+"px";ctx.setTransform(dpr,0,0,dpr,0,0);seed()};
+const draw=()=>{t++;ctx.clearRect(0,0,w,h);
+  const cx=w*.5,cy=h*.46,dx=Math.sin(t*.00055)*w*.025,dy=Math.cos(t*.00042)*h*.018;
+  for(const p of particles){
+    const spin=t*p.speed*(p.arm%2?1:-1),a=p.angle+spin+p.arm*Math.PI/2,
+      wave=Math.sin(a*2.2+p.phase+t*.0014)*22*p.depth,r=p.radius+wave,
+      x=cx+dx+Math.cos(a)*r,y=cy+dy+Math.sin(a)*r*(.34+.18*p.depth)+Math.sin(a*3+p.phase)*8;
+    if(x<-20||x>w+20||y<-20||y>h+20)continue;
+    const pulse=.72+.28*Math.sin(t*.008+p.phase),
+      alpha=p.alpha*pulse*(.55+.65*p.depth),rr=p.size*(.75+.85*p.depth),
+      sp=p.warm?spW:spC,d=rr*9;
+    ctx.globalAlpha=alpha;ctx.drawImage(sp,x-d/2,y-d/2,d,d)}
+  ctx.globalAlpha=1;
+  if(running&&!RM)requestAnimationFrame(draw)};
+document.addEventListener("visibilitychange",()=>{const was=running;
+  running=!document.hidden;if(running&&!was&&!RM)requestAnimationFrame(draw)});
+addEventListener("resize",resize,{passive:true});resize();draw()})();
+
+(function bootCheck(){
+  const pv=$("#pageVer");
+  if(pv) pv.textContent="ui "+PAGE_VER;
+  const need=[["#tabCloud","onclick"],["#tabCC","onclick"],["#send","onclick"]];
+  const missing=need.filter(([sel,k])=>!$(sel)?.[k]).map(([sel])=>sel);
+  if(missing.length){
+    window.__b11Shell?.bindTabs?.();
+    warnStore("主脚本绑定缺失 "+missing.join(" ")+" — 已用 shell 恢复 tab");
+  }
+  if(typeof showTopTab!=="function"||typeof send!=="function"){
+    warnStore("主脚本未完整加载 — tab/store 由 shell 兜底; 发消息不可用");
+    return;
+  }
+  window.__b11MainOk=true;
+  setTimeout(()=>{
+    if((history?.length||0)===0) void pullStoreHistory();
+  },400);
+})();
+</script>
+</body>
+</html>
