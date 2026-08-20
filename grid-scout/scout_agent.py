@@ -136,7 +136,9 @@ def _s2_section(shift):
             "      = 利好已定价、多空双杀高发,机械禁入;AI 巨头共识热票(AMD/NVDA/TSLA 级)禁入;\n"
             "      选预期温和、IV 未过热的中大盘\n"
             "   已出结果的财报票(今晨 BMO/昨夜 AMC gap)不属本槽——由 movers 硬闸强制显式处理,\n"
-            "      够强则进 S1")
+            "      够强则进 S1;\n"
+            "   evidence 硬规则:必须引用所属板块当日读数(sector_leaders/sector_laggards 的 chg_pct/mom20),\n"
+            "      候选板块与 sector_leaders 背离时必须在 rank_reason 写一句解释(为何逆板块仍做)")
 
 
 def _s4_section(shift):
@@ -150,7 +152,9 @@ def _s4_section(shift):
             "   IV crush 风险自担\";双杀排除硬规则同 S2;无合格 BMO 标的时本槽回落引擎位\n"
             "   (领涨板块龙头/迁徙腿/对冲腿,evidence 引用引擎数字)\n"
             "   过夜敞口规则(默认,Lyra 可改):S2 与 S4 两条伏击腿只择一执行——两卡并排给出,\n"
-            "   rank/rank_reason 写清优先序与对比理由,买哪条交易员拍板;两条都建=过夜敞口翻倍,禁默认")
+            "   rank/rank_reason 写清优先序与对比理由,买哪条交易员拍板;两条都建=过夜敞口翻倍,禁默认;\n"
+            "   evidence 硬规则:必须引用所属板块当日读数(sector_leaders/sector_laggards 的 chg_pct/mom20),\n"
+            "      候选板块与 sector_leaders 背离时必须在 rank_reason 写一句解释(为何逆板块仍做)")
 
 
 def _movers_gate(shift):
