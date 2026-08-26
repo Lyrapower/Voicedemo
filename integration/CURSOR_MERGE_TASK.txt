@@ -1,0 +1,29 @@
+CURSOR MERGE TASK — Crypto/RWA/Trading × Grid Harness V1.5.5
+
+Merge this bundle into the working Harness repository. Do not create another backend, scheduler, router, memory DB, or cognition loop.
+
+1. Add app/harness/{model_profiles,action_envelope,capability_registry,collaboration}.py at the existing canonical package location.
+2. Expose capability_surface() through the existing Harness 8630 API (recommended GET /api/capabilities) and Mac Workbench. It is a MAP, not a router.
+3. Keep legacy Jarvis task_registry schedule/execution compatibility, but never use task_id/handler metadata to select a brain/model for Grid.
+4. Replace new collaboration UX with event/provenance-derived view. Keep legacy CollaborationRound only as compatibility until provenance endpoint exists; do not treat it as cognition topology.
+5. Record decision_origin for Grid-selected brain/worker/tool choices. No silent fallback/substitution.
+6. GLM is high-trust open-world resource, NOT mandatory default route. Grid decides when to call it.
+7. DeepSeek/Kimi/MiniMax remain candidate/evidence-bounded according to prior Harness eval. Candidate text cannot become VERIFIED without real receipts/verifier.
+8. MiniMax is stateless multimodal bypass; Kimi native multimodal is not forced through it.
+9. Qwen/CC remain bounded execution workers; execution success requires real receipt + deterministic postcondition.
+10. Preserve V1.5.4 rich verifier receipt and V1.5.3 immutable predicates/budgets/escalation.
+11. Harness stays on 127.0.0.1:8630. PersonaPlex uses 127.0.0.1:8631; update voice config/health checks and remove any PersonaPlex hard-coded 8630.
+12. Do not open wallet/broker/live-money permissions. Existing money-moving gates stay fail-closed.
+
+Acceptance:
+A. /api/capabilities shows current tools/models without recommended_resource/next_tool/strategy.
+B. Grid may select GLM/DeepSeek/Kimi/MiniMax/Qwen/CC according to its own output; provenance records origin.
+C. Harness rejects unavailable/forbidden resource without silently substituting another.
+D. Candidate model claims cannot self-promote to VERIFIED.
+E. Verifier emits facts only, never next-action advice.
+F. Crypto/RWA scanner, proof generation and paper-trading paths remain functional.
+G. No second scheduler/router/state store is added.
+H. PersonaPlex health resolves on 8631; Harness health remains 8630.
+I. Full existing security/authority regressions remain green.
+
+Return exact changed/deleted files, endpoint trace, one Grid-selected collaboration trace, one denied silent-substitution trace, voice port proof, regression output, and PASS/BLOCKED.
