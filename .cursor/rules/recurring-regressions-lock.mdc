@@ -1,0 +1,173 @@
+---
+description: 反复回归清单 — 手机/Tailscale/8520·8501/watcher/bridge；改相关代码前必读，完工必验收
+alwaysApply: true
+---
+
+# 反复回归锁 — 禁止再犯
+
+用户已多次遇到相同故障。**改 UI、gateway 旁路、launchd、watcher bridge 前必读。** 完工按 `verification-before-complete.mdc` 跑通，禁止只说「改好了」。
+
+## 1. 手机 Grid 对话（8501 · Tailscale）
+
+### 架构（不可忘）
+
+| 层 | 手机正确路径 | 错误路径 |
+|----|-------------|----------|
+| Gateway | `https://<host>.ts.net/v1`（Tailscale Serve → `127.0.0.1:8501`） | `http://127.0.0.1:8501`（手机连不到 Mac 本机） |
+| 绑定 | Gateway **只** listen `127.0.0.1` | 改 `0.0.0.0` 暴露（禁止，用 Serve） |
+| **grid.html 下发** | 专用 route `no-store`（同 aether.html） | 仅靠 `StaticFiles` + ETag → **iPhone 永久跑旧 JS** |
+
+### 对外入口与误判锁（2026-07-30 · Lyra 批 1–3）
+
+**对外只报 MagicDNS**（例 `https://cicimacbook-air.tail76db5b.ts.net/...`）。  
+`100.x` Tailscale IP **可变**（曾 Mac↔iPhone 换号）——禁止写进书签/脚本/给用户的主入口；状态表可脚注「当前 IP，可变」。
+
+**怀疑「Tailscale 全断」时固定诊断序**（任一步主链绿 ≠ 全断；灰菜单栏先 curl）：
+
+1. App / VPN 进程  
+2. `BackendState` / Online  
+3. `tailscale serve status`  
+4. `curl https://<host>.ts.net/health`（**主判定**）  
+5. 本机 `curl http://127.0.0.1:8501/health`  
+
+脚本：`scripts/diagnose_tailscale_grid.sh` · Serve 丢：`scripts/tailscale_serve_watchdog.sh`  
+禁：先改防火墙 / 绑定 `0.0.0.0` / 架构。
+
+**UI 文案：** 502/失败须区分真不可达 vs 签链钥缺失等；禁止一律写成「Grid/Tailscale 挂了」。
+
+### 禁止
+
+- **`grid.html` / `changyu.html` 只走 StaticFiles** — 必须像 `aether.html` 一样 dedicated GET + `Cache-Control: no-store`
+- 改完 grid UI **不** `curl -sI .../app/grid.html | rg cache-control` 就宣称手机可用
+
+### 禁止
+
+- 装 bridge / 改 token / 任何 `launchctl kickstart -k com.demo.grid.gateway8501` **后不**跑 `scripts/tailscale_serve_watchdog.sh`
+- 把「App 打不开 / 菜单栏怪」当成整条 Tailscale 全断，只做一次 `serve reset` 就宣称修好（敷衍）
+- 把 `grid.html` / `changyu.html` 在 `.ts.net` 或 iPhone 上改回 **仅 SSE 流式**（Safari + Serve 易挂死，表现为「发不出去」）
+- 动 `:8501`  protected 推理链（见 `grid-aster-gateway-frozen.mdc`）当「修手机」的借口
+
+### 复发根因栈（2026-08-12 坐实 · 勿再误判）
+
+| 层 | 证据 | 正确处置 |
+|----|------|----------|
+| GUI「无法打开」 | `auth window cannot open malformed URL`（AuthURL 空仍弹登录窗） | **≠ VPN 断**；勿反复 open App；看 `scutil --nc status Tailscale` + MagicDNS `/health` |
+| 重启/登出后飘 | `TailscaleStartOnLogin=false` | guardian 每轮强制 `StartOnLogin=true` |
+| Serve 丢 | kickstart gateway / 睡眠后 https≠200 | `com.grid.tailscale-serve-watchdog`（120s Grid Guardian）；日志 `~/Library/Logs/demo-grid/tailscale-grid-guardian.log` |
+| 手机 | iPad 可长期 offline；iPhone online≠Safari 通 | 手机 Tailscale 须 Connected；只用 `https://…ts.net/…` |
+
+诊断：`scripts/diagnose_tailscale_grid.sh`（含 StartOnLogin + malformed 探针）。
+
+### 必须（`grid.html` / `changyu.html`）
+
+```javascript
+// 手机 / Tailscale：整包非流式
+function useNonStream(){
+  return location.hostname.endsWith(".ts.net")||/iPhone|iPad/i.test(navigator.userAgent||"");
+}
+// send/chat 前：ts.net 强制 gw = location.origin + "/v1"
+```
+
+### 改 gateway / launchd 后 agent 必做
+
+1. `curl -sf http://127.0.0.1:8501/health`
+2. **`curl -sI http://127.0.0.1:8501/app/grid.html | rg -i 'no-store'`**（缺则手机仍旧版）
+3. `curl -sf https://<ts-host>/health`（Mac 上测 Serve）
+4. `curl -sf -X POST https://<ts-host>/v1/chat/completions`（`demo/aster` + `stream:false`）
+5. 若 kickstart 过 gateway → **必须** `scripts/tailscale_serve_watchdog.sh`
+6. **`scripts/verify_grid_tailscale_send.sh`**（no-store + PAGE_VER + chat POST + 无 orphan `renderGridCcStrip`）
+7. 告知用户：关 tab 重开 `/app/grid.html`，laneHud 须见 **`ui 2026-07-21d`**（或当前 PAGE_VER）
+
+### 常见根因（勿再误判）
+
+- **`syncLaneUI()` 调用了已删的 `renderGridCcStrip()`** → 脚本在 `$("#s").onclick` / `bindSendUi` 前抛错，表现为「发」按钮完全无反应（agent 应用 CDP 查 `#s` 监听器，勿让用户试）
+
+- Bridge 安装 kickstart gateway → 2–5s 断连（不是 Tailscale 坏了）
+- localStorage 里 `gw` 指向 127.0.0.1 → `resolveGw()` / send 前已在 ts.net 覆盖，**勿删这段逻辑**
+- LM Studio `:1234` 未起 → 超时，不是 Serve 问题
+
+---
+
+## 2. Changyu 任务页 — 8520 vs 8501
+
+### 分工（禁止混成一坨 JSON）
+
+| 区块 | 数据源 | 内容 |
+|------|--------|------|
+| **8520 · 实时** | `GET /watcher/snapshot`（读 `aether_watcher/state/`） | 异动/健康/告警卡片，`8520` 小标 |
+| **8501 · 每日任务** | `store` · `source=aether` | brief / scan / grid_cc / offpool 等 |
+| Bridge 健康 | store `watcher_health` | 仅 `#bridgeNote` 琥珀条，**不覆盖** 8520 心跳头 |
+
+### 禁止
+
+- `pollEvents` 全量 store 用 `JSON.stringify(payload)` 兜底展示
+- 8520 snapshot `appendChild` 到底、8501 `prepend` 到顶（用户看不见 8520）
+- `updateWatcherHeadFromStore` 覆盖 `#watcherHead` 的 8520 在线状态
+- 在 8501 任务区重复堆 bridge 已同步的 watcher 事件（8520 区已展示）
+
+### 必须
+
+- `fmtSnap8520()` / `fmtTaskEvent()` 可读卡片；无法识别 → **丢弃**，不 dump JSON
+- 进任务 tab：先 `pollWatcherSnapshot()`，再 store backfill；**两者都 4s poll**
+
+---
+
+## 3. Watcher bridge（8520 → 8501 store）
+
+### 不变量
+
+- `watcher_bridge.py`：**只 POST**，不 GET store
+- 专用 `BRIDGE_STORE_TOKEN`（`grid-sovereign-runtime/config/bridge_store.token`）
+- 词库与 `contract_lexicon.TRADE_ACTION_OUTPUT` 同源
+- Watcher daemon 对 bridge **无感知**；kill bridge 不影响 8520
+
+### 安装脚本必须顺序
+
+1. `ensure_venv` → token → launchd bridge
+2. 若 kickstart `gateway8501`（加载 `BRIDGE_STORE_TOKEN`）→ sleep → **`tailscale_serve_watchdog.sh`**
+3. `scripts/aether/verify_watcher_bridge.sh` 通过后再对用户说可用
+
+### Aether UI（`aether.html`）
+
+- `watcher_momentum` → 异动区 + `[8520]`
+- `watcher_health` → 顶部琥珀条
+- `watcher_alert` → brief 卡片
+- poll 含 `source=watcher`；`PAGE_VER` bump 时 Safari 会清本地缓存（预期）
+
+---
+
+## 4. 日记 / Gateway 冻结（交叉引用）
+
+- 生产 `aster-field/diary.db`：**只读**，禁止 agent POST 验收（`diary-sacred.mdc`）
+- `:8501` chat/compile/cleanroom 链：**冻结**（`grid-aster-gateway-frozen.mdc`）；手机/store/静态 UI 旁路可改，推理 handler 不可
+
+---
+
+## 5. Agent 完工自检（任一涉及上表则全跑）
+
+```bash
+# 本地
+curl -sf http://127.0.0.1:8501/health
+curl -sf http://127.0.0.1:8501/watcher/snapshot | python3 -m json.tool | head
+
+# Tailscale（Mac 上）
+curl -sf https://cicimacbook-air.tail76db5b.ts.net/health
+# 非流式 chat 抽测
+curl -sf -X POST "https://cicimacbook-air.tail76db5b.ts.net/v1/chat/completions" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen/qwen3.5-9b","messages":[{"role":"user","content":"ping"}],"stream":false,"max_tokens":8}'
+
+# Bridge（若动过）
+/Users/ciciwang/Projects/demo/scripts/aether/verify_watcher_bridge.sh
+/Users/ciciwang/Projects/demo/scripts/tailscale_serve_watchdog.sh
+```
+
+**未跑完 → 只能说「代码已改，待验收」，禁止说「可以用了」。**
+
+---
+
+## 6. 文档锚点
+
+- Bridge：`docs/aether_watcher/BRIDGE_DEPLOY.md`
+- 手机入口：`https://<ts-host>/app/grid.html`（非 `:8501` 裸端口）
+- Serve 修复：`scripts/setup_tailscale_gateway.sh` / `scripts/tailscale_serve_watchdog.sh`

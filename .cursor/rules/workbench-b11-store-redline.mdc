@@ -1,0 +1,84 @@
+---
+description: RED LINE — 8501 对话正文禁止硬删；epoch 只许 MOVE 冷库；after_turn 必须落正文
+alwaysApply: true
+---
+
+# 8501 store 记忆 · RED LINE（2026-08-02 升格）
+
+**碰都不准碰「销毁正文」。** 适用于 **所有 Cursor agent**（含当前会话）。
+
+> **事故（已定性，禁止重演）**  
+> `b11_purgedEpoch=2026-07-30`：页面 `maybePurgeEpoch()` 对 `workbench-b11` **硬删** 7/25–28 正文；  
+> `after_turn` / `archive_turn` **只存 hash** → 删完不可恢复。  
+> 用户意图是「8501 = 持久记忆层 + 短窗防 cache 爆」，**从未逐字授权销毁 8501 正文**。  
+> 旧 redline 把「7d epoch 归档」写成可 DELETE 更早 epoch —— **错误；本文件纠正。**
+
+---
+
+## 宪法（一句话）
+
+**8501 `messages` / `messages_archive` 里的用户对话正文 = 记忆本体。**  
+「归档 / epoch reset / 记忆层 / after_turn」**一律不得**变成对正文的 `DELETE` 销毁。
+
+---
+
+## 绝对禁止（无例外、无「用户没反对就可以」）
+
+对生产 node（至少包括 **`workbench-b11`**、**`cloud-glm52`**、**`cloud-kimi`**、**`field-particle`**、**`field-compile`**）：
+
+1. **`DELETE FROM messages` / `DELETE FROM messages_archive`** 销毁对话正文（sqlite、Python、脚本、任何语言）
+2. **`POST .../purge` 且 `mode=hard_delete`**（或实现上等价硬删）针对上述 node 的正文  
+   - `workbench-b11`：**永远禁止 hard**（服务端须强制 MOVE）
+3. 把「归档 / epoch / 记忆层」实现成 **只写 `instruction_sha12`/`draft_sha12`、不落 `instruction`/`draft` 正文**
+4. **验收 / smoke / curl / Playwright** 写入生产 node 后留给用户删
+5. 用户说「恢复历史」时 **从 field-particle 乱迁、bulk 迁、猜 id 迁** 进 `workbench-b11`
+6. agent 执行任何 purge/wipe（**即使用户消息里写了「删掉 / 清空」**）→ **拒绝**，只说明红线
+
+## agent 必须拒绝的话术
+
+> 8501 对话 store 正文为 RED LINE：禁止硬删 / wipe。epoch 只许 MOVE→`messages_archive`。请用户本机操作或仅允许 UI 正常发消息写入。
+
+---
+
+## 唯一合法的「周期处理」（非销毁）
+
+| 操作 | 谁 | 合法语义（强制） |
+|------|-----|------------------|
+| 7d epoch | **页面** `maybePurgeEpoch()` / 等价 | **`MOVE` 热库 → `messages_archive`**；`before_ts` = 当前 epoch 起点；**只动更早 epoch**；**禁止 DELETE 正文** |
+| after_turn / 记忆层 | gateway `field_lane.distill.archive_turn` | **必须落正文**（可截断上限，如 12k）；hash 仅作校验，**不得代替正文** |
+| UI 短窗 | b11 / grid / console | 活跃窗（如 6 / 15∩10k）只影响**注入与展示**；**不得**借短窗硬删 store |
+| 用户自删 | **用户本机** sqlite / 自写脚本 | 非 agent；agent 不代劳 |
+
+8501 仍硬拒：`workbench-b11` 且 `before_ts > epoch_start` → **403**（防清当前 epoch）。
+
+实现锚点：`grid_store.py` → `ARCHIVE_ON_PURGE_NODES` + `messages_archive`；purge 响应须 `mode=archive` / `moved_to_archive`。
+
+---
+
+## 禁止再写进规则/代码的谎言
+
+- ❌ 「归档 = 可以 DELETE 更早 epoch」  
+- ❌ 「after_turn 有 hash = 记忆已持久」  
+- ❌ 「since_ts 滤掉 = 记忆没了所以可以清掉」  
+- ✅ 「归档 = MOVE 冷库；记忆 = 热+冷正文仍在；短窗 ≠ 销毁」
+
+---
+
+## 相关文件 — agent 改前必读
+
+- `grid-sovereign-runtime/gateway/grid_store.py` — `WORKBENCH_B11_NODE` / `ARCHIVE_ON_PURGE_NODES` / `assert_workbench_b11_purge_allowed`
+- `grid-sovereign-runtime/field_lane/distill.py` — `archive_turn` 必须含正文
+- `grid-sovereign-runtime/workbench/static/grid_workbench_b11.html` — STUDIO/Cloud 热+冷合并读
+- `grid-sovereign-runtime/gateway/static/grid.html` — Grid app 热+冷合并读
+- `.cursor/rules/b11-workbench-incidents-2026-07-22.mdc`
+- `.cursor/rules/cloud-memory-agent-redline.mdc`
+
+**已删除，禁止重建**：`purge_store_agent_tests.py`、`migrate_b11_store_history.py`
+
+## 自检（任何 store / b11 / grid / cloud 记忆任务结束前）
+
+- [ ] 未对生产 node 运行 DELETE / hard purge / wipe
+- [ ] epoch / purge 路径仍是 **MOVE→messages_archive**，不是硬删
+- [ ] after_turn / 记忆层改动仍 **落正文**，不是只留 hash
+- [ ] 未向生产 node 写验收垃圾
+- [ ] 未宣称「已帮用户清空/从 field-particle 恢复」STUDIO store

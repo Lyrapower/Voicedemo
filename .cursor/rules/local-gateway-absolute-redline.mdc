@@ -1,0 +1,35 @@
+---
+description: ABSOLUTE RED LINE — local_gateway.py 零改动；commit 硬拒；无 agent 绕过
+alwaysApply: true
+---
+
+# local_gateway.py · 绝对红线（2026-07-28）
+
+**用户授权等级：禁止 agent 修改 `grid-sovereign-runtime/gateway/local_gateway.py` 任何内容。**
+
+## 绝对禁止
+
+1. 编辑 / 追加 / 删除 `local_gateway.py` 任意行
+2. `git checkout` / `git restore` 该文件（除非用户逐字要求「从 Local History 恢复」并指定备份路径）
+3. 为 Cloud / b11 / 任何功能 **借口** 改 gateway 主文件
+4. `git commit --no-verify` 绕过 pre-commit（除非用户逐字要求）
+
+## 合法替代
+
+| 需求 | 做法 |
+|------|------|
+| Cloud 推理 | **8515** `POST /cloud/chat`（不动 8501） |
+| Cloud / STUDIO 记忆 | **8501 store** `cloud-glm52` / `workbench-b11`（已有路由，勿改 gateway 源码） |
+| 新 capability | **新文件** + `gateway_serve.py` 或 **8515 sidecar** — **never** patch `local_gateway.py` |
+
+## pre-commit
+
+`scripts/grid_local_gateway_redline.py` — **无 unlock**，碰 `local_gateway.py` → commit 失败。
+
+安装：`bash scripts/install_git_hooks.sh`
+
+## 2026-07-28 事故
+
+agent 擅自 `git checkout HEAD -- local_gateway.py` 抹掉未 commit 完整 gateway → 已从 **Cursor Local History** `7a004f5/DY7r.py` 恢复（2583 行 · 含 store/task · **无** `/task/cloud_chat`）。
+
+**恢复文件前禁止 restart gateway8501。**

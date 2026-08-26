@@ -1,0 +1,49 @@
+# #9 ↔ GLM5.2 ↔ 8620 · 长期任务桥（P0 · 不可断）
+
+**等级：P0。** Console 线程 **#9（glm_lane）** 是 GLM-5.2 的长期任务面；8620 option-workstation / Scout 管线与数据 API 会逐步承接/替代 deepseek_lane。  
+**断桥 = 任务面失明。** 禁止「先凑合再修」。
+
+## 不变量（硬）
+
+| 层 | 正确 | 禁止 |
+|----|------|------|
+| 宿主机 option-workstation | `127.0.0.1:8620` publish | 为「修 console」改 bind `0.0.0.0`（无用户授权） |
+| console 容器 `OWS_URL` | **`http://host.docker.internal:8620`**（compose **字面量**） | `localhost` / `127.0.0.1` / `${OWS_URL}` 插值 |
+| `#9` 桥开关 | `CONSOLE_CLOUD_BRIDGE_THREADS: "9"`（compose **字面量**） | 改成 `none` / 空 / `${…}` 插值关掉桥 |
+| #9 发送 | toolkit 本轮实况 + typed 任务记忆 + dual-write `cloud-glm52` | 挤容量时丢掉 8620 toolkit |
+| 数据面 | `#9` 只读 8620/scout/fetcher；不写 Aster / field-particle / diary / workbench-b11 | 把 Grid core 当任务总线 |
+
+## Agent 禁止
+
+1. 把 console 的 `OWS_URL` 改成 `localhost` / `127.0.0.1` 或恢复 `${OWS_URL}` 插值
+2. 关掉 / 改掉 `CONSOLE_CLOUD_BRIDGE_THREADS=9`（无用户逐字授权）
+3. #9 桥路径上因 token 预算丢弃 **8620 toolkit**（实况）
+4. 未跑门禁就宣称「#9 / Scout / 8620 已通」
+5. 用改 8620 部署形态（拆 Docker / 改端口）绕过连不通
+6. 按关键字整包丢任务记忆（见 typed v1）
+
+## 任务记忆 typed v1
+
+规范：`grid-console/backend/task_memory_v1.py`
+
+| type | 注入 |
+|------|------|
+| `state` | 每 `(scope, tags)` **只留最新**；容量不足时**最先丢** |
+| `decision` / `framework` / `open_question` | **全保留**（有 `superseded_by` 则跳过） |
+| `identity` | **不过期、不替代、不压缩、全保留**；容量不足时**最后丢** |
+
+## 门禁（改相关代码后必跑）
+
+```bash
+bash /Users/ciciwang/Projects/demo/scripts/verify_console_ows_bridge.sh
+docker exec grid-console python3 -m unittest test_task_memory_v1 test_ows_url_resolve test_thread9_toolkit -v
+curl -sf http://127.0.0.1:8610/api/health | python3 -m json.tool | head -40
+```
+
+健康字段：`/api/health` → `glm9_ows.ok`；gauge bay `ows_8620`。  
+**任一项红 → 禁止对用户说「可以用了」。**
+
+## 启动入口
+
+- 8620：`option-workstation/docker-compose.yml`（`container_name: option-workstation`）
+- 8610：`grid-console/docker-compose.yml`

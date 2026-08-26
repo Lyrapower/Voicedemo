@@ -1,0 +1,39 @@
+---
+description: Grid/Aster Gateway (:8501) core chain is frozen — no modifications may touch it
+alwaysApply: true
+---
+
+# Grid / Aster Gateway — Frozen Chain
+
+All changes (Aether, FIELD, Jarvis, UI, daemons, sidecars) **must not affect or touch** the Grid/Aster Gateway core inference and routing chain on **`:8501`**.
+
+## Protected paths and behavior (do not modify)
+
+- `/gateway`, `/chat`, `/v1/chat/completions`, `/api/v1/chat/completions`
+- `/compile`, `/compile/first_proof`, `/cleanroom/*`
+- `/challenge/*`, contract_gate, contract_lint, substrate pipeline
+- `demo/aster` routing, token budget, concurrency slots, cleanroom gate
+- `/store/events` write/read semantics and grid_store behavior
+- Aster identity, system prompts, `unsafe_debug` / production routing policy
+
+## Allowed without touching the chain
+
+- New **read-only** routes on the same port (e.g. static trace index) that do not alter existing handlers
+- Static files under `/app/*` (e.g. `aether.html`)
+- Daemon emit payloads to `/store/events` (additive fields only)
+- Separate ports/processes (`:8510`, `:8686`, `:8790`, etc.)
+
+## When gateway code must change
+
+1. **Do not edit** existing handler logic, middleware order, or routing for protected paths.
+2. Prefer a **separate process or port** over changing `local_gateway.py` core.
+3. If a read-only sidecar route is unavoidable: add isolated `GET` handlers only; no shared state changes; no model/substrate calls.
+4. Never restart or reconfigure gateway as part of unrelated UI work unless the user explicitly approves.
+
+**Enforcement (not agent memory):** `grid-infrastructure-immutable.mdc` · `config/grid_infrastructure_lock.json` · pre-commit · CI · `start_grid_gateway.sh verify-runtime`.
+
+## Review checklist before any PR/commit
+
+- [ ] No diff in protected handler bodies unless user explicitly requested gateway work
+- [ ] No changes to Aster routing, contract gates, or compile/cleanroom
+- [ ] Aether/daemon/UI changes use store emit or separate ports, not gateway inference paths

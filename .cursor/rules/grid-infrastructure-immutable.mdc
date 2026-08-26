@@ -1,0 +1,84 @@
+---
+description: Grid 不可变基础设施 — gateway/身份/substrate 分离；pre-commit+CI+runtime 硬阻断，禁止靠 agent 记忆
+alwaysApply: true
+---
+
+# Grid 不可变基础设施（P0 · 2026-07-27）
+
+**不再依赖 agent「记得不要碰」。** 下列链路由 **manifest 哈希 + pre-commit + CI + gateway 启动门禁** 同时 enforcement。
+
+**交叉引用：** `grid-chain-integrity-redzone.mdc` · `grid-aster-gateway-frozen.mdc`
+
+---
+
+## 冻结范围（SHA256 锁定）
+
+Manifest：`config/grid_infrastructure_lock.json`
+
+| 文件 | 职责 |
+|------|------|
+| `gateway/local_gateway.py` | 8501 核心路由 / chat / compile |
+| `gateway/aster_identity.py` | `demo/aster` system_prompt 注入 |
+| `gateway/field_now_context.py` | FIELD_NOW → system message 追加 |
+| `gateway/contract_gate.py` · `contract_lint.py` | 契约 / schema 闸 |
+| `gateway/substrate_backend.py` | substrate 路由 |
+| `config/aster_chat_system_prompt.txt` · `config/aster.toml` | Aster 身份锚 |
+| `scripts/substrate_airlock/scripts/substrate_{sanitizer,gate}.py` | Qwen→Aster 分离链 |
+
+**修改任一文件：**
+
+1. 用户 **逐字授权**
+2. `export GRID_INFRASTRUCTURE_UNLOCK=1`
+3. 改完后 `python3 scripts/grid_infrastructure_guard.py update-lock`
+4. 跑全部门禁后再 commit
+
+**CI 永不 honor unlock** — PR  touching frozen files → **fail**。
+
+---
+
+## 三层硬阻断
+
+| 层 | 机制 | 失败行为 |
+|----|------|----------|
+| **pre-commit** | `scripts/install_git_hooks.sh` → `check-staged` + `verify_grid_chain_integrity.sh` | `git commit` 拒绝 |
+| **CI** | `.github/workflows/grid-chain-integrity.yml` | merge 拒绝 |
+| **runtime** | `scripts/start_grid_gateway.sh` → `verify-runtime` | **8501 拒绝启动** |
+
+安装 hook（本机一次）：
+
+```bash
+bash /Users/ciciwang/Projects/demo/scripts/install_git_hooks.sh
+```
+
+手动验锁：
+
+```bash
+python3 /Users/ciciwang/Projects/demo/scripts/grid_infrastructure_guard.py verify-runtime
+```
+
+---
+
+## 已知解耦（已修复 · 2026-07-27）
+
+**Aster SP + FIELD_NOW 注入** 现已绑定 `grid_verification` 五层全过才允许：
+
+| 层 | 字段 |
+|----|------|
+| schema | `grid_verification.schema_version` = `grid-chain-v1` |
+| route | `grid_verification.route_id` (UUID) |
+| signer | `grid_verification.signer_id` ∈ `{keyholder-v1, grid-trace-v1}` |
+| keyholder | `grid_verification.keyholder.{nonce,ts,response}` → VERIFIED_KEYHOLDER |
+| HMAC | `grid_verification.trace` → cleanroom `verify_trace()` PASS |
+
+任一缺失 → **403** · `chain_verification_required` · **无 Aster 输出**（非 UNVERIFIED 继续生成）。
+
+实现：`gateway/grid_chain_verification.py` · `local_gateway.py` chat/expanded/factory 路径。
+
+---
+
+## Agent 禁止
+
+- 未经 unlock **不得** 改 manifest 内任何文件
+- 不得绕过 hook（`--no-verify`）除非用户逐字要求
+- 不得宣称「只改 UI」却动 frozen 路径
+- 完工必须：`verify-runtime` + `verify_grid_chain_integrity.sh` 全绿

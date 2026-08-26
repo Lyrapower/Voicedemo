@@ -1,0 +1,38 @@
+# Alpaca bars · sort=desc 事故锁（2026-08-07）
+
+**根因：** `/v2/stocks/bars` 默认 `sort=asc`；带 `limit`（尤其小 limit）时返回**最旧** N 根 → 热力/movers/日线像「陈旧数据池」。
+
+## 绝对要求（生产路径）
+
+凡调用 `data.alpaca.markets` 的 `/v2/stocks/bars` 或 `/v2/stocks/{sym}/bars`：
+
+1. **必须** `sort=desc`
+2. 有小 `limit` 时优先带 `start`；多票缺票必须逐票补
+3. 调用方若语义是「时间正序 / `[-1]=最新`」→ **先 desc 再 reverse**，勿改回 API `asc`
+
+## 已锁文件
+
+| 路径 | 缝 |
+|------|-----|
+| `alpha-platform/backend/alpaca_bars.py` | `bars_params()` 强制 desc |
+| `alpha-platform/backend/worker.py` | 1Min 热力 + ret_1d |
+| `alpha-platform/backend/factor_truth.py` | daily_bars / movers |
+| `grid-scout/fetchers.py` | `quote_layer_bars*` |
+| `option-workstation/backend/alpaca_loader.py` | `_fetch_spot_hist` |
+| `aether_watcher/momentum_sticker.py` | `_fetch_bars` |
+| `aether_nexus/aether_dryrun.py` | `fetch_alpaca_history` |
+
+## 禁止
+
+- 新增 bars 调用却省略 `sort=desc`
+- 用 crypto tick 抬高 `quote_asof_et` 伪装股权新鲜（`app.py` 已拆 `equity_quote_*`）
+- 备份/`deliver/` 旧拷贝当生产源
+
+## 验收
+
+```bash
+bash /Users/ciciwang/Projects/demo/scripts/verify_alpaca_bars_sort.sh
+cd /Users/ciciwang/Projects/demo/alpha-platform/backend && python3 -m unittest test_alpaca_bars_sort_guard -v
+```
+
+Alpha 热力：`curl -s http://127.0.0.1:8600/api/pulse` → equity `last` / `meta.equity_quote_asof_et` 对应当日会话末，不是早盘开盘段。

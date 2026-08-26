@@ -1,0 +1,35 @@
+{
+  "chain": "grid",
+  "trade_date": "2026-07-17",
+  "generated_at": "2026-07-17T20:38:25.536635+00:00",
+  "items": [
+    {
+      "focus": "NVDA",
+      "reason": "盘前热度 50.5 领跑，Delta 与 IV 结构健康，机构资金承接明显 | 风险：高波动环境下需警惕盘后财报或指引不及预期",
+      "risk": "filter/liquidity unchanged until owner ticket"
+    },
+    {
+      "focus": "AMD",
+      "reason": "AI 算力核心标的，技术面突破关键阻力位，量能配合良好 | 风险：半导体板块整体回调可能引发连锁反应",
+      "risk": "filter/liquidity unchanged until owner ticket"
+    },
+    {
+      "focus": "MRVL",
+      "reason": "光模块需求爆发，盘前扫描得分高，趋势延续性强 | 风险：若 NVDA 走势转弱将拖累板块情绪",
+      "risk": "filter/liquidity unchanged until owner ticket"
+    },
+    {
+      "focus": "SMCI",
+      "reason": "盘前热度较高，但需确认最新订单数据是否支撑当前价位 | 风险：库存周期波动及大客户订单不确定性",
+      "risk": "filter/liquidity unchanged until owner ticket"
+    },
+    {
+      "focus": "TSLA",
+      "reason": "盘前热度 43.5 较高，需确认盘前资金流向是否持续 | 风险：大盘情绪波动可能引发非理性抛售",
+      "risk": "filter/liquidity unchanged until owner ticket"
+    }
+  ],
+  "suggestion_box": [],
+  "suggestion_box_note": "参数变更仅主人工单+版本号；此处永不自动生效",
+  "filter_kills": {}
+}

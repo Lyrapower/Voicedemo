@@ -1,0 +1,35 @@
+{
+  "chain": "grid",
+  "trade_date": "2026-07-14",
+  "generated_at": "2026-07-15T07:33:50.204718+00:00",
+  "items": [
+    {
+      "focus": "NVDA",
+      "reason": "BFS 扫描高分榜首，Delta 与 IV 结构健康且 Spread 低 | 风险：高波动性需警惕短期回调",
+      "risk": "filter/liquidity unchanged until owner ticket"
+    },
+    {
+      "focus": "HOOD",
+      "reason": "BFS 扫描高分，IV 显著扩张提供期权保护 | 风险：高隐含波动率可能压制正股上涨空间",
+      "risk": "filter/liquidity unchanged until owner ticket"
+    },
+    {
+      "focus": "TSLA",
+      "reason": "BFS 扫描高分，Delta 中性偏多，波动率适中 | 风险：市场情绪敏感，易受宏观消息扰动",
+      "risk": "filter/liquidity unchanged until owner ticket"
+    },
+    {
+      "focus": "BABA",
+      "reason": "隔夜热度高但缺乏今日核心因子确认 | 风险：数据覆盖不全，无法评估期权希腊值",
+      "risk": "filter/liquidity unchanged until owner ticket"
+    },
+    {
+      "focus": "SMCI",
+      "reason": "高 IV 与高 Spread 显示分歧，需更多数据确认 | 风险：流动性与价差可能导致滑点过大",
+      "risk": "filter/liquidity unchanged until owner ticket"
+    }
+  ],
+  "suggestion_box": [],
+  "suggestion_box_note": "参数变更仅主人工单+版本号；此处永不自动生效",
+  "filter_kills": {}
+}

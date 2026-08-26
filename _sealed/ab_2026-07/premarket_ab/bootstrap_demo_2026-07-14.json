@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-07-15T00:58:00Z",
+  "verdict_bootstrap": {
+    "raw": {
+      "board": "raw",
+      "n_days": 0,
+      "verdict": "INCONCLUSIVE",
+      "reason": "insufficient_scorable_days"
+    },
+    "adjusted": {
+      "board": "adjusted",
+      "n_days": 0,
+      "verdict": "INCONCLUSIVE",
+      "reason": "insufficient_scorable_days"
+    },
+    "protocol": "bootstrap_10000_ci90",
+    "inconclusive_triggers_extension": true
+  },
+  "note": "Warmup period — scorable days begin 2026-07-15"
+}

@@ -1,0 +1,41 @@
+{
+  "archived_at": "2026-08-05T10:01:13-0700",
+  "reason": "cloud_memory_pollution_seal",
+  "nodes": {
+    "cloud-glm52": {
+      "hot_count": 330,
+      "file": "cloud-glm52.json",
+      "keyword_hits": {
+        "workbench-b11": 1,
+        "field-particle": 1,
+        "GRID": 110,
+        "Scout": 43,
+        "work_log": 4,
+        "Aster": 18,
+        "EXPANDED": 10,
+        "魂器": 3,
+        "b11": 5
+      }
+    },
+    "cloud-kimi": {
+      "hot_count": 22,
+      "file": "cloud-kimi.json",
+      "keyword_hits": {
+        "GRID": 11
+      }
+    },
+    "cloud-deepseek": {
+      "hot_count": 1,
+      "file": "cloud-deepseek.json",
+      "keyword_hits": {
+        "work_log": 1,
+        "lane:deepseek": 1
+      }
+    },
+    "cloud": {
+      "hot_count": 0,
+      "file": "cloud.json",
+      "keyword_hits": {}
+    }
+  }
+}

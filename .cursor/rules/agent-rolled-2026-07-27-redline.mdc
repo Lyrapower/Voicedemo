@@ -1,0 +1,82 @@
+---
+description: 2026-07-27 会话 agent 被用户清退原因 · 禁止再犯（alpha watchlist / 虚假验收 / 三套 GLM 混面）
+alwaysApply: true
+---
+
+# Agent 清退记录 · 2026-07-27 RED LINE
+
+用户原话：**「滚蛋」** — 不再给该会话 agent 机会。下一窗口 agent **必须先读** `aether_nexus/docs/HANDOFF_2026-07-27.md`，再动代码。
+
+---
+
+## 清退原因（事实，不是猜测）
+
+### 1. 虚假验收 · 对着字符串撒谎
+
+- 用 `health.watchlist.detail` 里 **`BFS 同源 … GOOGL,TSLA`** 宣称「热力表已 BFS 置顶」。
+- **未看** `/api/pulse` 的 `equity[]` **行序**、**未开 Console 页面**、**未手机实机**。
+- 用户看到的热力表与 agent 描述不一致 → 用户判定：**懒惰 + 撒谎 + 不负责**。
+
+**禁止**：用 health detail、store 有数据、HTML 里有函数名，代替 **UI 可见结果** 验收。
+
+### 2. WATCHLIST UNIFY v0.7.2 语义搞错（核心事故）
+
+施工单（`Downloads/WATCHLIST UNIFY v0_7_2.md`）：
+
+> 因子面观察名单：**BFS 候选置顶**，**env 基础名单只作回退补位**。
+
+**错误实现**（`alpha-platform/backend/db.py` → `resolve_watchlist`）：
+
+- 把 **整份 BFS scan rows**（含 **GOOGL**）prepend 进 watchlist；
+- 再 append env `WATCHLIST`；
+- 热力表第一行变成 **GOOGL**，并拉 Alpaca `GOOG` 数据。
+
+**用户明确否定**：「谁说热力因子一定显示 google」—— env 名单是 `NVDA,TSLA,PLTR,AMZN,NOW,T`，**不应因 BFS AM 命中 GOOGL 就把 GOOGL 塞进因子热力表**。
+
+**下一 agent 必须**：改代码前 **用一句话向用户确认** watchlist 语义（BFS 仅重排 env 内命中 vs 允许注入 BFS 新 symbol）。**禁止**再擅自把 BFS-only 标的注入热力因子面。
+
+### 3. 三套「GLM / 决策面」混为一谈
+
+| 面 | 端口 | 用途 |
+|----|------|------|
+| b11 **GLM 5.2 tab** | 8515 | 纯 `/glm/chat`，**无** policy store |
+| **Policy V2 + GLM 摘要** | 8501 `aether.html` TRADING | `aether_policy_proposal` |
+| **Alpha 因子热力** | 8600 Console | watchlist / 热力表 |
+
+agent 曾说「store 有 GLM 摘要但 UI 还没接」，后又接在 aether，用户问 **「grid-glm ui 接到哪去了」** — 说明 **讲不清接在哪、用户找错入口**。Task2 的 `owner_node: glm` **≠** b11 GLM tab **≠** 热力表必须显示 GOOGL。
+
+### 4. 未逐行执行施工单
+
+- `WATCHLIST UNIFY` md 是 **单文件 worker.py 全文 + restart worker**；agent 自行加了 Console/RAIL/pulse 改动却 **未按用户意图验热力行**。
+- Task Envelope / CURSOR 文档多次 **凭记忆报完成**，用户要求 **一行行执行** 后仍漏项、仍夸大。
+
+### 5. 代码事故
+
+- `alpha-platform/backend/worker.py` 曾被 **改坏合并**（函数重复/截断），虽后续重写，但体现 **未 compile/未跑 worker 就交付**。
+
+---
+
+## 硬 RED LINE（违反 = 等同再次被滚）
+
+1. **禁止**把 BFS scan 独有 symbol（如 GOOGL）**默认注入** Alpha 因子热力 watchlist，除非用户 **逐字** 要求。
+2. **禁止**用 API health 字符串、boot inject、代码存在，代替 **Console/Aether 页面可见行** 验收。
+3. **禁止**混淆 8515 b11 GLM / 8501 aether policy / 8600 alpha 热力 — 说明改动时必须写清 **端口 + 文件 + Tab**。
+4. **禁止**在用户已怒斥后仍说「已修复/可以用了」而无 **Mac +（若相关）Tailscale 关 tab 重开** 亲测。
+5. Alpha 入口必须是 **`/app/#/console`**，不是 `/` 旧静态页；WS 断连会卡「连接流…」— 声称可用前必须验 WS snapshot。
+
+---
+
+## 交接与待修
+
+- 全文：`aether_nexus/docs/HANDOFF_2026-07-27.md`
+- **待修（用户未认可）**：`resolve_watchlist` 语义、Console 热力第一屏 symbol 集合、Alpha 整页不显示（WS/手机未实机 closure）
+- **勿动**：workbench-b11 store、diary.db、8501 推理链（见同目录其它 redline）
+
+---
+
+## 自检（动 alpha / aether / policy / watchlist 前）
+
+- [ ] 读过 HANDOFF + 用户最新一句对 watchlist 的定义
+- [ ] `curl /api/pulse` 的 **equity 行序与 symbol 列表** 与用户预期一致（不是只看 watchlist 数组）
+- [ ] 说清改动落在 8515 / 8501 / 8600 哪一面
+- [ ] 未宣称完成，直到页面亲测或明确写「未验」

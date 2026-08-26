@@ -1,0 +1,13 @@
+grid-sovereign-runtime/traces/
+grid-sovereign-runtime/pretrained_models/
+grid-sovereign-runtime/third_party/
+grid-sovereign-runtime/data/
+aether_nexus/logs/
+aether_nexus/traces/
+aether_nexus/dryrun_state/
+aether_nexus/*_state.json
+aether-paper/state/
+**/.tools/
+**/node_modules/
+deliver/**/*.zip
+*.db.bak*

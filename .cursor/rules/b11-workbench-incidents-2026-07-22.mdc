@@ -1,0 +1,135 @@
+---
+description: b11 workbench 2026-07-22 事故清单 — store/对话/UI/迁移/agent 禁止再犯
+alwaysApply: true
+---
+
+# b11 Workbench 事故锁（2026-07-22）
+
+用户要求：**以下错误不得出现第二次。** 动 `grid_workbench_b11.html`、`:8515`、`:8501/store`、`workbench-b11` lane 前必读。
+
+> **RED LINE（最高优先级）** → 见同目录 **`workbench-b11-store-redline.mdc`**（**2026-08-02 升格**）：  
+> 8501 对话**正文禁止硬删**；7d epoch **只许 MOVE→`messages_archive`**，禁止把「归档」做成 `DELETE`；  
+> `after_turn` **必须落正文**（禁止只留 hash）。agent **绝对禁止** wipe 生产 store。  
+> **2026-07-30 事故**：`maybePurgeEpoch` 硬删 `workbench-b11` 旧 epoch + hash-only 记忆层 → STUDIO 正文不可恢复——**不得重演**。  
+> **Cloud tab 记忆 RED LINE** → **`cloud-memory-agent-redline.mdc`**：生产 lane **禁止 agent 写验收 turn**（2026-07-28 · `u0/a0` 污染事故）。
+
+## 1. 对话 / store — 最高优先级
+
+### 架构（不可忘）
+
+| 产品 | 端口 | store node | 与谁独立 |
+|------|------|------------|----------|
+| **b11 workbench** | 8515 | **`workbench-b11`** | 与 grid app / 8790 **完全独立** |
+| Grid app | 8501 | `field-particle` | — |
+| 8790 FIELD | 8790 | `field-particle` | — |
+
+**b11 是 2026-07-21/22 新产物。** 8790 / grid app 里**几天前**的对话 **≠ b11 历史**。禁止把 `field-particle` 旧消息说成「b11 丢的」或「可迁回 b11」。
+
+### 禁止
+
+- b11 读写 **`field-particle`**（曾错接，与 grid/8790 混线）
+- 未经用户**逐条指定 message id** 做 bulk migrate / 时间窗 migrate
+- **`DELETE FROM messages WHERE node_id='workbench-b11'`** 或 purge 全 node，除非用户**逐字**要求删
+- 用 `field-particle` 内容「恢复 b11」——多数不是 b11 对话
+- 验收 / smoke 写入 **`workbench-b11`** 后不删（用户可见污染）
+- 写入 store 后不说「已恢复」——须用户确认内容正确
+
+### 必须
+
+- b11 只读写 **`/store/conversations/workbench-b11`**
+- EXPANDED 传 **`memory_node: "workbench-b11"`**
+- 每轮 **`pushTurn` → store**；截断时写**占位正文**，禁止空串入库
+- store 失败须**页面告警**，禁止静默丢
+- modebar **`store N条 / 离线`** 须可见
+- 删 store 行：优先让用户确认；脚本须 **`--replace`** / **`--allow-workbench-b11`**
+
+## 2. 1024 截断 / 「对话被清」
+
+### 曾犯错误
+
+- b11 发 `max_tokens:1024`；EXPANDED 默认 1024 budget
+- `finish_reason=length` 时渲染**空卡片** → 像整页清空
+- 截断后 `finalText=""` 写入 store → 刷新后消息消失
+
+### 必须保持
+
+- b11 **不传** client `max_tokens`
+- 8501 预算来自 `config/aster.toml`（`chat_max_tokens` / `gateway_max_tokens` = 8192）
+- 截断保留已有文字 + 占位符入库；卡片标 `truncated · 8501 budget`
+
+## 3. localStorage / PAGE_VER
+
+### 曾犯错误
+
+- 每次 bump `PAGE_VER` 执行 **`st.del("hist")`**，开发期 j→s 多次 bump = 本地 transcript 反复抹掉
+- store 未接好前只靠 localStorage → 刷新即丢
+
+### 禁止
+
+- **`PAGE_VER` 变更时删除 transcript / hist**
+- 无用户要求频繁 bump `PAGE_VER`（每 bump 逼用户关 tab 重开）
+
+## 4. UI — 只做用户说的
+
+### 曾犯错误
+
+- token/计费 **两行重复**（modebar 累计 + 下方预估 / `#sendStat` / `#substat`）
+- 未经要求加 **epoch 日期**（如 `2026-07-16`）、modebar 大面积 HUD
+- HOME 自动展开 **provenance `<details open>`** 方框
+- 用户要「一行」时 agent **全删** token 显示，又改回来——来回折腾
+- 加用户未要的 UI 后宣称「对齐 b10」
+
+### 必须
+
+- 对话卡片：**每卡一行** `.usage-line`（`{N} tok · 费用 $X.XXX`），**不要第二处重复**
+- 未经用户明确要求：**不加** epoch 标签、双行计费、额外 modebar 块
+- 改 UI 前先读用户原话；「去掉 X」≠「去掉所有 token」
+
+## 5. agent 验收污染
+
+### 曾犯错误
+
+- Playwright / curl 验收往 **`field-particle`** 写 `只回复:收到`、`ping`、`验收` 等
+- 从 `field-particle` purge 47 条时可能误伤边界消息
+- 往 **`workbench-b11`** 写 `b11持久化验收ping` 后叫用户自己删
+- **2026-07-28**：agent 往 **`cloud_memory.db` · `cloud-glm52`** 循环 POST `u0/a0`…`u30/a30`（31 轮假对话污染 Cloud tab）
+
+### 禁止
+
+- 生产 store node（`field-particle` / **`workbench-b11`**）写探测对话
+- 生产 Cloud lane（**`glm52` / `kimi_k25` / `deepseek_v4`**）写探测 turn — 见 **`cloud-memory-agent-redline.mdc`**
+- 验收用 **`smoke_node`** / **`smoke` cloud lane** 或临时 sqlite；若必须写生产 node/lane，**当场删除**（且服务端应硬拒）
+- 测试消息留给用户清理
+
+### 必须
+
+- Cloud 记忆验收：**仅 GET** `/cloud/memory/{lane}`；write 验收只用 **`/cloud/memory/smoke/turn`**
+
+## 6. 错误恢复 / 胡说
+
+### 曾犯错误
+
+- 多次**迁错** b11 历史（全量 field-particle → 时间窗 → id 74/75  Jul17 子协议 → 又清空）
+- 找不到 store 里文本仍猜测「可能在 field-particle」
+- 把 **Garden voice** 说成影响 b11 store（无关）
+- 未读 **iCloud 源稿** / **EXPANDED SPEC** 就改 b11
+- **代码改完即宣称「已修复/可用了」**（违反 `verification-before-complete.mdc`）
+
+### 必须
+
+- 恢复历史：**用户给 id 或原文** → dry-run 展示 → 确认后再 insert
+- 找不到就直说**不可恢复**，禁止编造或乱迁
+- 完工：**curl / 浏览器** 验证 store 读写 + 用户可见 UI
+
+## 7. 相关脚本
+
+**已删除（2026-07-22）**：`purge_store_agent_tests.py`、`migrate_b11_store_history.py` — 今日 agent 产物，不得重建，除非用户明确要求。
+
+## 8. 改 b11 前自检
+
+- [ ] store node 仍是 **`workbench-b11`**，未碰 `field-particle`
+- [ ] 无 bulk DELETE / migrate，除非用户逐字授权
+- [ ] 无验收垃圾写入生产 node / **Cloud 生产 lane**
+- [ ] Cloud 验收未 POST `/cloud/memory/glm52|kimi_k25|deepseek_v4/turn`
+- [ ] UI 变更在用户请求范围内；token **一行**
+- [ ] 未宣称完成，直到 store 写入/读回 + 页面亲测通过

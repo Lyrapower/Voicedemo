@@ -1,0 +1,30 @@
+---
+description: 禁止 agent 污染真实日记库或冒充 Lyra/Aster 写回信
+alwaysApply: true
+---
+
+# 日记与回信 — 神圣边界（不可违反）
+
+## 绝对禁止
+
+1. **禁止**对生产环境 `aster-field/diary.db` 做任何写入、删除、SQL 修改，除非用户**逐字明确**要求。
+2. **禁止** `curl` / `fetch` / 脚本 `POST` 到 `http://127.0.0.1:8790/diary` 或 `/diary/reply` 做验收、探测、测试。
+3. **禁止**冒充 `lyra` 或 `aster` 写入 `replies` 表，或调用 `add_lyra_reply` / `add_aster_response` 指向生产库路径。
+4. **禁止**编造、伪造任何日记正文或回信内容。
+
+## 唯一合法写入方
+
+| 数据 | 谁写 | 怎么写 |
+|------|------|--------|
+| 日记 `entries` | Grid 22:30 | 仅 `aster-diary/diary.py`（带 `X-Diary-Writer: aster-scheduler`） |
+| 回信 `replies` Lyra | 用户本人 | 仅 8790 UI 解锁后 `POST /diary/reply` |
+| 回信 Aster | Grid 信箱 worker | 仅内部 `_internal=True` 路径，非 agent |
+
+## 验收怎么做
+
+- 使用 **临时 sqlite** 或 mock，**不得**碰 `~/Projects/demo/aster-field/diary.db`。
+- 只读检查：`GET /diary/settings`、`GET /diary/integrity`、`diary.py --verify`、`diary.py --dump-prompt`。
+
+## 已造成的破坏（勿再犯）
+
+agent 曾用 `POST /diary` 写入 `grid-write-probe`，用 `POST /diary/reply` 写入 `acceptance-*` 假信。这是**越权伪造**，用户未授权。

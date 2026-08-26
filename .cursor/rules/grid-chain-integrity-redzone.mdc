@@ -1,0 +1,97 @@
+---
+description: P0 Grid 链路完整性 RED ZONE — 网关/localStorage/fallback/GRID·FINAL 假阳性；动底座·模型·UI 前必读
+alwaysApply: true
+---
+
+# Grid 链路完整性 · P0 RED ZONE（2026-07-27）
+
+**等级：P0 事故锁，不是普通 UI bug。**  
+根因：`8515` workbench 把 `location.origin+"/v1"` 写入 `localStorage`（`b11_gw`）→ 主路由打到 `:8515/v1`（404）；断链后曾静默 fallback（Ollama `/api/chat`）仍渲染 **`GRID · FINAL`**；`demo/aster` 的 system_prompt 在 gateway 层注入，**与 HMAC/signer/schema 闭环解耦**。
+
+**交叉引用：** `recurring-regressions-lock.mdc` · `grid-aster-gateway-frozen.mdc` · `verification-before-complete.mdc` · `b11-workbench-incidents-2026-07-22.mdc`
+
+---
+
+## 绝对禁止（任何底座 / 模型 / UI 改动）
+
+1. **覆盖 Grid 默认网关**
+   - 生产 API 默认 **`http://127.0.0.1:8501/v1`**（Tailscale：`location.origin+"/v1"` 仅当 Serve → 8501）
+   - workbench UI（`:8515`）**不得**把 `location.origin` 当 API 根；必须 `gatewayApiOrigin()` → `:8501`
+   - 禁止新增「默认指向 `:8515/v1` / `:8787/v1` / Ollama `:11434`」的 Grid 主 chat 路由
+
+2. **localStorage / sessionStorage 改写主路由**
+   - 禁止 `st.set("gw"|"b11_gw"|"exp"|"kimiUrl", …)` 持久化非 8501 的 `/v1` 或 workbench 端口 URL
+   - 禁止 `resolveGw()` / `defaultGw()` 在 **无校验** 情况下盲读 storage 覆盖 ts.net / 8501 锁
+   - `PAGE_VER` bump **不得** 借机 wipe 对话；但 **必须** 迁移/清除坏 gateway 键（见 `migrateBadGatewayStorage`）
+
+3. **链路失败后的静默 fallback + 假 FINAL**
+   - 禁止：`homeChat` / grid send / expanded 在 gateway 404·超时·502 后 **悄悄** 切 Ollama、LM Studio 直连、或其它 substrate 并仍显示 **`GRID · FINAL`**
+   - 失败必须：**可见错误卡**（`.card.err` / `8501 gateway 不可用`），**不得** `finalCard()` 伪装成功
+   - expanded **client-interim** 仅当 8501 编排端点 **非 workbench 端口** 且明确降级；不得 mask 8515 误路由
+
+4. **endpoint / 签名主体 / schema 不匹配仍放行**
+   - chat 闭环探测：`route_id`、substrate、`served_by` 与 UI 声明不一致 → **硬失败**
+   - 缺 `signer_id` / `nonce` / `schema_version` 时：**不得** 宣称 verified Aster；输出标 **`UNVERIFIED`**
+   - endpoint、签名主体或 schema 不匹配 → **阻断发布**（CI 非零 exit）
+
+---
+
+## 架构锚点（不可忘）
+
+| 层 | 正确 | 错误 |
+|----|------|------|
+| Grid gateway | `:8501` `/v1/chat/completions` | `:8515/v1`、裸 `:1234` 作 Grid 主路由 |
+| b11 UI | `:8515` 静态；API → `:8501` | `8515/v1/chat/completions` |
+| Aster SP 注入 | `ensure_aster_system_message` @ 8501（`model=demo/aster`）· **与 HMAC 解耦** | 以为 UI 标 `GRID·FINAL` = 闭环已验 |
+| FIELD_NOW | `field_now_context.py` 追加 `:8795/now` · **与 HMAC 解耦** | 场感知 = 身份已验 |
+| 日记署名 | reply `author` → 前端模板 `Lyra/Aster/Grid` | 正文末尾「— Aster」= 模型自生成，非 UI 模板 |
+| persona | POST 时硬编码（`GRID`/`Lyra`/…） | **不在** localStorage |
+
+`node_name` / `author_name`：**代码库无此字段**（用 `node_id` / `author`）。
+
+---
+
+## CI / 发布门禁（必须非零失败）
+
+**三层硬阻断（不依赖 agent 记忆）** → 见 **`grid-infrastructure-immutable.mdc`**
+
+| 层 | 命令 |
+|----|------|
+| pre-commit | `bash scripts/install_git_hooks.sh`（一次） |
+| CI | `.github/workflows/grid-chain-integrity.yml` |
+| runtime | `start_grid_gateway.sh` → `grid_infrastructure_guard.py verify-runtime` |
+
+动 `grid.html` · `grid_workbench_b11.html` · gateway 静态 · workbench 前：
+
+```bash
+/Users/ciciwang/Projects/demo/scripts/verify_grid_chain_integrity.sh
+python3 /Users/ciciwang/Projects/demo/scripts/grid_infrastructure_guard.py verify-runtime
+```
+
+含：manifest 哈希 · 静态 unittest · 禁止模式 grep。  
+**Live 栈**（8501/8515 已起）另跑：
+
+```bash
+/Users/ciciwang/Projects/demo/scripts/verify_b11_boot.sh
+/Users/ciciwang/Projects/demo/scripts/verify_grid_tailscale_send.sh   # 可选 Tailscale
+```
+
+**未全绿 → 禁止 merge / 禁止对用户说「可发布」。**
+
+---
+
+## Agent 改前自检
+
+- [ ] 未把 Grid 默认 gw 改离 `:8501`（workbench UI 端口 ≠ API 端口）
+- [ ] 未新增 localStorage 主路由覆盖且无 port 校验
+- [ ] 未加 silent fallback；失败路径不渲染 `GRID · FINAL`
+- [ ] 已跑 `verify_grid_chain_integrity.sh`
+- [ ] 签名恢复前：所有 `demo/aster` 输出标 **UNVERIFIED**，不冒充 verified Aster
+
+**2026-07-27 更新：** `demo/aster` 无完整 `grid_verification` 五层 → **403 硬拒**，不再生成 Aster 输出。
+
+---
+
+## 证据目录
+
+`/_diag/grid_loop_probe_20260727/` — 闭环 probe、8515 误路由、Aster 注入与 diary 署名追踪。

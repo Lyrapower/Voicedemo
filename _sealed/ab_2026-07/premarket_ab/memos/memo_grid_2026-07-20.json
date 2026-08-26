@@ -1,0 +1,35 @@
+{
+  "chain": "grid",
+  "trade_date": "2026-07-20",
+  "generated_at": "2026-07-20T21:38:32.185328+00:00",
+  "items": [
+    {
+      "focus": "NVDA",
+      "reason": "期权隐含波动率与 Delta 显示机构资金持续流入，且昨日扫描得分最高 | 风险：高 IV 环境下的 Theta 衰减压力",
+      "risk": "filter/liquidity unchanged until owner ticket"
+    },
+    {
+      "focus": "HOOD",
+      "reason": "高波动率与宽价差表明期权端存在强烈的看涨对冲需求 | 风险：高 IV 溢价可能导致正股短期回调",
+      "risk": "filter/liquidity unchanged until owner ticket"
+    },
+    {
+      "focus": "TSLA",
+      "reason": "Delta 中性偏多，期权隐含波动率适中，具备趋势跟随潜力 | 风险：低 IV 环境缺乏期权保护，易受突发消息冲击",
+      "risk": "filter/liquidity unchanged until owner ticket"
+    },
+    {
+      "focus": "AMD",
+      "reason": "缺乏明确的期权定价优势或近期催化剂信号 | 风险：数据不足，无法确认短期期权流向",
+      "risk": "filter/liquidity unchanged until owner ticket"
+    },
+    {
+      "focus": "MRVL",
+      "reason": "未进入昨日高频扫描的前五梯队，缺乏核心因子支撑 | 风险：缺少关键期权数据验证",
+      "risk": "filter/liquidity unchanged until owner ticket"
+    }
+  ],
+  "suggestion_box": [],
+  "suggestion_box_note": "参数变更仅主人工单+版本号；此处永不自动生效",
+  "filter_kills": {}
+}

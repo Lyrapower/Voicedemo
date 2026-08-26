@@ -1,0 +1,29 @@
+# Scout Agent 装包后门禁(强制)
+
+**装任何 `scout agent install*.sh` 进 `Projects/demo/grid-scout` 后,禁止口头完成。**
+
+## 必须跑
+
+```bash
+cd /Users/ciciwang/Projects/demo/grid-scout
+python3 verify_scout_deploy.py
+```
+
+退出码非 0 → **未完成**,禁止说「已部署/可用了」。
+
+## 门禁覆盖(与脚本同步)
+
+1. Ollama 路径 `think=false`(否则长单空正文)
+2. `emit_aether_scout` 接在 morning+evening
+3. 本机 Alpaca + SSL(certifi);日历 wrap≥800(防吞今日 AMC)
+4. `amc_tonight` cap≥30(原 15 裁 TEAM)
+5. 实况:今日 AMC 非空;日历含 TEAM ⇒ 名单含 TEAM
+6. 实况:`rsi14_tape` 中 SP500/NASDAQ 非 null
+7. gateway `/health` 可达(emit 前置)
+
+## 禁止
+
+- 装原版后不跑门禁就重跑班次
+- 用「grep TEAM 有字」代替主菜/引擎名单验收
+- 把本机接线(Alpaca/SSL/think/emit)当成可省略的「优化」
+- 改 `~/grid-scout` 冒充已部署 demo 路径(8620 读的是 `Projects/demo/grid-scout/briefs`)
