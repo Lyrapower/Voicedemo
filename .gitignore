@@ -36,3 +36,44 @@ ios-wrapper/**/xcuserdata/
 # Logs
 *.log
 quick_recap_log.json
+
+# --- Runtime / generated (keep out of git & Cursor Changes) ---
+# Daemon traces, proofs, A/B journals — regenerable, not source
+grid-sovereign-runtime/traces/
+grid-sovereign-runtime/pretrained_models/
+grid-sovereign-runtime/third_party/
+grid-sovereign-runtime/data/
+grid-sovereign-runtime/egress_audit.jsonl
+grid-sovereign-runtime/fleet_status.json
+
+# Aether runtime
+aether_nexus/logs/
+aether_nexus/traces/
+aether_nexus/dryrun_state/
+aether_nexus/state_test/
+aether_nexus/*_state.json
+aether_nexus/offpool_coach/state/
+
+# Paper ledgers (local simulation state)
+aether-paper/state/
+
+# Harness provenance (append-only runtime log)
+state/provenance.jsonl
+
+# CC CLI / node toolchains (installed locally)
+**/.tools/
+**/node_modules/
+
+# Local bundles & backups
+deliver/**/*.zip
+*.db.bak*
+aster-field/diary.db.bak*
+
+# Large local diagnostics (screenshots kept only when explicitly committed)
+aster-field/DIAG-*.png
+aster-field/ACCEPT-*.png
+aster-field/VERIFY-*.png
+
+# LM Studio plugin vendored deps
+lmstudio-plugins/**/node_modules/
+_diag/

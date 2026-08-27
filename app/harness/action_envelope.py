@@ -11,6 +11,18 @@ FORBIDDEN_RECEIPT_FIELDS = {
     "recommended_action", "suggested_fix", "next_worker", "next_tool",
     "fallback", "strategy", "reasoning", "hypothesis",
 }
+# Fable review 2026-08-26: exact-name set was trivially bypassed ({"next_step": "buy more"} passed). Prefix classes:
+FORBIDDEN_RECEIPT_PREFIXES = ("next_", "recommend", "suggest", "should_", "plan", "advice", "fallback", "strategy")
+VALID_RECEIPT_STATUS = {"CLAIMED", "EXECUTED", "FAILED", "DENIED", "VERIFIED", "FAILED_VERIFICATION", "TIMEOUT"}
+
+
+def _leaks(keys) -> list[str]:
+    out = []
+    for k in keys:
+        kl = str(k).lower()
+        if k in FORBIDDEN_RECEIPT_FIELDS or any(kl.startswith(p) for p in FORBIDDEN_RECEIPT_PREFIXES):
+            out.append(str(k))
+    return sorted(out)
 
 VALID_DECISION_ORIGINS = {
     "GRID_LOCAL", "GRID_DELEGATED_GLM", "HARNESS", "VERIFIER", "TOOL", "USER"
@@ -39,6 +51,9 @@ class ActionEnvelope:
 
     def to_dict(self) -> dict[str, Any]:
         self.validate()
+        from app.harness import provenance
+        if not getattr(provenance, "_RECORDING", False):
+            provenance.record_action(self)
         return asdict(self)
 
 
@@ -59,21 +74,29 @@ class FactualReceipt:
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
-        leaked = FORBIDDEN_RECEIPT_FIELDS.intersection(payload)
+        if self.status not in VALID_RECEIPT_STATUS:
+            raise ValueError(f"invalid receipt status: {self.status}")
+        leaked = _leaks(payload)
         if leaked:
-            raise ValueError(f"cognitive leakage in receipt: {sorted(leaked)}")
-        if FORBIDDEN_RECEIPT_FIELDS.intersection(self.metadata):
-            raise ValueError("cognitive leakage in receipt metadata")
+            raise ValueError(f"cognitive leakage in receipt: {leaked}")
+        leaked_meta = _leaks(self.metadata or {})
+        if leaked_meta:
+            raise ValueError(f"cognitive leakage in receipt metadata: {leaked_meta}")
+        from app.harness import provenance
+        if not getattr(provenance, "_RECORDING", False):
+            provenance.record_receipt(self)
         return payload
 
 
 def validate_external_receipt(payload: dict[str, Any]) -> dict[str, Any]:
-    leaked = FORBIDDEN_RECEIPT_FIELDS.intersection(payload)
+    leaked = _leaks(payload)
     if leaked:
-        raise ValueError(f"receipt contains forbidden cognition fields: {sorted(leaked)}")
+        raise ValueError(f"receipt contains forbidden cognition fields: {leaked}")
     metadata = payload.get("metadata") or {}
     if isinstance(metadata, dict):
-        leaked_meta = FORBIDDEN_RECEIPT_FIELDS.intersection(metadata)
+        leaked_meta = _leaks(metadata)
         if leaked_meta:
-            raise ValueError(f"receipt metadata contains forbidden cognition fields: {sorted(leaked_meta)}")
+            raise ValueError(f"receipt metadata contains forbidden cognition fields: {leaked_meta}")
+    if payload.get("status") == "VERIFIED" and not (metadata.get("verifier_predicate") if isinstance(metadata, dict) else None):
+        raise ValueError("external receipt claims VERIFIED without verifier predicate")
     return payload

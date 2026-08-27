@@ -23,7 +23,10 @@ class CollaborationEvent:
         return asdict(self)
 
 
-def build_collaboration_view(events: Iterable[dict[str, Any]]) -> dict[str, Any]:
+def build_collaboration_view(events: Iterable[dict[str, Any]] | None = None) -> dict[str, Any]:
+    if events is None:
+        from app.harness.provenance import read_events
+        events = read_events()
     rows = []
     actors = []
     for event in events:

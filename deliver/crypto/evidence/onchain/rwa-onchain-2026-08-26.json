@@ -1,0 +1,100 @@
+{
+ "kind": "rwa_onchain_evidence",
+ "version": 2,
+ "chain_id": 1,
+ "block": 25843114,
+ "rpc2_status": "ok",
+ "read_ts": "2026-08-27T00:57:31.993022+00:00",
+ "cards": [
+  {
+   "symbol": "USYC",
+   "issuer": "Circle (Hashnote)",
+   "chain": "ethereum",
+   "address": "0x136471a34f6ef19fE571EFFC1CA711fdb8E49f2b",
+   "source_url": "https://developers.circle.com/tokenized/usyc/smart-contracts",
+   "verified_symbol": true,
+   "decimals": 6,
+   "total_supply": 54848167999336,
+   "supply_units": 54848168.0,
+   "supply_usd_at_par": 54848168.0,
+   "nav_oracle": {
+    "address": "0x74f2199AEb743f68f05943e5715A33EaF2b61f53",
+    "error": "rpc error: {'code': 3, 'message': 'execution reverted', 'data': '0x'}"
+   },
+   "error": null,
+   "block": "0x18a55aa",
+   "second_source": {
+    "status": "ok",
+    "total_supply": 54848167999336,
+    "match": true
+   },
+   "read_ts": "2026-08-27T00:57:29.689925+00:00",
+   "onchain_symbol": "USYC"
+  },
+  {
+   "symbol": "BUIDL",
+   "issuer": "BlackRock / Securitize",
+   "chain": "ethereum",
+   "address": null,
+   "source_url": "TODO Securitize 官方文档",
+   "verified_symbol": false,
+   "decimals": null,
+   "total_supply": null,
+   "supply_units": null,
+   "supply_usd_at_par": null,
+   "nav_oracle": null,
+   "error": "注册表无地址(待官方文档核实),拒读不猜",
+   "block": "0x18a55aa",
+   "second_source": {
+    "status": "pending",
+    "total_supply": null,
+    "match": null
+   },
+   "read_ts": "2026-08-27T00:57:31.992984+00:00"
+  },
+  {
+   "symbol": "OUSG",
+   "issuer": "Ondo",
+   "chain": "ethereum",
+   "address": null,
+   "source_url": "TODO https://github.com/ondoprotocol 部署清单",
+   "verified_symbol": false,
+   "decimals": null,
+   "total_supply": null,
+   "supply_units": null,
+   "supply_usd_at_par": null,
+   "nav_oracle": null,
+   "error": "注册表无地址(待官方文档核实),拒读不猜",
+   "block": "0x18a55aa",
+   "second_source": {
+    "status": "pending",
+    "total_supply": null,
+    "match": null
+   },
+   "read_ts": "2026-08-27T00:57:31.993009+00:00"
+  },
+  {
+   "symbol": "USDY",
+   "issuer": "Ondo",
+   "chain": "ethereum",
+   "address": null,
+   "source_url": "TODO https://github.com/ondoprotocol/usdy 部署清单",
+   "verified_symbol": false,
+   "decimals": null,
+   "total_supply": null,
+   "supply_units": null,
+   "supply_usd_at_par": null,
+   "nav_oracle": null,
+   "error": "注册表无地址(待官方文档核实),拒读不猜",
+   "block": "0x18a55aa",
+   "second_source": {
+    "status": "pending",
+    "total_supply": null,
+    "match": null
+   },
+   "read_ts": "2026-08-27T00:57:31.993016+00:00"
+  }
+ ],
+ "skipped": [],
+ "n_verified": 1
+}

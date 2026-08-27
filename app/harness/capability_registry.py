@@ -30,11 +30,12 @@ STATIC_CAPABILITIES = (
     Capability("crypto.proof.compile", "compiled_memory", "tool", "local_write", produces=("compiled_workspace",)),
     Capability("trading.paper.signal_daily", "aether_paper", "tool", "paper_only", produces=("paper_signals",)),
     Capability("trading.paper.cli", "aether_paper", "tool", "paper_only", produces=("paper_receipts",)),
-    Capability("aether.crypto.snapshot", "aether_crypto", "tool", "read_only", produces=("market_state",)),
-    Capability("aether.crypto.spot_v12", "aether_crypto", "tool", "paper_only",
-               produces=("spot_orders", "positions_state"),
-               notes="V1.2 现货合规引擎 (Coinbase 主/Kraken 备); 三档 paper/sandbox/live; "
-                     "live 恒 BLOCKED 直至 Lyra 书面解锁; daemon 无监听端口 (#14 PORTS.md 无涉)"),
+    Capability("aether.crypto.snapshot", "quarantine", "tool", "read_only",
+               status="unavailable", produces=("market_state",),
+               notes="NONUS quarantine; directory isolated; not imported; not scheduled."),
+    Capability("aether.crypto.spot_v12", "quarantine", "tool", "paper_only",
+               status="unavailable", produces=("spot_orders", "positions_state"),
+               notes="NONUS quarantine; live/perp engine isolated; not imported; not scheduled."),
     Capability("image.read", "minimax_m3", "model_tool", "media_scoped", produces=("candidate_multimodal",)),
     Capability("audio.asr", "minimax_m3", "model_tool", "media_scoped", produces=("candidate_transcript",)),
     Capability("audio.tts", "minimax_m3", "model_tool", "media_scoped", produces=("audio_artifact",)),
@@ -53,7 +54,12 @@ def _legacy_task_capabilities() -> list[dict[str, Any]]:
         from app.jarvis.task_registry import list_tasks
         tasks = list_tasks()
     except Exception as exc:  # truthful host-repo dependency boundary
-        return [{"status": "unavailable", "source": "legacy_task_registry", "error": str(exc)}]
+        return [{
+            "capability_id": "legacy.task_registry",
+            "status": "unavailable",
+            "source": "legacy_task_registry",
+            "error": str(exc),
+        }]
     out = []
     for task in tasks:
         out.append({
