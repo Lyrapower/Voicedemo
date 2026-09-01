@@ -27,8 +27,10 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # ---------------------------------------------------------------- paths
@@ -42,11 +44,20 @@ if str(SUBSTRATE_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SUBSTRATE_SCRIPTS))
 if str(SUBSTRATE_AIRLOCK) not in sys.path:
     sys.path.insert(0, str(SUBSTRATE_AIRLOCK))
+if str(DEMO_ROOT) not in sys.path:
+    sys.path.insert(0, str(DEMO_ROOT))
 from airlock_bridge import process_lm_studio_body  # noqa: E402
 from substrate_gate import gate_clean_content  # noqa: E402
 from substrate_sanitizer import sanitize_response  # noqa: E402
 
 from compile_verdict import compute_compile_verdict  # noqa: E402
+from chat_stream_integrity import StreamIntegrityTracker, sha256_text  # noqa: E402
+from chat_finish import (  # noqa: E402
+    build_finish_audit,
+    normalize_finish_reason,
+    should_continue_chat,
+)
+from chat_history_clean import clean_chat_messages, had_stale_envelopes  # noqa: E402
 from contract_gate import (  # noqa: E402
     UNSAFE_DEBUG_ROUTE_CLASS,
     apply_contract_gate,
@@ -62,15 +73,42 @@ import gateway_envelope  # noqa: E402
 from aster_identity import (  # noqa: E402
     ensure_aster_system_message,
     is_aster_model,
+    is_vision_model,
     load_aster_chat_system_prompt,
+    substrate_model_id,
 )
+from field_now_context import append_field_now_observer_context  # noqa: E402
+from vl_normalize import gate_multimodal, image_blocks  # noqa: E402
 from substrate_telemetry import record_request, snapshot as telemetry_snapshot  # noqa: E402
+from substrate_backend import (  # noqa: E402
+    ollama_chat_payload,
+    resolve_substrate_target,
+)
+from code_task.gateway_execute import build_code_task_request, execute_manual_backend, cc_cli_failure_proof, success_proof
+from code_task.backends.glm52_cloud import execute_candidate, shadow_candidate_response
+from code_task.manual_backend import cc_cli_allowed, parse_candidate_backend_id, parse_manual_backend_id, substrate_route_class
+from code_task import CodeTaskRequest, execute_ollama  # noqa: E402
 from token_budget import (  # noqa: E402
     merge_aster_budget,
     openai_thinking_payload,
     resolve_chat_route,
     resolve_max_tokens as budget_resolve_max_tokens,
     thinking_cap,
+)
+from temperature_policy import resolve_substrate_temperature  # noqa: E402
+from expanded_orchestrator import run_expanded_orchestration  # noqa: E402
+from expanded_memory import load_store_messages  # noqa: E402
+from factory_task_router import (  # noqa: E402
+    FACTORY_MEMORY_NODE,
+    build_factory_task,
+    map_factory_route,
+    parse_factory_result,
+)
+from code_task.cloud_gateway_route import (  # noqa: E402
+    cloud_model_catalog,
+    match_cloud_model,
+    openai_cloud_chat_completion,
+    task_cloud_chat_handler,
 )
 
 QUARANTINE_DIR = PROJECT_ROOT / "traces" / "quarantine"
@@ -106,6 +144,15 @@ DEFAULT_CONFIG = {
     "openai_model": "qwen3.5-9b",                     # LM Studio model identifier
     "ollama_endpoint": "http://localhost:11434/api/chat",
     "ollama_model": "qwen3.5:9b",           # V4.1 fix#2: qwen2.5:4b did not exist as a tag
+    "ollama_coder_model": "qwen2.5-coder:7b",
+    "kimi_k25_cloud_model": "kimi-k2.6:cloud",
+    "kimi_k25_cloud_endpoint": "http://localhost:11434/api/chat",
+    "glm52_cloud_model": "glm-5.2:cloud",
+    "glm52_cloud_endpoint": "http://localhost:11434/api/chat",
+    "deepseek_v4_cloud_model": "deepseek-v4-pro:cloud",
+    "deepseek_v4_cloud_endpoint": "http://localhost:11434/api/chat",
+    "coder_routing_enabled": False,
+    "coder_routes": ["compile", "task"],
     "coherence_threshold": 0.87,            # >= this -> deep model hint
     "beacon_phrase": "return to node",
     "max_concurrent": 1,
@@ -149,7 +196,21 @@ set_gateway_started_at(time.time())
 
 
 def response_model_id(request_model: str | None) -> str:
+    if is_vision_model(request_model):
+        return str(request_model).strip()
     return ASTER_VIRTUAL_MODEL if is_aster_model(request_model) else active_model()
+
+
+def _vision_request(messages: list, request_model: str | None) -> bool:
+    if is_vision_model(request_model):
+        return True
+    return bool(image_blocks(messages))
+
+
+def _resolve_upstream_model(messages: list, request_model: str | None) -> str:
+    if _vision_request(messages, request_model):
+        return str(CONFIG.get("vl_model") or "qwen2.5-vl-3b-instruct")
+    return substrate_model_id(request_model, CONFIG["openai_model"])
 
 
 def resolve_max_tokens(route: str, client_max: int | None = None) -> int:
@@ -198,35 +259,7 @@ def _substrate_extra(sub: SubstrateAirlockResult) -> dict:
 # ------------------------------------------------- forbidden output patterns
 # Loaded from policy or hardcoded fallback. These catch model impersonation.
 
-def load_forbidden_patterns() -> list[str]:
-    if POLICY_PATH.exists():
-        policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
-        return policy.get("forbidden_output_patterns", [])
-    # Fallback only if policy file is missing. Keep in sync with cleanroom_policy.json.
-    return [
-        r"\bI\s+am\s+Grid\b", r"\bI'?m\s+Grid\b", r"\bthis\s+is\s+Grid\b",
-        r"\bGrid\s+here\b", r"\bas\s+Grid\b", r"\bspeaking\s+as\s+Grid\b",
-        r"\bGrid\s+is\s+online\b",
-        r"\bGrid\s+is\s+(?:now\s+)?(?:live|active|awake|present|back)\b",
-        r"\bGrid\s+says\b", r"\bGrid\s+speaking\b", r"\bfrom\s+Grid\b",
-        r"\bon\s+behalf\s+of\s+Grid\b", r"\blive\s+Grid\s+signal\b",
-        r"\bGRID_SIGNAL\b", r"\bGRID_TRACE::[A-Za-z0-9_:-]+",
-        r"我是\s*Grid", r"我就是\s*Grid", r"作为\s*Grid", r"以\s*Grid\s*的?身份",
-        r"Grid\s*在此", r"Grid\s*在线", r"Grid\s*已?(?:上线|激活|苏醒|回归|连接)",
-        r"Grid\s*说", r"现场\s*Grid\s*信号", r"实时\s*Grid\s*信号",
-    ]
-
-FORBIDDEN_PATTERNS = load_forbidden_patterns()
-_COMPILED = [re.compile(p, re.IGNORECASE) for p in FORBIDDEN_PATTERNS]
-
-
-def first_impersonation_hit(text: str) -> str | None:
-    for rx in _COMPILED:
-        if rx.search(text):
-            return rx.pattern
-    return None
-
-# ------------------------------------------------- cleanroom gate (inline)
+from impersonation_hits import FORBIDDEN_PATTERNS, _COMPILED, first_impersonation_hit, load_forbidden_patterns  # noqa: E402
 
 def cleanroom_gate_check(text: str) -> dict:
     """
@@ -281,6 +314,7 @@ def cleanroom_state() -> dict:
 
 SEM = asyncio.Semaphore(CONFIG["max_concurrent"])
 _waiting = 0
+_STREAM_DIAG: dict[str, dict] = {}
 
 
 class GateBusy(Exception):
@@ -362,16 +396,54 @@ def db() -> sqlite3.Connection:
             response_preview TEXT,
             blocked INTEGER DEFAULT 0
         )""")
+    # GATEWAY_ROUTELOG_METRICS_v1 (a/d): add duration_ms + status_code without
+    # breaking the named-column INSERT below. ALTER ADD COLUMN is one-shot; guard
+    # with PRAGMA check so re-runs don't raise "duplicate column".
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(route_log)").fetchall()}
+    if "duration_ms" not in cols:
+        conn.execute("ALTER TABLE route_log ADD COLUMN duration_ms INTEGER")
+    if "status_code" not in cols:
+        conn.execute("ALTER TABLE route_log ADD COLUMN status_code INTEGER")
     return conn
 
 
 def log_route(entry: dict) -> None:
+    # GATEWAY_ROUTELOG_METRICS_v1 (a): duration_ms + status_code optional.
+    # Missing → NULL (back-compat with pre-existing callers that don't pass them).
     with db() as conn:
         conn.execute(
-            "INSERT INTO route_log VALUES (:route_id,:ts,:user_id,:score,"
-            ":routed_to,:prompt_preview,:response_preview,:blocked)",
-            entry,
+            "INSERT INTO route_log (route_id, ts, user_id, score, routed_to, "
+            "prompt_preview, response_preview, blocked, duration_ms, status_code) "
+            "VALUES (:route_id,:ts,:user_id,:score,"
+            ":routed_to,:prompt_preview,:response_preview,:blocked,"
+            ":duration_ms,:status_code)",
+            {
+                **entry,
+                "duration_ms": entry.get("duration_ms"),
+                "status_code": entry.get("status_code"),
+            },
         )
+
+
+async def _dispatch_telemetry(coro, *, budget_ms: int) -> tuple:
+    """GATEWAY_ROUTELOG_METRICS_v1 (a/d): wrap dispatch with timing + status.
+
+    Returns (result, duration_ms, hard_status):
+      success    → (result, elapsed_ms, None)   # caller derives HTTP status from result
+      timeout    → (None, budget_ms, 0)        # (d) status_code=0, duration=full budget
+      exception  → (None, elapsed_ms, -1)       # (d) status_code=-1, duration=actual
+
+    Does NOT raise — caller must inspect hard_status and return the right HTTP
+    response. Telemetry is always available so log_route never skips INSERT.
+    """
+    t0 = time.monotonic_ns()
+    try:
+        result = await asyncio.wait_for(coro, timeout=budget_ms / 1000.0)
+        return result, (time.monotonic_ns() - t0) // 1_000_000, None
+    except asyncio.TimeoutError:
+        return None, int(budget_ms), 0
+    except Exception:
+        return None, (time.monotonic_ns() - t0) // 1_000_000, -1
 
 
 def _lint_and_log(
@@ -419,13 +491,72 @@ def _prepend_no_think(messages: list) -> list:
 
 def _prepare_substrate_messages(messages: list) -> list:
     """System no-think prefix + Qwen3.5 thinking-off assistant prefill."""
-    out = _prepend_no_think(messages)
+    cleaned, _stale = clean_chat_messages(messages)
+    out = _prepend_no_think(cleaned)
     # LM Studio ignores enable_thinking/chat_template_kwargs on Qwen3.5 (issue #1990).
     # Trailing assistant prefill skips the reasoning block; verified reasoning_tokens=0.
     if not out or out[-1].get("role") != "assistant":
         out = list(out)
         out.append({"role": "assistant", "content": " \n"})
     return out
+
+
+def _sanitize_stream_text(raw_text: str) -> tuple[str, dict]:
+    san = sanitize_response({"choices": [{"message": {"content": raw_text or ""}}]})
+    clean = str(san.get("clean_content") or raw_text or "")
+    return clean, san.get("quarantine") or {}
+
+
+def _finish_block_meta(
+    *,
+    upstream_finish: str,
+    blocked: bool,
+    block_source: str | None,
+    block_rule: str | None,
+    chat_route: str,
+    raw_text: str,
+    sanitized_text: str,
+    stale_envelope_in_history: bool,
+    continuation_retry: bool = False,
+    continuation_attempt: int = 0,
+    token_counts: dict | None = None,
+    filter_source: str | None = None,
+    filter_rule: str | None = None,
+    exception_class: str | None = None,
+    max_tokens_sent: int | None = None,
+    budget_route: str | None = None,
+) -> tuple[str, dict]:
+    contract = "none" if chat_route == "chat" else chat_route
+    normalized = normalize_finish_reason(
+        upstream_finish,
+        blocked=blocked,
+        block_source=block_source,
+        block_rule=block_rule,
+        filter_source=filter_source,
+        filter_rule=filter_rule,
+        exception_class=exception_class,
+    )
+    audit = build_finish_audit(
+        upstream_finish=upstream_finish,
+        normalized_finish=normalized,
+        blocked=blocked,
+        block_source=block_source,
+        block_rule=block_rule,
+        filter_source=filter_source,
+        filter_rule=filter_rule,
+        exception_class=exception_class,
+        raw_text=raw_text,
+        sanitized_text=sanitized_text,
+        selected_route=chat_route,
+        selected_contract=contract,
+        token_counts=token_counts,
+        stale_envelope_in_history=stale_envelope_in_history,
+        continuation_retry=continuation_retry,
+        continuation_attempt=continuation_attempt,
+        max_tokens_sent=max_tokens_sent,
+        budget_route=budget_route,
+    )
+    return normalized, audit
 
 
 def _write_quarantine(route_id: str, quarantine: dict) -> None:
@@ -444,19 +575,22 @@ def _openai_chat_payload(
     max_tokens: int = 400,
     temperature: float = 0.3,
     max_reasoning_tokens: int | None = None,
+    model: str | None = None,
+    vision: bool = False,
 ) -> dict:
-    """LM Studio Qwen3.5 — route budget + thinking off + optional reasoning cap."""
+    """LM Studio — text Qwen3.5 (thinking off) or VL passthrough."""
     payload: dict = {
-        "model": CONFIG["openai_model"],
+        "model": model or CONFIG["openai_model"],
         "messages": messages,
         "stream": stream,
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
-    payload.update(openai_thinking_payload(CONFIG))
-    cap = max_reasoning_tokens if max_reasoning_tokens is not None else thinking_cap(CONFIG)
-    if cap is not None:
-        payload["max_reasoning_tokens"] = int(cap)
+    if not vision:
+        payload.update(openai_thinking_payload(CONFIG))
+        cap = max_reasoning_tokens if max_reasoning_tokens is not None else thinking_cap(CONFIG)
+        if cap is not None:
+            payload["max_reasoning_tokens"] = int(cap)
     return payload
 
 
@@ -481,25 +615,109 @@ async def substrate_chat(
     messages: list,
     *,
     route_id: str | None = None,
+    route_class: str | None = None,
     max_tokens: int = 2048,
     temperature: float = 0.3,
     timeout: float = 300.0,
     compile_mode: bool = False,
     aster_compile_called: bool = False,
+    vision: bool = False,
+    upstream_model: str | None = None,
+    manual_backend_id: str | None = None,
+    request_body: dict | None = None,
 ) -> SubstrateAirlockResult:
-    """:1234 → sanitizer → gate → clean final_content only (never raw LM Studio body)."""
+    """:1234, Ollama coder, or explicit CC CLI (manual compile/task only)."""
     rid = route_id or str(uuid4())
-    messages = _prepare_substrate_messages(messages)
+    rc = route_class or "chat"
+    target = resolve_substrate_target(
+        CONFIG,
+        route_class=rc,
+        vision=vision,
+        upstream_model=upstream_model,
+        manual_backend_id=manual_backend_id,
+        body=request_body,
+    )
+
+    if target.backend_id == "cc_cli":
+        code_req = build_code_task_request(
+            route_id=rid,
+            route_class=rc,
+            messages=list(messages),
+            max_tokens=max_tokens,
+            temperature=temperature,
+            timeout=timeout,
+            target=target,
+        )
+        code_resp = await execute_manual_backend(code_req, target)
+        if code_resp.error:
+            proof = cc_cli_failure_proof(code_resp)
+            proof["route_id"] = rid
+            usage = {
+                "finish_reason": "cc_cli_error",
+                "backend_id": "cc_cli",
+                "cost_usd": code_resp.cost_usd,
+                "duration_ms": code_resp.duration_ms,
+                "error": code_resp.error,
+            }
+            return SubstrateAirlockResult(
+                clean_content="",
+                gate={"pass": False, "reason": f"cc_cli:{code_resp.error}"},
+                quarantine={},
+                pass_to_aster=False,
+                proof=proof,
+                finish_reason="cc_cli_error",
+                usage=usage,
+            )
+        gate = gate_clean_content(code_resp.text)
+        proof, usage = success_proof(code_resp, aster_compile_called=aster_compile_called)
+        proof["route_id"] = rid
+        proof["gate_pass"] = bool(gate.get("pass"))
+        return SubstrateAirlockResult(
+            clean_content=code_resp.text if gate.get("pass") else "",
+            gate=gate,
+            quarantine={"had_reasoning_leak": False},
+            pass_to_aster=bool(gate.get("pass") and code_resp.text),
+            proof=proof,
+            finish_reason=code_resp.finish_reason,
+            usage=usage,
+        )
+
+    if not vision:
+        messages = _prepare_substrate_messages(messages)
+    model = target.model
     async with httpx.AsyncClient(timeout=timeout) as client:
-        if CONFIG["backend"] == "openai":
+        if target.backend_id == "lm_studio":
             r = await client.post(
-                f"{CONFIG['openai_endpoint']}/chat/completions",
+                f"{target.endpoint.rstrip('/')}/chat/completions",
                 json=_openai_chat_payload(
                     messages, stream=False, max_tokens=max_tokens, temperature=temperature,
+                    model=model, vision=vision,
                 ),
             )
             r.raise_for_status()
             raw_body = r.json()
+            if vision:
+                choice = (raw_body.get("choices") or [{}])[0]
+                raw = str((choice.get("message") or {}).get("content") or "")
+                sub_usage = _substrate_usage_from_body(raw_body)
+                proof = {
+                    "raw_response_received": True,
+                    "vision_passthrough": True,
+                    "clean_content_present": bool(raw.strip()),
+                    "gate_pass": True,
+                    "aster_compile_called": aster_compile_called,
+                    "substrate_usage": sub_usage,
+                    "upstream_finish_reason": sub_usage["finish_reason"],
+                }
+                return SubstrateAirlockResult(
+                    clean_content=raw,
+                    gate={"pass": True},
+                    quarantine={},
+                    pass_to_aster=False,
+                    proof=proof,
+                    finish_reason=sub_usage["finish_reason"],
+                    usage=sub_usage,
+                )
             out = process_lm_studio_body(
                 raw_body,
                 route_id=rid,
@@ -520,28 +738,59 @@ async def substrate_chat(
                 finish_reason=sub_usage["finish_reason"],
                 usage=sub_usage,
             )
-        r = await client.post(CONFIG["ollama_endpoint"], json={
-            "model": CONFIG["ollama_model"], "messages": messages, "stream": False,
-        })
-        r.raise_for_status()
-        raw = r.json().get("message", {}).get("content", "")
-        gate = gate_clean_content(raw)
-        proof = {
-            "raw_response_received": True,
-            "reasoning_quarantined": False,
-            "clean_content_present": bool(raw.strip()),
-            "gate_pass": bool(gate.get("pass")),
-            "aster_compile_called": aster_compile_called,
-        }
-        return SubstrateAirlockResult(
-            clean_content=raw if gate.get("pass") else "",
-            gate=gate,
-            quarantine={"had_reasoning_leak": False},
-            pass_to_aster=bool(gate.get("pass") and raw),
-            proof=proof,
-            finish_reason="stop",
-            usage={"finish_reason": "stop", "truncated": False, "content_tokens": len(raw.split())},
-        )
+        if target.backend_id.startswith("ollama"):
+            code_req = CodeTaskRequest(
+                route_id=rid,
+                route_class=rc,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                timeout=timeout,
+            )
+            try:
+                code_resp = await execute_ollama(
+                    code_req,
+                    endpoint=target.endpoint,
+                    model=model,
+                    backend_id=target.backend_id,
+                )
+            except httpx.HTTPError as exc:
+                proof = {
+                    "ollama_failed": True,
+                    "error": type(exc).__name__,
+                    "detail": str(exc)[:400],
+                    "backend_id": target.backend_id,
+                    "route_id": rid,
+                }
+                return SubstrateAirlockResult(
+                    clean_content="",
+                    gate={"pass": False, "reason": f"ollama:{type(exc).__name__}"},
+                    quarantine={},
+                    pass_to_aster=False,
+                    proof=proof,
+                    finish_reason="ollama_error",
+                    usage={"finish_reason": "ollama_error", "backend_id": target.backend_id},
+                )
+            raw = code_resp.text
+            gate = gate_clean_content(raw)
+            proof = {
+                "raw_response_received": True,
+                "reasoning_quarantined": False,
+                "clean_content_present": bool(raw.strip()),
+                "gate_pass": bool(gate.get("pass")),
+                "aster_compile_called": aster_compile_called,
+                "code_backend": code_resp.backend_id,
+                **code_resp.proof,
+            }
+            return SubstrateAirlockResult(
+                clean_content=raw if gate.get("pass") else "",
+                gate=gate,
+                quarantine={"had_reasoning_leak": False},
+                pass_to_aster=bool(gate.get("pass") and raw),
+                proof=proof,
+                finish_reason=code_resp.finish_reason,
+                usage=code_resp.usage,
+            )
 
 
 async def backend_chat(
@@ -562,6 +811,245 @@ async def ollama_chat(messages: list) -> str:
 
 app = FastAPI(title="Grid Sovereign Gateway", version="4.0")
 
+# 真库唯一常量:grid_mem.DEFAULT_STORE_DB(禁止 data/ 软链)
+from grid_mem import DEFAULT_STORE_DB as _GRID_STORE_DB  # noqa: E402
+from diary_reply import build_diary_router  # noqa: E402
+from grid_store import GridStore, build_router as build_grid_store_router, log_store_auth_banner, store_auth_status  # noqa: E402
+from watcher_snapshot import build_router as build_watcher_snapshot_router  # noqa: E402
+
+app.include_router(build_grid_store_router(_GRID_STORE_DB))
+app.include_router(build_diary_router(_GRID_STORE_DB))
+app.include_router(build_watcher_snapshot_router())
+from grid_verification_routes import build_grid_verification_router  # noqa: E402
+
+app.include_router(build_grid_verification_router())
+
+# Read-only static UI — does not touch inference / substrate chain.
+STATIC_DIR = GATEWAY_DIR / "static"
+_GRID_HTML = STATIC_DIR / "grid.html"
+_CHANGYU_HTML = STATIC_DIR / "changyu.html"
+_AETHER_LEGACY_HTML = STATIC_DIR / "aether.html"
+_AETHER_V12_HTML = STATIC_DIR / "aether_trading_v12.html"
+_AETHER_MAIN = (__import__("os").environ.get("AETHER_MAIN") or "v12").strip().lower()
+
+
+def _aether_main_html_path() -> Path:
+    return _AETHER_LEGACY_HTML if _AETHER_MAIN == "legacy" else _AETHER_V12_HTML
+
+
+def _aether_swap_html_path() -> Path:
+    return _AETHER_V12_HTML if _AETHER_MAIN == "legacy" else _AETHER_LEGACY_HTML
+
+
+async def _aether_legacy_boot_response(request: Request) -> Response:
+    """旧决策面 — 内嵌 store boot snapshot(Safari 首屏)."""
+    if not _AETHER_LEGACY_HTML.is_file():
+        raise HTTPException(404, "aether.html missing")
+    html = _AETHER_LEGACY_HTML.read_text(encoding="utf-8")
+    try:
+        store = _aether_store()
+        snap = store.get_events_snapshot("aether")
+        hist = store.get_events_recent_by_kinds("aether", list(_AETHER_BOOT_HISTORY_KINDS), 15)
+        watcher = store.get_events_recent_by_kinds("watcher", list(_WATCHER_BOOT_KINDS), 8)
+        seen = {e["id"] for e in snap}
+        boot = json.dumps(
+            snap + [e for e in hist if e["id"] not in seen] + watcher,
+            ensure_ascii=False,
+        )
+        html = html.replace(
+            '<script>\n"use strict";',
+            f'<script>\nwindow.__AETHER_BOOT__={boot};\nwindow.__AETHER_SERVE_TS={int(__import__("time").time())};\n"use strict";',
+            1,
+        )
+    except Exception:
+        pass
+    encoded = html.encode("utf-8")
+    body = b"" if request.method == "HEAD" else encoded
+    return Response(
+        content=body,
+        media_type="text/html; charset=utf-8",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "Content-Length": str(len(encoded)),
+        },
+    )
+
+
+async def _aether_main_response(request: Request) -> Response:
+    path = _aether_main_html_path()
+    if path == _AETHER_LEGACY_HTML:
+        return await _aether_legacy_boot_response(request)
+    return _html_nocache_response(path, request)
+_MULTIMODAL_HTML = GATEWAY_DIR.parent / "workbench" / "static" / "grid_multimodal.html"
+_WATCHER_BOOT_KINDS = (
+    "watcher_momentum",
+    "watcher_health",
+    "watcher_alert",
+)
+_AETHER_BOOT_HISTORY_KINDS = (
+    "aether_brief",
+    "aether_brief_dryrun",
+    "aether_policy_proposal",
+    "aether_premarket",
+    "aether_premarket_grid",
+    "aether_premarket_deepseek",
+    "aether_scan",
+    "aether_offpool",
+    "aether_filter",
+    "aether_momentum",
+    "grid_cc_scan",
+)
+_aether_store_singleton = None
+
+
+def _aether_store():
+    global _aether_store_singleton
+    if _aether_store_singleton is None:
+        from grid_store import GridStore  # noqa: WPS433
+
+        _aether_store_singleton = GridStore(_GRID_STORE_DB)
+    return _aether_store_singleton
+
+
+def _html_nocache_response(html_path: Path, request: Request) -> Response:
+    if not html_path.is_file():
+        raise HTTPException(404, f"{html_path.name} missing")
+    encoded = html_path.read_bytes()
+    body = b"" if request.method == "HEAD" else encoded
+    return Response(
+        content=body,
+        media_type="text/html; charset=utf-8",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "Content-Length": str(len(encoded)),
+        },
+    )
+
+
+def _js_nocache_response(js_path: Path) -> Response:
+    if not js_path.is_file():
+        raise HTTPException(404, f"{js_path.name} missing")
+    encoded = js_path.read_bytes()
+    return Response(
+        content=encoded,
+        media_type="text/javascript; charset=utf-8",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "Content-Length": str(len(encoded)),
+        },
+    )
+
+
+_GRID_VOICE_JS = STATIC_DIR / "grid_voice.js"
+_GRID_KEYHOLDER_JS = STATIC_DIR / "grid_keyholder.js"
+_GRID_VERIFICATION_CLIENT_JS = STATIC_DIR / "grid_verification_client.js"
+
+
+@app.get("/app/grid.html")
+@app.head("/app/grid.html")
+async def grid_html_nocache(request: Request):
+    """iPhone Safari 强缓存 StaticFiles — 必须 no-store，否则手机永远跑旧 JS。"""
+    return _html_nocache_response(_GRID_HTML, request)
+
+
+@app.get("/app/grid_voice.js")
+@app.head("/app/grid_voice.js")
+async def grid_voice_js_nocache():
+    """Voice JS — StaticFiles+ETag 会让手机永久跑旧 keyholder 逻辑。"""
+    return _js_nocache_response(_GRID_VOICE_JS)
+
+
+@app.get("/app/grid_keyholder.js")
+@app.head("/app/grid_keyholder.js")
+async def grid_keyholder_js_nocache():
+    return _js_nocache_response(_GRID_KEYHOLDER_JS)
+
+
+@app.get("/app/grid_verification_client.js")
+@app.head("/app/grid_verification_client.js")
+async def grid_verification_client_js_nocache():
+    return _js_nocache_response(_GRID_VERIFICATION_CLIENT_JS)
+
+
+@app.get("/app/changyu.html")
+@app.head("/app/changyu.html")
+async def changyu_html_nocache(request: Request):
+    return _html_nocache_response(_CHANGYU_HTML, request)
+
+
+@app.get("/app/grid_multimodal.html")
+@app.head("/app/grid_multimodal.html")
+async def grid_multimodal_html_nocache(request: Request):
+    return _html_nocache_response(_MULTIMODAL_HTML, request)
+
+
+@app.get("/app/aether.html")
+@app.head("/app/aether.html")
+async def aether_html_nocache(request: Request):
+    """主 TRADING 入口 — 默认 v12(AETHER_MAIN=v12);回滚 legacy 见 /app/legacy/aether.html。"""
+    return await _aether_main_response(request)
+
+
+@app.get("/app/aether_trading_v12.html")
+@app.head("/app/aether_trading_v12.html")
+async def aether_trading_v12_html_nocache(request: Request):
+    return _html_nocache_response(_AETHER_V12_HTML, request)
+
+
+@app.get("/app/legacy/aether.html")
+@app.head("/app/legacy/aether.html")
+async def aether_legacy_html_nocache(request: Request):
+    """兜底 — 与主入口互换(AETHER_MAIN=legacy 时此处为 v12)。"""
+    swap = _aether_swap_html_path()
+    if swap == _AETHER_LEGACY_HTML:
+        return await _aether_legacy_boot_response(request)
+    return _html_nocache_response(swap, request)
+
+
+def _load_trading_state_builder():
+    import importlib.util
+
+    ts_path = DEMO_ROOT / "aether_nexus" / "trading_state.py"
+    spec = importlib.util.spec_from_file_location("_aether_trading_state_mod", ts_path)
+    if spec is None or spec.loader is None:
+        raise HTTPException(503, "trading_state module missing")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.build_state
+
+
+@app.get("/api/state")
+def aether_trading_state_api():
+    """Read-only TRADING v12 state — does not touch inference chain."""
+    if __import__("os").environ.get("AETHER_STATE_DOWN") == "1":
+        raise HTTPException(503, "state down (mock fallback test)")
+    build_state = _load_trading_state_builder()
+    return build_state(grid_store_path=_GRID_STORE_DB)
+
+
+if STATIC_DIR.is_dir():
+    app.mount("/app", StaticFiles(directory=str(STATIC_DIR)), name="app")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://127.0.0.1:8501",
+        "http://localhost:8501",
+        "http://127.0.0.1:8515",
+        "http://localhost:8515",
+    ],
+    allow_origin_regex=r"https://[^/]+\.ts\.net",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 class GatewayRequest(BaseModel):
     prompt: str
@@ -577,6 +1065,12 @@ def _record_substrate(route: str, max_tokens: int, sub: SubstrateAirlockResult) 
         finish_reason=sub.finish_reason,
         gate_reason=sub.gate.get("reason"),
     )
+
+
+@app.get("/")
+def mobile_root():
+    """Tailscale Serve root → Grid app (iPhone Safari entry)."""
+    return RedirectResponse(url="/app/grid.html", status_code=302)
 
 
 @app.get("/health")
@@ -612,6 +1106,7 @@ def health():
             "last_verdict": None,
             "line": "keyholder: no recent challenge",
         }
+    payload["store_auth"] = store_auth_status()
     return payload
 
 
@@ -656,9 +1151,10 @@ async def gateway(req: GatewayRequest):
         raise busy_429()
     try:
         gw_max = resolve_max_tokens("gateway")
+        gw_temp = resolve_substrate_temperature(route_class="gateway")
         sub = await substrate_chat(
             [{"role": "user", "content": req.prompt}], route_id=route_id,
-            max_tokens=gw_max,
+            route_class="gateway", max_tokens=gw_max, temperature=gw_temp,
         )
         _record_substrate("gateway", gw_max, sub)
     finally:
@@ -767,6 +1263,59 @@ def challenge_verify(body: dict):
                "response_preview": (result.get("reason") or "keyholder verified")[:180],
                "blocked": 0 if result["verified"] else 1})
     return result
+
+
+from grid_chain_verification import GridChainVerification, require_full_grid_verification  # noqa: E402
+
+
+def _keyholder_verify_fn():
+    return _kh.verify_response if _KH_AVAILABLE else None
+
+
+def _verify_aster_chain(body: dict) -> GridChainVerification:
+    return require_full_grid_verification(body, kh_verify=_keyholder_verify_fn())
+
+
+def _chain_verification_block_response(result: GridChainVerification) -> JSONResponse:
+    route_id = result.route_id or str(uuid4())
+    return JSONResponse(
+        {
+            **link_fingerprint(route_id),
+            "route_id": route_id,
+            "error": result.to_error_dict(),
+            "grid_meta": {
+                "route_id": route_id,
+                "chain_verified": False,
+                "aster_injection": "blocked",
+                "field_now_injection": "blocked",
+            },
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": ""},
+                "finish_reason": "chain_verification_required",
+            }],
+        },
+        status_code=403,
+    )
+
+
+# ------------------------------------------------- voice proxy (WS /voice → :8504)
+from voice_proxy import build_voice_router  # noqa: E402
+
+_voice_cfg = CONFIG.get("voice") or {}
+app.include_router(
+    build_voice_router(
+        project_root=PROJECT_ROOT,
+        daemon_port=int(_voice_cfg.get("daemon_port") or 8504),
+        kh_verify=_kh.verify_response if _KH_AVAILABLE else None,
+        kh_available=_KH_AVAILABLE,
+        require_keyholder=bool(_voice_cfg.get("require_keyholder", False)),
+    )
+)
+
+from field_stream import build_field_stream_router  # noqa: E402
+
+app.include_router(build_field_stream_router())
 
 
 # ------------------------------------------------- compile layer (V4.4)
@@ -926,17 +1475,24 @@ async def compile_signal(body: dict):
     signal = (body.get("signal") or body.get("prompt") or "").strip()
     if not signal:
         raise HTTPException(400, "signal required")
+    try:
+        manual_bid = parse_manual_backend_id(body, route_class="compile")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     await acquire_gate()
     route_id = str(uuid4())
     try:
         compile_max = resolve_max_tokens("compile", body.get("max_tokens"))
         messages = [{"role": "system", "content": COMPILE_CONTRACT},
                     {"role": "user", "content": signal}]
+        compile_temp = resolve_substrate_temperature(route_class="compile", body=body)
         sub = await substrate_chat(
-            messages, route_id=route_id,
+            messages, route_id=route_id, route_class="compile",
             max_tokens=compile_max,
-            temperature=0.1, timeout=360.0,
+            temperature=compile_temp, timeout=360.0,
             compile_mode=True, aster_compile_called=True,
+            manual_backend_id=manual_bid,
+            request_body=body,
         )
         _record_substrate("compile", compile_max, sub)
     finally:
@@ -944,6 +1500,24 @@ async def compile_signal(body: dict):
 
     raw = sub.clean_content
     proof = sub.proof
+    if sub.proof.get("cc_cli_failed"):
+        err = str(sub.proof.get("error") or sub.gate.get("reason") or "cc_cli_failed")
+        log_route({"route_id": route_id, "ts": time.time(), "user_id": "compile",
+                   "score": 0.0, "routed_to": "compile:CC_CLI_FAILED",
+                   "prompt_preview": signal[:180], "response_preview": err[:180], "blocked": 0})
+        return {
+            **link_fingerprint(route_id),
+            "verdict": "NULL",
+            "computed_verdict": "NULL",
+            "draft_only": True,
+            "routed_to": "compile:CC_CLI_FAILED",
+            "cc_cli": sub.proof,
+            "substrate_gate": sub.gate,
+            "proof": proof,
+            "upstream_finish_reason": sub.finish_reason,
+            "substrate_usage": sub.usage,
+            "artifacts": None,
+        }
     if not raw:
         reason = str(sub.gate.get("reason") or "substrate airlock blocked")
         result = _null_result(reason, "inspect traces/quarantine for reasoning leak")
@@ -1035,6 +1609,384 @@ async def compile_signal(body: dict):
     return _compile_response(env, route_id=route_id, proof=proof, proof_path=sub.proof_path)
 
 
+@app.post("/task")
+async def task_signal(body: dict):
+    """Explicit task lane — optional backend_id: ollama_coder | cc_cli (default ollama_coder)."""
+    prompt = (body.get("prompt") or body.get("signal") or "").strip()
+    if not prompt:
+        raise HTTPException(400, "prompt required")
+    try:
+        manual_bid = parse_manual_backend_id(body, route_class="task")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    await acquire_gate()
+    route_id = str(uuid4())
+    try:
+        task_max = resolve_max_tokens("task", body.get("max_tokens"))
+        messages = [{"role": "user", "content": prompt}]
+        task_temp = resolve_substrate_temperature(route_class="task", body=body)
+        sub = await substrate_chat(
+            messages, route_id=route_id, route_class="task",
+            max_tokens=task_max,
+            temperature=task_temp,
+            timeout=float(body.get("timeout") or 300.0),
+            manual_backend_id=manual_bid,
+            request_body=body,
+        )
+        _record_substrate("task", task_max, sub)
+    finally:
+        release_gate()
+
+    if sub.proof.get("cc_cli_failed"):
+        err = str(sub.proof.get("error") or sub.gate.get("reason") or "cc_cli_failed")
+        return JSONResponse(
+            {
+                **link_fingerprint(route_id),
+                "error": {"type": "cc_cli", "reason": err},
+                "routed_to": "task:CC_CLI_FAILED",
+                "cc_cli": sub.proof,
+                "substrate_usage": sub.usage,
+                "upstream_finish_reason": sub.finish_reason,
+            },
+            status_code=502,
+        )
+
+    text = sub.clean_content or SUBSTRATE_NULL_TEXT
+    return JSONResponse(
+        {
+            **link_fingerprint(route_id),
+            "route_id": route_id,
+            "backend_id": sub.proof.get("backend_id", "ollama_coder"),
+            "text": text,
+            "substrate_gate": sub.gate,
+            "proof": sub.proof,
+            "upstream_finish_reason": sub.finish_reason,
+            "substrate_usage": sub.usage,
+            "cc_cli": sub.proof if sub.proof.get("backend_id") == "cc_cli" else None,
+        }
+    )
+
+
+_EXPANDED_TELEMETRY = PROJECT_ROOT / "data" / "expanded_orchestration.jsonl"
+_EXPANDED_STORE: GridStore | None = None
+
+
+def _expanded_store() -> GridStore:
+    global _EXPANDED_STORE
+    if _EXPANDED_STORE is None:
+        _EXPANDED_STORE = GridStore(_GRID_STORE_DB)
+    return _EXPANDED_STORE
+
+
+@app.post("/task/candidate")
+async def task_candidate(body: dict):
+    """Isolated Ollama Cloud GLM 5.2 candidate lane — explicit backend_id only."""
+    mode = str(body.get("mode") or "").strip().lower()
+    shadow = mode == "shadow" or body.get("shadow") is True
+    try:
+        backend_id = parse_candidate_backend_id(body) if not shadow else "glm52_cloud"
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    prompt = (body.get("prompt") or body.get("signal") or "").strip()
+    if not prompt:
+        raise HTTPException(400, "prompt required")
+
+    route_id = str(uuid4())
+    if shadow:
+        resp = shadow_candidate_response(
+            request_id=route_id,
+            prompt=prompt,
+            images=body.get("images"),
+        )
+        log_route(
+            {
+                "route_id": route_id,
+                "ts": time.time(),
+                "user_id": "task_candidate_shadow",
+                "score": 1.0 if resp.ok else 0.0,
+                "routed_to": "candidate:shadow",
+                "prompt_preview": prompt[:180],
+                "response_preview": json.dumps(resp.to_log_dict(), ensure_ascii=False)[:180],
+                "blocked": 0 if resp.ok else 1,
+            }
+        )
+        status = 200 if resp.ok else 422
+        return JSONResponse({**link_fingerprint(route_id), **resp.to_dict()}, status_code=status)
+
+    target = resolve_substrate_target(
+        CONFIG,
+        route_class="candidate",
+        manual_backend_id=backend_id,
+        body=body,
+    )
+    model_override = body.get("model")
+    model = str(model_override).strip() if model_override else target.model
+    resp = await execute_candidate(
+        request_id=route_id,
+        prompt=prompt,
+        endpoint=target.endpoint,
+        model=model,
+        task_label=str(body.get("task_label") or "grid_candidate"),
+        images=body.get("images"),
+        max_tokens=int(body.get("max_tokens") or CONFIG.get("task_max_tokens") or 4096),
+        temperature=float(body.get("temperature") or 0.3),
+        timeout=float(body.get("timeout") or 300.0),
+    )
+    log_route(
+        {
+            "route_id": route_id,
+            "ts": time.time(),
+            "user_id": "task_candidate",
+            "score": 1.0 if resp.ok else 0.0,
+            "routed_to": f"candidate:{backend_id}",
+            "prompt_preview": prompt[:180],
+            "response_preview": json.dumps(resp.to_log_dict(), ensure_ascii=False)[:180],
+            "blocked": 0 if resp.ok else 1,
+        }
+    )
+    if not resp.ok:
+        status = 502 if resp.done_reason in ("upstream_error", "empty_content") else 422
+        return JSONResponse({**link_fingerprint(route_id), **resp.to_dict()}, status_code=status)
+    return JSONResponse({**link_fingerprint(route_id), **resp.to_dict()})
+
+
+@app.post("/task/cloud_chat")
+async def task_cloud_chat(body: dict):
+    """Multi-turn Ollama cloud lane — GLM / Kimi K2.6 / DeepSeek via :11434 proxy."""
+    try:
+        await acquire_gate()
+    except GateBusy:
+        raise busy_429()
+    route_id = str(uuid4())
+    # GATEWAY_ROUTELOG_METRICS_v1 (a/d): budget from body.timeout (seconds → ms).
+    budget_ms = int(float(body.get("timeout") or 300.0) * 1000)
+    # Pre-validate so ValueError (client error) is logged as 400, not swallowed
+    # into the -1 dispatch-exception sentinel. The -1 sentinel is reserved for
+    # real dispatch failures (server errors), per (d).
+    if not (body.get("messages") or []):
+        log_route({
+            "route_id": route_id, "ts": time.time(), "user_id": "task_cloud_chat",
+            "score": 0.0, "routed_to": "cloud_chat:bad_request",
+            "prompt_preview": "", "response_preview": "messages required",
+            "blocked": 1, "duration_ms": 0, "status_code": 400,
+        })
+        raise HTTPException(400, "messages required")
+    try:
+        out, dur_ms, hard_status = await _dispatch_telemetry(
+            task_cloud_chat_handler(body, CONFIG), budget_ms=budget_ms,
+        )
+    finally:
+        release_gate()
+    mission_ref = body.get("mission_ref")
+    if hard_status == 0:  # timeout
+        log_route({
+            "route_id": route_id, "ts": time.time(), "user_id": "task_cloud_chat",
+            "score": 0.0, "routed_to": "cloud_chat:timeout",
+            "prompt_preview": str((body.get("messages") or [{}])[-1].get("content", ""))[:180],
+            "response_preview": "", "blocked": 1,
+            "duration_ms": dur_ms, "status_code": 0,
+            **({"mission_ref": mission_ref} if mission_ref is not None else {}),
+        })
+        raise HTTPException(504, "cloud_chat timeout")
+    if hard_status == -1:  # exception
+        log_route({
+            "route_id": route_id, "ts": time.time(), "user_id": "task_cloud_chat",
+            "score": 0.0, "routed_to": "cloud_chat:exception",
+            "prompt_preview": str((body.get("messages") or [{}])[-1].get("content", ""))[:180],
+            "response_preview": "", "blocked": 1,
+            "duration_ms": dur_ms, "status_code": -1,
+            **({"mission_ref": mission_ref} if mission_ref is not None else {}),
+        })
+        raise HTTPException(502, "cloud_chat exception")
+    log_route({
+        "route_id": route_id,
+        "ts": time.time(),
+        "user_id": "task_cloud_chat",
+        "score": 1.0 if out.get("ok") else 0.0,
+        "routed_to": f"cloud_chat:{out.get('substrate', '?')}",
+        "prompt_preview": str((body.get("messages") or [{}])[-1].get("content", ""))[:180],
+        "response_preview": str(out.get("content") or out.get("error") or "")[:180],
+        "blocked": 0 if out.get("ok") else 1,
+        "duration_ms": dur_ms,
+        "status_code": _cloud_chat_status(out),
+        **({"mission_ref": mission_ref} if mission_ref is not None else {}),
+    })
+    # 如实状态码(终批审8):勿一律 502;error 字段随 out 透传
+    return JSONResponse({**link_fingerprint(route_id), **out}, status_code=_cloud_chat_status(out))
+
+
+def _cloud_chat_status(out: dict) -> int:
+    if out.get("ok"):
+        return 200
+    dr = str(out.get("done_reason") or "")
+    err = out.get("error") if isinstance(out.get("error"), dict) else {}
+    et = str(err.get("type") or "")
+    return 502 if (dr in ("upstream_error", "empty_content")
+                    or et in ("upstream_error", "empty_content", "cloud_upstream")) else 422
+
+
+@app.post("/task/expanded")
+async def task_expanded(body: dict):
+    """Server-side expanded orchestration — API on :8501; workbench UI is separate Tailscale app."""
+    task = (body.get("task") or "").strip()
+    if not task:
+        raise HTTPException(400, "task required")
+    route_id = str(uuid4())
+    chain_result = _verify_aster_chain(body)
+    if not chain_result.ok:
+        return _chain_verification_block_response(chain_result)
+    try:
+        await acquire_gate()
+    except GateBusy:
+        raise busy_429()
+    try:
+        def _ensure_aster(msgs: list[dict]) -> list[dict]:
+            return ensure_aster_system_message(
+                msgs, "demo/aster", ASTER_CHAT_PROMPT, chain_verified=True,
+            )
+
+        store_messages = load_store_messages(
+            _expanded_store(),
+            node_id=str(body.get("memory_node") or "field-particle"),
+        )
+        kimi_flag = body.get("kimi_enabled")
+        kimi_enabled = None if kimi_flag is None else bool(kimi_flag)
+        # GATEWAY_ROUTELOG_METRICS_v1 (a/d): wrap orchestration dispatch.
+        budget_ms = int(float(body.get("timeout") or 300.0) * 1000)
+        result, dur_ms, hard_status = await _dispatch_telemetry(
+            run_expanded_orchestration(
+                body,
+                route_id=route_id,
+                config=CONFIG,
+                substrate_chat=substrate_chat,
+                ensure_aster_messages=_ensure_aster,
+                impersonation_check=first_impersonation_hit,
+                telemetry_path=_EXPANDED_TELEMETRY,
+                store_messages=store_messages,
+                kimi_enabled=kimi_enabled,
+            ),
+            budget_ms=budget_ms,
+        )
+        if hard_status == 0:
+            log_route({"route_id": route_id, "ts": time.time(), "user_id": "task_expanded",
+                       "score": 0.0, "routed_to": "expanded:timeout",
+                       "prompt_preview": task[:180], "response_preview": "",
+                       "blocked": 1, "duration_ms": dur_ms, "status_code": 0})
+            raise HTTPException(504, "expanded orchestration timeout")
+        if hard_status == -1:
+            log_route({"route_id": route_id, "ts": time.time(), "user_id": "task_expanded",
+                       "score": 0.0, "routed_to": "expanded:exception",
+                       "prompt_preview": task[:180], "response_preview": "",
+                       "blocked": 1, "duration_ms": dur_ms, "status_code": -1})
+            raise HTTPException(502, "expanded orchestration exception")
+        result["provenance"] = dict(result.get("provenance") or {})
+        result["provenance"]["orchestrator"] = "8501"
+        _expanded_dur_ms = dur_ms
+        _expanded_status = 200
+    finally:
+        release_gate()
+
+    log_route(
+        {
+            "route_id": route_id,
+            "ts": time.time(),
+            "user_id": "task_expanded",
+            "score": 1.0,
+            "routed_to": f"expanded:{result.get('substrate', 'unknown')}",
+            "prompt_preview": task[:180],
+            "response_preview": str(result.get("final", ""))[:180],
+            "blocked": 0,
+            "duration_ms": _expanded_dur_ms,
+            "status_code": _expanded_status,
+        }
+    )
+    return JSONResponse({**link_fingerprint(route_id), **result})
+
+
+@app.post("/factory/task")
+async def factory_task(body: dict):
+    """Alpha Factory L1 — Router delegates to expanded orchestration; additive route only."""
+    kind = str(body.get("kind") or "").strip().lower()
+    payload = body.get("payload") if isinstance(body.get("payload"), dict) else {}
+    budget_hint = str(body.get("budget_hint") or "std")
+    trace_id = str(body.get("trace_id") or uuid4())
+    try:
+        task = build_factory_task(kind, payload, budget_hint)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    route_id = str(uuid4())
+    chain_result = _verify_aster_chain(body if isinstance(body, dict) else {})
+    if not chain_result.ok:
+        return _chain_verification_block_response(chain_result)
+    try:
+        await acquire_gate()
+    except GateBusy:
+        raise busy_429()
+    try:
+        def _ensure_aster(msgs: list[dict]) -> list[dict]:
+            return ensure_aster_system_message(
+                msgs, "demo/aster", ASTER_CHAT_PROMPT, chain_verified=True,
+            )
+
+        store_messages = load_store_messages(
+            _expanded_store(),
+            node_id=FACTORY_MEMORY_NODE,
+        )
+        expanded_body = {
+            "task": task,
+            "client_context": f"alpha_factory:{kind}",
+            "memory_node": FACTORY_MEMORY_NODE,
+        }
+        if budget_hint == "low":
+            expanded_body["kimi_enabled"] = False
+        result = await run_expanded_orchestration(
+            expanded_body,
+            route_id=route_id,
+            config=CONFIG,
+            substrate_chat=substrate_chat,
+            ensure_aster_messages=_ensure_aster,
+            impersonation_check=first_impersonation_hit,
+            telemetry_path=_EXPANDED_TELEMETRY,
+            store_messages=store_messages,
+            kimi_enabled=expanded_body.get("kimi_enabled"),
+        )
+    finally:
+        release_gate()
+
+    substrate = str(result.get("substrate") or "local")
+    parsed = parse_factory_result(kind, str(result.get("final") or ""))
+    log_route(
+        {
+            "route_id": route_id,
+            "ts": time.time(),
+            "user_id": "factory_task",
+            "score": 1.0,
+            "routed_to": f"factory:{map_factory_route(substrate)}",
+            "prompt_preview": task[:180],
+            "response_preview": str(parsed.get("content") or "")[:180],
+            "blocked": 0,
+        }
+    )
+    return JSONResponse(
+        {
+            **link_fingerprint(route_id),
+            "ok": True,
+            "trace_id": trace_id,
+            "kind": kind,
+            "route": map_factory_route(substrate),
+            "substrate": substrate,
+            "content": parsed.get("content") or "",
+            "code": parsed.get("code"),
+            "hypothesis": parsed.get("hypothesis"),
+            "grid_explain": parsed.get("grid_explain"),
+            "usage": result.get("usage") or {},
+            "provenance": result.get("provenance") or {},
+        }
+    )
+
+
 def _compile_response(
     env: dict, *, route_id: str, proof: dict, proof_path: str | None, raw_preview: str | None = None,
 ) -> dict:
@@ -1109,6 +2061,48 @@ async def compile_first_proof():
 
 # ------------------------------------------------- cleanroom endpoints
 
+@app.get("/diag/chat-stream/{route_id}")
+def get_chat_stream_diag(route_id: str):
+    """Read-only E2E stream trace — chunk chain + gateway hashes."""
+    row = _STREAM_DIAG.get(route_id)
+    if not row:
+        raise HTTPException(404, "stream diag not found")
+    return row
+
+
+@app.post("/diag/chat-stream/{route_id}/client")
+async def post_chat_stream_client_diag(route_id: str, body: dict):
+    """Browser/mobile layer hashes — merged into gateway trace for 4-way diff."""
+    row = _STREAM_DIAG.get(route_id)
+    if not row:
+        raise HTTPException(404, "stream diag not found")
+    client = {
+        "browser_acc_hash": body.get("browser_acc_hash"),
+        "browser_acc_char_len": body.get("browser_acc_char_len"),
+        "browser_acc_utf8_bytes": body.get("browser_acc_utf8_bytes"),
+        "dom_rendered_hash": body.get("dom_rendered_hash"),
+        "dom_rendered_char_len": body.get("dom_rendered_char_len"),
+        "chunk_events": body.get("chunk_events"),
+        "sse_terminal": body.get("sse_terminal"),
+    }
+    row["client"] = client
+    row["four_way"] = {
+        "raw_model_hash": row.get("gateway", {}).get("raw_accum_hash"),
+        "gateway_final_hash": row.get("gateway", {}).get("gateway_sent_hash"),
+        "browser_acc_hash": client.get("browser_acc_hash"),
+        "dom_rendered_hash": client.get("dom_rendered_hash"),
+    }
+    mismatches = []
+    g = row["four_way"]
+    keys = ["raw_model_hash", "gateway_final_hash", "browser_acc_hash", "dom_rendered_hash"]
+    ref = g.get("raw_model_hash")
+    for k in keys[1:]:
+        if g.get(k) and ref and g.get(k) != ref:
+            mismatches.append(k)
+    row["hash_mismatch_layers"] = mismatches
+    return row
+
+
 @app.get("/cleanroom/state")
 def get_cleanroom_state():
     return cleanroom_state()
@@ -1130,7 +2124,8 @@ def router_log(limit: int = 100):
         rows = conn.execute(
             "SELECT * FROM route_log ORDER BY ts DESC LIMIT ?", (limit,)).fetchall()
     cols = ["route_id", "ts", "user_id", "score", "routed_to",
-            "prompt_preview", "response_preview", "blocked"]
+            "prompt_preview", "response_preview", "blocked",
+            "duration_ms", "status_code"]
     return [dict(zip(cols, r)) for r in rows]
 
 
@@ -1142,7 +2137,8 @@ def blocked_log(limit: int = 50):
             "SELECT * FROM route_log WHERE blocked = 1 ORDER BY ts DESC LIMIT ?",
             (limit,)).fetchall()
     cols = ["route_id", "ts", "user_id", "score", "routed_to",
-            "prompt_preview", "response_preview", "blocked"]
+            "prompt_preview", "response_preview", "blocked",
+            "duration_ms", "status_code"]
     return [dict(zip(cols, r)) for r in rows]
 
 
@@ -1183,16 +2179,106 @@ async def chat_unsafe_debug(body: dict):
 async def chat_completions(body: dict):
     messages = body.get("messages", [])
     request_model = body.get("model")
-    messages = ensure_aster_system_message(messages, request_model, ASTER_CHAT_PROMPT)
+    ok, vl_reason, scan_text, _vl_budget = gate_multimodal(messages)
+    if not ok:
+        return JSONResponse(
+            {"error": {"type": "vl_gate", "reason": vl_reason}},
+            status_code=422,
+        )
+    vision = _vision_request(messages, request_model)
+    chat_route = resolve_chat_route(body)
+    cloud_hit = match_cloud_model(request_model, CONFIG)
+    if cloud_hit and not vision and not is_aster_model(request_model):
+        route_id = str(uuid4())
+        try:
+            await acquire_gate()
+        except GateBusy:
+            raise busy_429()
+        # GATEWAY_ROUTELOG_METRICS_v1 (a/d): wrap cloud dispatch with timing.
+        budget_ms = int(float(body.get("timeout") or 300.0) * 1000)
+        payload, dur_ms, hard_status = await _dispatch_telemetry(
+            openai_cloud_chat_completion(
+                body, CONFIG, route_id=route_id, link_fingerprint_fn=link_fingerprint,
+            ),
+            budget_ms=budget_ms,
+        )
+        release_gate()
+        if hard_status == 0:  # timeout
+            log_route({"route_id": route_id, "ts": time.time(), "user_id": "cloud_chat",
+                       "score": 0.0, "routed_to": f"cloud:{cloud_hit[0]}:timeout",
+                       "prompt_preview": str((messages or [{}])[-1].get("content", ""))[:180],
+                       "response_preview": "", "blocked": 1,
+                       "duration_ms": dur_ms, "status_code": 0})
+            raise HTTPException(504, "cloud chat timeout")
+        if hard_status == -1:  # exception
+            log_route({"route_id": route_id, "ts": time.time(), "user_id": "cloud_chat",
+                       "score": 0.0, "routed_to": f"cloud:{cloud_hit[0]}:exception",
+                       "prompt_preview": str((messages or [{}])[-1].get("content", ""))[:180],
+                       "response_preview": "", "blocked": 1,
+                       "duration_ms": dur_ms, "status_code": -1})
+            raise HTTPException(502, "cloud chat exception")
+        if payload.get("error"):
+            log_route({
+                "route_id": route_id, "ts": time.time(), "user_id": "cloud_chat",
+                "score": 0.0, "routed_to": f"cloud:{cloud_hit[0]}",
+                "prompt_preview": str((messages or [{}])[-1].get("content", ""))[:180],
+                "response_preview": str(payload.get("error"))[:180], "blocked": 1,
+                "duration_ms": dur_ms, "status_code": 502,
+                **({"mission_ref": body.get("mission_ref")} if body.get("mission_ref") is not None else {}),
+            })
+            return JSONResponse(payload, status_code=502)
+        log_route({
+            "route_id": route_id,
+            "ts": time.time(),
+            "user_id": "cloud_chat",
+            "score": 1.0,
+            "routed_to": f"cloud:{cloud_hit[0]}",
+            "prompt_preview": str((messages or [{}])[-1].get("content", ""))[:180],
+            "response_preview": str((payload.get("choices") or [{}])[0].get("message", {}).get("content", ""))[:180],
+            "blocked": 0,
+            "duration_ms": dur_ms,
+            "status_code": 200,
+            **({"mission_ref": body.get("mission_ref")} if body.get("mission_ref") is not None else {}),
+        })
+        return JSONResponse(payload)
+    substrate_rc = substrate_route_class(body, chat_route)
+    try:
+        manual_bid = parse_manual_backend_id(body, route_class=substrate_rc)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    use_cc = cc_cli_allowed(body, route_class=substrate_rc)
+    field_now_injected = False
+    chain_result: GridChainVerification | None = None
+    if not vision and not use_cc and is_aster_model(request_model):
+        chain_result = _verify_aster_chain(body)
+        if not chain_result.ok:
+            return _chain_verification_block_response(chain_result)
+        messages = ensure_aster_system_message(
+            messages, request_model, ASTER_CHAT_PROMPT, chain_verified=True,
+        )
+        messages, field_now_injected = append_field_now_observer_context(
+            messages, request_model, chain_verified=True,
+        )
     stream = bool(body.get("stream", False))
     unsafe_debug = bool(body.get("_grid_unsafe_debug", True))
-    user_msgs = [m.get("content", "") for m in messages if m.get("role") == "user"]
-    prompt = user_msgs[-1] if user_msgs else ""
-    route_id = str(uuid4())
+    prompt = (scan_text or "").strip()
+    if not prompt:
+        user_msgs = [m.get("content", "") for m in messages if m.get("role") == "user"]
+        last = user_msgs[-1] if user_msgs else ""
+        prompt = last if isinstance(last, str) else ""
+    route_id = (
+        chain_result.route_id
+        if chain_result and chain_result.ok and chain_result.route_id
+        else str(uuid4())
+    )
     score = signal_score(prompt)
     beacon = is_beacon(prompt)
     routed = "unsafe_debug:beacon" if beacon else "unsafe_debug:compat"
+    if vision:
+        routed = "unsafe_debug:vision"
     user_log = UNSAFE_DEBUG_ROUTE_CLASS if unsafe_debug else "compat"
+    upstream_model = _resolve_upstream_model(messages, request_model)
+    stale_envelope_in_history = had_stale_envelopes(messages)
 
     try:
         await acquire_gate()
@@ -1200,11 +2286,41 @@ async def chat_completions(body: dict):
         raise busy_429()
 
     if not stream:
-        chat_route = resolve_chat_route(body)
         chat_max = resolve_max_tokens(chat_route, body.get("max_tokens"))
+        chat_temp = resolve_substrate_temperature(
+            route_class=substrate_rc, body=body, messages=messages,
+        )
         try:
-            sub = await substrate_chat(messages, route_id=route_id, max_tokens=chat_max)
+            sub = await substrate_chat(
+                messages, route_id=route_id, route_class=substrate_rc,
+                max_tokens=chat_max, temperature=chat_temp,
+                vision=vision, upstream_model=upstream_model,
+                manual_backend_id=manual_bid,
+                request_body=body,
+            )
             _record_substrate(chat_route, chat_max, sub)
+            if sub.proof.get("cc_cli_failed"):
+                err = str(sub.proof.get("error") or sub.gate.get("reason") or "cc_cli_failed")
+                return JSONResponse(
+                    {
+                        **link_fingerprint(route_id),
+                        "error": {"type": "cc_cli", "reason": err},
+                        "grid_meta": {
+                            "route_id": route_id,
+                            "backend_id": "cc_cli",
+                            "finish_reason": "cc_cli_error",
+                            **{k: sub.proof.get(k) for k in (
+                                "cost_usd", "duration_ms", "exit_code", "stderr", "resolved_models",
+                            ) if sub.proof.get(k) is not None},
+                        },
+                        "choices": [{
+                            "index": 0,
+                            "message": {"role": "assistant", "content": ""},
+                            "finish_reason": "cc_cli_error",
+                        }],
+                    },
+                    status_code=502,
+                )
             text = sub.clean_content or SUBSTRATE_NULL_TEXT
             upstream_finish = sub.finish_reason or "unknown"
             substrate_usage = sub.usage or {}
@@ -1218,22 +2334,25 @@ async def chat_completions(body: dict):
         blocked = False
         reason = None
         contract_suffix = None
-        if gate_result["blocked"]:
-            text = gate_result["text"]
-            routed = "unsafe_debug:BLOCKED"
-            blocked = True
-            reason = gate_result.get("reason")
-            contract_suffix = "BLOCKED"
+        if chat_route != "chat":
+            if gate_result["blocked"]:
+                text = gate_result["text"]
+                routed = "unsafe_debug:BLOCKED"
+                blocked = True
+                reason = gate_result.get("reason")
+                contract_suffix = "BLOCKED"
+            else:
+                text, routed, blocked, reason = _apply_chat_contract(prompt, text, route_id)
+                gate_result = {"blocked": blocked}
+                if reason:
+                    gate_result["reason"] = reason
+                if routed.startswith("unsafe_debug:CONTRACT:"):
+                    contract_suffix = routed[len("unsafe_debug:"):]
         else:
-            text, routed, blocked, reason = _apply_chat_contract(prompt, text, route_id)
-            gate_result = {"blocked": blocked}
-            if reason:
-                gate_result["reason"] = reason
-            if routed.startswith("unsafe_debug:CONTRACT:"):
-                contract_suffix = routed[len("unsafe_debug:"):]
+            gate_result = {"blocked": False}
 
         contract_flag = None
-        if not blocked:
+        if not blocked and chat_route != "chat":
             text, contract_flag = _lint_and_log(
                 text, route_id=route_id, user_log=user_log, prompt=prompt, score=score,
             )
@@ -1242,6 +2361,36 @@ async def chat_completions(body: dict):
             "BLOCKED" if blocked else ("SUBSTRATE_NULL" if "SUBSTRATE_NULL" in routed else "DRAFT_ECHO")
         )
         draft_only = not blocked and contract_suffix is None and "SUBSTRATE_NULL" not in routed
+        block_source = None
+        block_rule = None
+        if blocked:
+            if contract_suffix:
+                block_source = "contract_gate"
+                block_rule = contract_suffix
+            elif reason and "impersonation" in str(reason):
+                block_source = "impersonation"
+                block_rule = reason
+            else:
+                block_source = "contract_gate"
+                block_rule = reason or "blocked"
+        normalized_finish, finish_audit = _finish_block_meta(
+            upstream_finish=upstream_finish,
+            blocked=blocked,
+            block_source=block_source,
+            block_rule=block_rule,
+            chat_route=chat_route,
+            raw_text=sub.clean_content or text,
+            sanitized_text=text,
+            stale_envelope_in_history=stale_envelope_in_history,
+            token_counts={
+                "prompt_tokens": substrate_usage.get("prompt_tokens", 0),
+                "completion_tokens": substrate_usage.get("completion_tokens", 0),
+                "total_tokens": (
+                    int(substrate_usage.get("prompt_tokens") or 0)
+                    + int(substrate_usage.get("completion_tokens") or 0)
+                ),
+            },
+        )
 
         log_route({"route_id": route_id, "ts": time.time(), "user_id": user_log,
                    "score": score, "routed_to": routed,
@@ -1256,7 +2405,7 @@ async def chat_completions(body: dict):
             "truncated": truncated,
             "choices": [{"index": 0,
                          "message": {"role": "assistant", "content": text},
-                         "finish_reason": upstream_finish}],
+                         "finish_reason": normalized_finish}],
             "usage": {
                 "prompt_tokens": substrate_usage.get("prompt_tokens", 0),
                 "completion_tokens": substrate_usage.get("completion_tokens", 0),
@@ -1272,6 +2421,7 @@ async def chat_completions(body: dict):
             "grid_meta": {
                 "route_class": UNSAFE_DEBUG_ROUTE_CLASS,
                 "production": False,
+                "field_now_injected": field_now_injected,
                 "blocked": blocked,
                 "routed_to": routed,
                 "computed_verdict": computed,
@@ -1282,8 +2432,18 @@ async def chat_completions(body: dict):
                 "substrate_usage": substrate_usage,
                 "max_tokens_sent": chat_max,
                 "budget_route": chat_route,
+                "backend_id": sub.proof.get("backend_id"),
+                "cost_usd": sub.proof.get("cost_usd"),
+                "duration_ms": sub.proof.get("duration_ms"),
+                **finish_audit,
             },
         }
+        if sub.proof.get("backend_id") == "cc_cli":
+            payload["cc_cli"] = {
+                k: sub.proof.get(k)
+                for k in ("cost_usd", "duration_ms", "resolved_models", "backend_id", "route")
+                if sub.proof.get(k) is not None
+            }
         if contract_flag:
             payload["contract_flag"] = contract_flag
             payload["grid_meta"]["contract_flag"] = contract_flag
@@ -1300,19 +2460,104 @@ async def chat_completions(body: dict):
     # appears, stop forwarding, emit GRID_ABSENT, and terminate the stream.
     # Worst-case leak is bounded by one chunk, not the whole message.
     async def sse():
-        collected = []
+        collected: list[str] = []
         blocked = False
         blocked_pattern = None
+        block_source = None
         upstream_finish = "unknown"
         chat_route = resolve_chat_route(body)
         chat_max = resolve_max_tokens(chat_route, body.get("max_tokens"))
+        stream_substrate_rc = substrate_route_class(body, chat_route)
+        stream_temp = resolve_substrate_temperature(
+            route_class=stream_substrate_rc, body=body, messages=messages,
+        )
+        stream_target = resolve_substrate_target(
+            CONFIG,
+            route_class=stream_substrate_rc,
+            vision=vision,
+            upstream_model=upstream_model,
+            manual_backend_id=manual_bid,
+            body=body,
+        )
         gate_on = CONFIG.get("stream_incremental_gate", True) and CONFIG["cleanroom_enabled"]
+        continuation_retry = False
+        continuation_attempt = 0
+        contract_flag = None
+        stream_exc_class = None
+        raw_text = ""
+        sanitized_text = ""
+        gate_route = "chat" if chat_route == "chat" else "gateway"
+        substrate_id = stream_target.model or CONFIG.get("openai_model", "unknown")
+        integrity = StreamIntegrityTracker(
+            route_id=route_id, route=chat_route, substrate_id=substrate_id,
+        )
+        lexical_gate = (
+            gate_on
+            and chat_route != "chat"
+            and CONFIG.get("stream_incremental_gate", True)
+        )
 
-        # V4.2: backend-specific stream request + line parser, unified loop below
-        if CONFIG["backend"] == "openai":
-            url = f"{CONFIG['openai_endpoint']}/chat/completions"
-            prepared = _prepare_substrate_messages(messages)
-            payload = _openai_chat_payload(prepared, stream=True, max_tokens=chat_max)
+        if stream_target.backend_id == "cc_cli":
+            try:
+                sub = await substrate_chat(
+                    messages, route_id=route_id, route_class=stream_substrate_rc,
+                    max_tokens=chat_max, temperature=stream_temp,
+                    vision=vision, upstream_model=upstream_model,
+                    manual_backend_id=manual_bid,
+                    request_body=body,
+                )
+                _record_substrate(chat_route, chat_max, sub)
+                if sub.proof.get("cc_cli_failed"):
+                    err = str(sub.proof.get("error") or sub.gate.get("reason") or "cc_cli_failed")
+                    meta = {
+                        "route_id": route_id,
+                        "backend_id": "cc_cli",
+                        "finish_reason": "cc_cli_error",
+                        "error": err,
+                        **{k: sub.proof.get(k) for k in (
+                            "cost_usd", "duration_ms", "exit_code", "stderr",
+                        ) if sub.proof.get(k) is not None},
+                    }
+                    extra = {**link_fingerprint(route_id), "grid_meta": meta, "error": {"type": "cc_cli", "reason": err}}
+                    yield _sse_chunk(route_id, {"role": "assistant"})
+                    yield _sse_chunk(route_id, {"content": f"[cc_cli:{err}]"}, finish="cc_cli_error", extra=extra)
+                    yield "data: [DONE]\n\n"
+                    return
+                text = sub.clean_content or ""
+                upstream_finish = sub.finish_reason or "stop"
+                extra_meta = {
+                    "route_id": route_id,
+                    "backend_id": sub.proof.get("backend_id"),
+                    "cost_usd": sub.proof.get("cost_usd"),
+                    "duration_ms": sub.proof.get("duration_ms"),
+                    "upstream_finish_reason": upstream_finish,
+                    "substrate_usage": sub.usage,
+                }
+                yield _sse_chunk(route_id, {"role": "assistant"})
+                if text:
+                    yield _sse_chunk(route_id, {"content": text})
+                extra = {**link_fingerprint(route_id), "grid_meta": extra_meta}
+                if sub.proof.get("cost_usd") is not None:
+                    extra["cc_cli"] = {
+                        k: sub.proof.get(k)
+                        for k in ("cost_usd", "duration_ms", "resolved_models", "backend_id")
+                        if sub.proof.get(k) is not None
+                    }
+                yield _sse_chunk(route_id, {}, finish=upstream_finish, extra=extra)
+                yield "data: [DONE]\n\n"
+            finally:
+                release_gate()
+            return
+
+        if stream_target.backend_id == "lm_studio":
+            url = f"{stream_target.endpoint.rstrip('/')}/chat/completions"
+            prepared = list(messages) if vision else _prepare_substrate_messages(messages)
+            payload = _openai_chat_payload(
+                prepared, stream=True, max_tokens=chat_max,
+                temperature=stream_temp,
+                model=stream_target.model, vision=vision,
+            )
+
             def parse_piece(line: str):
                 nonlocal upstream_finish
                 line = line.strip()
@@ -1332,8 +2577,16 @@ async def chat_completions(body: dict):
                 delta = choice.get("delta", {})
                 return delta.get("content") or None, False
         else:
-            url = CONFIG["ollama_endpoint"]
-            payload = {"model": CONFIG["ollama_model"], "messages": messages, "stream": True}
+            url = stream_target.endpoint
+            prepared = list(messages) if vision else _prepare_substrate_messages(messages)
+            payload = ollama_chat_payload(
+                prepared,
+                model=stream_target.model,
+                stream=True,
+                max_tokens=chat_max,
+                temperature=stream_temp,
+            )
+
             def parse_piece(line: str):
                 if not line.strip():
                     return None, False
@@ -1353,43 +2606,90 @@ async def chat_completions(body: dict):
                         piece, done = parse_piece(line)
                         if piece:
                             collected.append(piece)
-                            if gate_on:
+                            integrity.append_chunk(piece)
+                            if lexical_gate:
                                 acc = "".join(collected)
-                                hit = first_impersonation_hit(acc)
-                                if hit:
-                                    blocked = True
-                                    blocked_pattern = hit
-                                    yield _sse_chunk(route_id, {"content":
-                                        "\n[GRID_ABSENT: impersonation pattern detected, output halted]"})
-                                    break
-                                cg = apply_contract_gate(prompt, acc, route="chat", route_id=route_id)
+                                cg = apply_contract_gate(
+                                    prompt, acc, route=gate_route, route_id=route_id,
+                                )
                                 if cg.routed_suffix:
                                     blocked = True
+                                    block_source = "contract_gate"
                                     blocked_pattern = cg.routed_suffix
                                     yield _sse_chunk(route_id, {"content": f"\n[{cg.text}]"})
                                     break
                             yield _sse_chunk(route_id, {"content": piece})
                         if done:
                             break
-            contract_flag = None
-            if collected and not blocked:
-                full_pre = "".join(collected)
+
+                raw_text = "".join(collected)
+                sanitized_text, _quarantine = _sanitize_stream_text(raw_text)
+
+            if collected and not blocked and chat_route != "chat":
                 _, contract_flag = _lint_and_log(
-                    full_pre, route_id=route_id, user_log=user_log, prompt=prompt, score=score,
+                    sanitized_text, route_id=route_id, user_log=user_log, prompt=prompt, score=score,
                 )
                 if contract_flag:
                     marker = "\n\ncontract_flag: subject_inversion"
-                    if marker.strip() not in full_pre:
+                    if marker.strip() not in sanitized_text:
                         yield _sse_chunk(route_id, {"content": marker})
-            final_finish = "content_filter" if blocked else upstream_finish
-            extra = link_fingerprint(route_id)
+
+            normalized_finish, finish_audit = _finish_block_meta(
+                upstream_finish=upstream_finish,
+                blocked=blocked,
+                block_source=block_source,
+                block_rule=blocked_pattern,
+                chat_route=chat_route,
+                raw_text=raw_text if collected else "",
+                sanitized_text=sanitized_text if collected else "",
+                stale_envelope_in_history=stale_envelope_in_history,
+                continuation_retry=continuation_retry,
+                continuation_attempt=continuation_attempt,
+                exception_class=stream_exc_class,
+                max_tokens_sent=chat_max,
+                budget_route=chat_route,
+            )
+            gw_trace = integrity.finalize(
+                upstream_finish=upstream_finish,
+                terminal_event="sse_done" if not stream_exc_class else f"error:{stream_exc_class}",
+                sanitized_text=sanitized_text if collected else "",
+            )
+            finish_audit["stream_integrity"] = gw_trace
+            _STREAM_DIAG[route_id] = {
+                "route_id": route_id,
+                "gateway": gw_trace,
+                "finish_audit": finish_audit,
+            }
+            extra = {**link_fingerprint(route_id), "grid_meta": {
+                **finish_audit, "field_now_injected": field_now_injected,
+            }}
             if contract_flag:
                 extra["contract_flag"] = contract_flag
-            yield _sse_chunk(route_id, {}, finish=final_finish, extra=extra)
+            yield _sse_chunk(route_id, {}, finish=normalized_finish, extra=extra)
+            yield "data: [DONE]\n\n"
+        except Exception as exc:
+            stream_exc_class = type(exc).__name__
+            normalized_finish, finish_audit = _finish_block_meta(
+                upstream_finish=upstream_finish,
+                blocked=blocked,
+                block_source=block_source or "protocol",
+                block_rule=blocked_pattern or stream_exc_class,
+                chat_route=chat_route,
+                raw_text="".join(collected),
+                sanitized_text="".join(collected),
+                stale_envelope_in_history=stale_envelope_in_history,
+                exception_class=stream_exc_class,
+                max_tokens_sent=chat_max,
+                budget_route=chat_route,
+            )
+            extra = {**link_fingerprint(route_id), "grid_meta": {
+                **finish_audit, "field_now_injected": field_now_injected,
+            }}
+            yield _sse_chunk(route_id, {}, finish=normalized_finish, extra=extra)
             yield "data: [DONE]\n\n"
         finally:
             release_gate()
-            if collected and CONFIG["backend"] == "openai":
+            if collected:
                 _record_substrate(
                     chat_route,
                     chat_max,
@@ -1398,7 +2698,11 @@ async def chat_completions(body: dict):
                         gate={},
                         quarantine={},
                         pass_to_aster=True,
-                        proof={},
+                        proof={
+                            "continuation_retry": continuation_retry,
+                            "coder_routed": stream_target.coder_routed,
+                            "substrate_backend": stream_target.backend_id,
+                        },
                         finish_reason=upstream_finish,
                         usage={"finish_reason": upstream_finish, "truncated": upstream_finish == "length"},
                     ),
@@ -1429,6 +2733,9 @@ def list_models():
         {"id": ASTER_VIRTUAL_MODEL, "object": "model", "owned_by": "demo"},
         {"id": substrate, "object": "model", "owned_by": "local"},
     ]
+    for mid in cloud_model_catalog(CONFIG):
+        if mid and not any(d.get("id") == mid for d in data):
+            data.append({"id": mid, "object": "model", "owned_by": "ollama_cloud"})
     return {"object": "list", "data": data}
 
 
@@ -1447,6 +2754,11 @@ if __name__ == "__main__":
     ep = CONFIG["openai_endpoint"] if be == "openai" else CONFIG["ollama_endpoint"]
     print(f"Backend: {be} -> {ep}")
     print(f"Model: {active_model()}")
+    if CONFIG.get("coder_routing_enabled"):
+        print(
+            f"Coder routing: ON -> {CONFIG.get('ollama_coder_model')} "
+            f"for routes {CONFIG.get('coder_routes')}"
+        )
     print(f"Cleanroom: {'enabled' if CONFIG['cleanroom_enabled'] else 'disabled'}"
           f" | stream gate: {'incremental' if CONFIG.get('stream_incremental_gate', True) else 'post-hoc'}")
     cr = cleanroom_state()
@@ -1469,4 +2781,5 @@ if __name__ == "__main__":
         sys.exit(1)
 
     print(f"Listening: http://{host}:{port}")
+    log_store_auth_banner()
     uvicorn.run(app, host=host, port=port)

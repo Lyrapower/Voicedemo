@@ -59,6 +59,12 @@ _NODE_SURFACE_FALLBACK = {
     "field-compile": "8790",
     "cloud-glm52": "cloud-glm",
     "cloud-kimi": "cloud-kimi",
+    "cloud-deepseek": "cloud-deepseek",
+    "cloud-qwen35": "cloud-qwen35",
+    "cloud-kimi-k3": "cloud-kimi-k3",
+    "cloud-glm53": "cloud-glm53",
+    "cloud-glm53-full": "cloud-glm53-full",
+    "cloud-minimax": "cloud-minimax",
     "cloud": "console-cloud",
 }
 
@@ -106,6 +112,12 @@ ARCHIVE_ON_PURGE_NODES = frozenset({
     WORKBENCH_B11_NODE,
     "cloud-glm52",
     "cloud-kimi",
+    "cloud-deepseek",
+    "cloud-qwen35",
+    "cloud-kimi-k3",
+    "cloud-glm53",
+    "cloud-glm53-full",
+    "cloud-minimax",
     "field-particle",
     "field-compile",
 })

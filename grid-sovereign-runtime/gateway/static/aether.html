@@ -32,7 +32,17 @@ V2 变更 (相对 V1):
   [13] V2.7.2 — 默认 TRADING tab; hash 路由; poll 始终 render; 缺 scan/brief 强制回填。
 
   Tab TRADING: 异动 · 简报 · SCAN · FILTER · 场外 · equity paper mock
+  Tab OPTION:  Scout 晨晚 · console 任务 · cloud work_log（与 TRADING 隔离）
   Tab CRYPTO:  crypto_rules/cli paper · A/B · PAPER DAILY
+
+  Scout → OPTION tab only (grid-scout emit):
+    {"source":"aether","kind":"aether_scout_brief","payload":{
+      "date":"2026-08-04","mode":"evening|morning",
+      "title":"Scout 晚报 · 2026-08-04","body":"…",
+      "via":"console|gateway","console_ds_task":15,"console_glm_task":16,
+      "console_ds_status":"done","console_glm_status":"done",
+      "work_log_ds":"[工作日志]…","work_log_glm":"[工作日志]…",
+      "brief_path":"briefs/2026-08-04-evening.md"}}
 
 ═══ daemon 侧 offpool 管线 SPEC (Cursor 实现, 页面接收端已全部就绪) ═══
   目标: CC CLI 调 Sonnet 每日 screen top 3 场外候选, 严格 pool 外, 双重排除。
@@ -88,16 +98,18 @@ V2 变更 (相对 V1):
 -->
 <style>
 :root{
-  --mo:#06070E; --wen:#E3E5F2; --hui:#9BA0BC; --an:#7A7F9E;
-  --muted:#B4B8D4; --subtle:#8E93B0;
-  --jie:rgba(140,138,200,.14); --zi:#9B9ED0;
-  --up:#5AD19A; --dn:#CF6B6B;
-  --mono:ui-monospace,"SF Mono",Menlo,monospace;
-  --sans:-apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif;
+  --mo:#0B0E14; --wen:#E8ECF4; --hui:#8B95A7; --an:#8B95A7;
+  --muted:#8B95A7; --subtle:#8B95A7;
+  --jie:#232A38; --zi:#8B95A7;
+  --up:#34C77B; --dn:#E5484D; --gold:#E5B454;
+  --font-body:-apple-system,"PingFang SC","SF Pro Text",sans-serif;
+  --font-data:"SF Mono","JetBrains Mono",ui-monospace,monospace;
+  --fs-caption:12px; --fs-meta:13px; --fs-body:15px; --fs-title:17px; --fs-price:22px; --fs-ticker:28px;
+  --mono:var(--font-data); --sans:var(--font-body);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;background:var(--mo);color:var(--wen);
-  font:15px/1.75 var(--sans);-webkit-font-smoothing:antialiased}
+  font:var(--fs-body)/1.5 var(--font-body);-webkit-font-smoothing:antialiased}
 body{background-image:radial-gradient(130% 40% at 50% -8%,#141534 0%,rgba(20,21,52,0) 60%)}
 #app{max-width:680px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;
   padding:calc(12px + env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom))}
@@ -163,7 +175,8 @@ td.notice{font:12px var(--mono);color:#CF8B6B;white-space:pre-wrap;
 .offpool-col{min-width:0}
 .day-section{margin:16px 0 10px}
 .day-section.stale-day{opacity:.72}
-.section-head{font:10.5px var(--mono);color:var(--zi);letter-spacing:.14em;margin:0 0 8px;padding-bottom:6px;border-bottom:1px solid var(--jie)}
+.section-head{font:500 var(--fs-meta) var(--font-body);color:var(--zi);letter-spacing:0;margin:0 0 8px;padding-bottom:6px;border-bottom:1px solid var(--jie)}
+.status-banner{display:flex;align-items:center;min-height:40px;max-height:40px;padding:0 12px;font:var(--fs-meta) var(--font-body);color:var(--muted);border-left:3px solid var(--gold);background:rgba(20,24,36,.85);border-radius:0 6px 6px 0;margin:6px 0}
 .day-section.stale-day .section-head{color:var(--an)}
 .e4b-line{font:11px var(--mono);color:var(--muted);letter-spacing:.03em;margin:8px 0 2px;line-height:1.55}
 .e4b-line.e4b-insufficient{color:#CF8B6B}
@@ -172,6 +185,43 @@ td.notice{font:12px var(--mono);color:#CF8B6B;white-space:pre-wrap;
 .offpool-col .lane-meta b{color:#8B8FB8;font-weight:500}
 .stale-banner{font:11px var(--mono);color:#CF8B6B;background:rgba(207,139,107,.12);
   border:1px solid rgba(207,139,107,.35);border-radius:6px;padding:8px 10px;margin:0 0 10px}
+.brief-date-badge{font:10px var(--mono);color:#9B9ED0;border:1px solid rgba(155,158,208,.35);
+  border-radius:4px;padding:1px 6px;margin-left:8px;letter-spacing:.06em}
+.brief-stale-tag{font:9px var(--mono);color:#fff;background:#CF6B6B;border-radius:4px;
+  padding:1px 5px;margin-left:6px;letter-spacing:.04em}
+.signal-deck{margin:8px 0 14px}
+.signal-grid{display:flex;flex-direction:column;gap:10px}
+.signal-card{background:rgba(20,21,40,.65);border:1px solid #2A2E4A;border-radius:8px;padding:10px 12px}
+.signal-card.wait-card{border-style:dashed;opacity:.85}
+.sig-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.sig-sym{font:700 var(--fs-ticker)/var(--lh-display,1.2) var(--font-data);letter-spacing:0}
+.chip-call{font:9px var(--mono);color:#5AD19A;border:1px solid rgba(90,209,154,.45);
+  border-radius:999px;padding:2px 8px;letter-spacing:.08em}
+.sig-age{margin-left:auto;font:10px var(--mono);color:#E0B453;display:flex;align-items:center;gap:4px}
+.sig-age-dot{width:6px;height:6px;border-radius:50%;background:#E0B453}
+.sig-score-block{text-align:right;min-width:52px}
+.sig-score{font:700 22px var(--mono);line-height:1}
+.sig-score-label{font:9px var(--mono);color:var(--muted);letter-spacing:.06em}
+.sig-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.sig-trio{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;background:rgba(6,7,14,.55);
+  border-radius:6px;padding:8px;margin:8px 0;font:10px var(--mono)}
+.sig-trio b{display:block;font-size:13px;margin-top:2px;color:#D8DBEF}
+.sig-trio .entry b{color:#7EB8FF}
+.sig-badges{font:10px var(--mono);color:var(--muted);margin:4px 0 6px}
+.sig-expand{font:10px var(--mono);color:var(--zi);cursor:pointer}
+.sig-expand summary{list-style:none;cursor:pointer;padding:4px 0}
+.sig-expand summary::-webkit-details-marker{display:none}
+.layer-server-room{margin:12px 0;border:1px solid var(--jie);border-radius:8px;padding:0 10px 10px}
+.layer-server-room summary{font:11px var(--mono);color:var(--muted);cursor:pointer;padding:10px 0;letter-spacing:.06em}
+.policy-proposal{border-left:2px solid rgba(155,158,208,.55);padding-left:12px;margin:14px 0}
+.policy-proposal .policy-actions{display:flex;gap:10px;margin-top:12px}
+.policy-proposal .policy-actions button{font:12px var(--mono);padding:8px 16px;border-radius:6px;cursor:pointer;border:1px solid #3A3E5A;background:#1A1B2E;color:var(--text)}
+.policy-proposal .policy-actions button.approve{border-color:#4ADE80;color:#4ADE80}
+.policy-proposal .policy-actions button.reject{border-color:#F87171;color:#F87171}
+.sig-badges .chip-win,.sig-badges .chip-date{font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(74,222,128,.12);color:#86EFAC;margin-right:6px}
+.policy-proposal .bdate{color:#9B9ED0}
+.policy-glm{font-size:13.5px;color:#D8DBEF;margin:8px 0;white-space:pre-wrap}
+.policy-pending{font:9px var(--mono);color:#E0B453;border:1px solid rgba(224,180,83,.4);border-radius:4px;padding:1px 6px;margin-left:8px}
 .crossday-warn{font:11px var(--mono);color:#E0B453;background:rgba(224,180,83,.1);
   border:1px solid rgba(224,180,83,.35);border-radius:6px;padding:8px 10px;margin:0 0 10px}
 .brief.data-stale,.offpool-col.data-stale{opacity:.45}
@@ -247,15 +297,20 @@ summary::-webkit-details-marker{display:none}
 
 /* V2.7: TRADING / CRYPTO tabs */
 #tabs{display:flex;margin:10px 0 6px;border:1px solid var(--jie);border-radius:10px;overflow:hidden}
-#tabs button{flex:1;font:11.5px var(--mono);letter-spacing:.14em;padding:11px 6px;
+#tabs button{flex:1;font:10.5px var(--mono);letter-spacing:.1em;padding:11px 4px;
   background:transparent;color:var(--hui);border:none;cursor:pointer;
   -webkit-tap-highlight-color:transparent;transition:background .15s,color .15s}
 #tabs button.active{background:rgba(155,158,208,.14);color:var(--wen)}
 #tabs button[data-tab="crypto"].active{background:rgba(90,209,154,.12);color:#5AD19A}
+#tabs button[data-tab="option"].active{background:rgba(224,180,83,.12);color:#E0B453}
 .tab-hint{font:10px var(--mono);color:var(--an);letter-spacing:.06em;margin:0 0 10px}
 
 footer{margin-top:auto;padding-top:26px;font:10px var(--mono);color:var(--an);
   letter-spacing:.06em;text-align:center}
+/* 数据龄徽章 · 超本面周期×2 琥珀(仪表宪法) */
+#data-age{font:10px var(--mono);letter-spacing:.04em;margin:0 0 8px;padding:5px 8px;
+  border:1px solid rgba(155,158,208,.25);border-radius:8px;color:var(--hui)}
+#data-age.amber{border-color:rgba(224,180,83,.55);color:#E0B453;background:rgba(224,180,83,.08)}
 </style>
 </head>
 <body>
@@ -264,6 +319,7 @@ footer{margin-top:auto;padding-top:26px;font:10px var(--mono);color:var(--an);
     <span id="status-compact" title="点按 gateway 设置">—</span>
     <span id="stamp" title="点按同步 · 长按清缓存重拉">↻</span>
   </header>
+  <div id="data-age" title="仪表宪法:store 最后写入 vs 本面最后读取;超周期×2 琥珀">数据龄 · …</div>
   <details class="pipe-fold" id="pipe-fold">
     <summary>pipeline 详情</summary>
     <div id="pipe-bar">pipeline · …</div>
@@ -274,6 +330,7 @@ footer{margin-top:auto;padding-top:26px;font:10px var(--mono);color:var(--an);
   </div>
   <nav id="tabs" aria-label="Aether views">
     <button type="button" data-tab="trading" class="active">TRADING</button>
+    <button type="button" data-tab="option">OPTION</button>
     <button type="button" data-tab="watcher">WATCHER</button>
     <button type="button" data-tab="crypto">CRYPTO</button>
   </nav>
@@ -322,12 +379,15 @@ $("#status-compact")?.addEventListener("click",()=>$("#conn").classList.toggle("
 $("#gw").onchange=e=>{gw=e.target.value.trim().replace(/\/+$/,"");st.set("agw",gw)};
 $("#tk").onchange=e=>{tk=e.target.value.trim();st.set("atk",tk)};
 
-const PAGE_VER="3.8.2-ui-cleanup";
+const PAGE_VER="3.9.8-option-tab";
 /* sync with scripts/grid/pipeline_doctor.py FACTOR_WORDS */
 const TRADING_FACTOR_WORDS=["gamma","iv","delta","score","spread","点差","过滤","passing","filtered"];
+/* 动态名单: 8600 pulse watchlist(扫描置顶+env补位); 仅硬拒 TSLA/GOOGL */
+const SURFACE_EXCLUDE=new Set(["TSLA","GOOGL"]);
+const AB_SEALED_DATE="2026-07-20";
 const GRID_LANE_WHITELIST=new Set(["grid_cc_scan","aether_scan"]);
 const TRADING_STALE_COLLAPSE_HOURS=6;
-const SERVER_LANE_KINDS=["aether_premarket_deepseek","aether_scan","aether_offpool"];
+const SERVER_LANE_KINDS=["aether_premarket_deepseek","aether_offpool"];
 let serverLaneSnap=[];
 let watcherSnap=null;
 function laneSnapshotFromBoot(){
@@ -474,8 +534,9 @@ function wrapTradingBlock(html,ev,meta){
   return `<details class="trading-block stale-fold"><summary>${title} · ${t} · #${id}${badge} · ${age.toFixed(1)}h前 · 点击展开</summary>${html}</details>`;
 }
 const WATCHER_KINDS=["watcher_momentum","watcher_health","watcher_alert"];
-const HISTORY_KINDS=["aether_brief","aether_brief_dryrun","aether_premarket","aether_premarket_grid","aether_premarket_deepseek","aether_scan","aether_offpool","aether_filter","aether_momentum","grid_cc_scan"];
+const HISTORY_KINDS=["aether_scout_brief","aether_brief","aether_brief_dryrun","aether_policy_proposal","aether_premarket","aether_premarket_grid","aether_premarket_deepseek","aether_scan","aether_offpool","aether_filter","aether_momentum","grid_cc_scan"];
 const TRADING_KINDS=["aether_brief","aether_brief_dryrun","aether_scan","aether_filter","aether_momentum","aether_offpool","aether_premarket","aether_premarket_grid","aether_premarket_deepseek"];
+const OPTION_KINDS=["aether_scout_brief"];
 const TRADING_LANE_KINDS=["aether_premarket_deepseek","aether_scan","aether_offpool"];
 const TRADING_BACKFILL_REQUIRED=["aether_scan"];
 let showDryRun=st.get("aether_show_dryrun")===true;
@@ -495,7 +556,10 @@ function compactCache(raw){
   const all=[...raw].sort((a,b)=>b.id-a.id);
   const keep=new Map();
   const push=e=>{if(e) keep.set(e.id,e);};
-  for(const k of["aether_brief","aether_brief_dryrun","aether_scan","aether_filter","aether_momentum",
+  const scans=all.filter(e=>e.kind==="aether_scan");
+  scans.filter(e=>String(e.payload?.label||"")==="BFS sp500").slice(0,6).forEach(push);
+  scans.filter(e=>String(e.payload?.label||"")!=="BFS sp500").slice(0,4).forEach(push);
+  for(const k of["aether_scout_brief","aether_brief","aether_brief_dryrun","aether_policy_proposal","aether_filter","aether_momentum",
     "aether_offpool","aether_premarket","aether_premarket_grid","aether_premarket_deepseek",
     "aether_crypto_paper_ab","grid_cc_scan"]){
     all.filter(e=>e.kind===k).slice(0,8).forEach(push);
@@ -518,14 +582,28 @@ function tabFromHash(){
   const h=(location.hash||"").replace(/^#/,"").toLowerCase();
   if(h==="crypto") return "crypto";
   if(h==="watcher") return "watcher";
+  if(h==="option") return "option";
   if(h==="trading") return "trading";
   return null;
 }
 function cacheHasTradingData(){
   return TRADING_BACKFILL_REQUIRED.every(k=>cache.some(e=>e.kind===k));
 }
+function cacheHasBfsTodayScan(){
+  const today=tradeDateEt();
+  return cache.some(e=>e.kind==="aether_scan"
+    &&String(e.payload?.label||"")==="BFS sp500"
+    &&scanDateForEvent(e)===today);
+}
 function needsTradingBackfill(){
-  return !cacheHasTradingData();
+  if(!cacheHasTradingData()) return true;
+  if(cacheHasBfsTodayScan()) return false;
+  const today=tradeDateEt();
+  if(cache.some(e=>e.kind==="aether_scan"&&scanDateForEvent(e)===today)) return true;
+  const parts=new Intl.DateTimeFormat("en-US",{timeZone:ET_TZ,hour:"numeric",minute:"numeric",hour12:false}).formatToParts(new Date());
+  const h=Number(parts.find(p=>p.type==="hour")?.value||0);
+  const m=Number(parts.find(p=>p.type==="minute")?.value||0);
+  return h>9||(h===9&&m>=45);
 }
 
 // 版本升级 → 清本地事件缓存 + 回 TRADING (Safari 常卡旧 aev)
@@ -598,6 +676,7 @@ function pickEvents(){
   const briefs=sortBriefs(merged);
   return{
     briefs,
+    scoutBriefs:sortBriefs(byKind("aether_scout_brief")),
     earnings:byKind("aether_sonnet_earnings"),
     premarkets:byKind("aether_premarket"),
     premarketGrid:byKind("aether_premarket_grid"),
@@ -615,7 +694,8 @@ function pickEvents(){
     paperW:cache.filter(e=>e.kind==="aether_paper_wallet"),
     paperF:cache.filter(e=>e.kind==="aether_paper_fill"),
     paperD:byKind("aether_paper_daily"),
-    cryptoAb:byKind("aether_crypto_paper_ab")
+    cryptoAb:byKind("aether_crypto_paper_ab"),
+    policyProposals:byKind("aether_policy_proposal"),
   };
 }
 
@@ -701,10 +781,326 @@ function pickEventsForToday(ev){
     opool:(ev.opool||[]).filter(e=>laneEventDate(e)===today),
   };
 }
+function renderPremarketBriefSlot(ev){
+  const today=tradeDateEt();
+  const ds=(ev.premarketDeepseek||[]).filter(e=>laneEventDate(e)===today);
+  const gr=(ev.premarketGrid||[]).filter(e=>laneEventDate(e)===today);
+  if(!ds.length&&!gr.length) return "";
+  let h=`<div class="day-section"><div class="section-head">盘前简报 ${esc(today.slice(5))}</div>`;
+  for(const dsEv of ds){
+    const html=renderPremarketDeepseekSection(dsEv);
+    if(html) h+=html;
+  }
+  h+=`</div>`;
+  return h;
+}
+function pickScoutBriefForSurface(scoutBriefs){
+  if(!scoutBriefs?.length) return null;
+  const today=tradeDateEt();
+  const morning=scoutBriefs.find(e=>e.payload?.date===today&&e.payload?.mode==="morning");
+  if(morning) return morning;
+  const evening=scoutBriefs.find(e=>e.payload?.date===today&&e.payload?.mode==="evening");
+  if(evening) return evening;
+  return scoutBriefs[0];
+}
+function renderScoutBriefCard(ev,{compact=false}={}){
+  if(!ev) return "";
+  const p=ev.payload||{};
+  const modeLabel=p.mode==="morning"?"晨报":(p.mode==="evening"?"晚报":(p.mode||"—"));
+  const d=p.date||locDate(ev.ts)||"";
+  const dsT=p.console_ds_task!=null?`#${p.console_ds_task}`:"—";
+  const glmT=p.console_glm_task!=null?`#${p.console_glm_task}`:"—";
+  const stLine=`console DS ${dsT} ${p.console_ds_status||""} · GLM ${glmT} ${p.console_glm_status||""}`.trim();
+  const body=String(p.body||"");
+  const preview=body.replace(/^#+\s.*/m,"").trim().slice(0,compact?140:280);
+  let h=`<div class="brief" data-scout-id="${esc(String(ev.id||""))}" style="cursor:pointer;margin-top:0">`;
+  h+=`<div class="bdate">#${esc(String(ev.id||"?"))} · ${esc(modeLabel)} · ${esc(p.via||"—")} · 点击全文</div>`;
+  h+=`<div class="btitle">${esc(p.title||("Scout "+modeLabel+" · "+d))}</div>`;
+  h+=`<div class="bbody dim" style="font-size:12px;margin:4px 0 6px">${esc(stLine)}</div>`;
+  if(preview) h+=`<div class="bbody">${esc(preview)}${body.length>preview.length?"…":""}</div>`;
+  if(p.work_log_glm||p.work_log_ds){
+    h+=`<div class="bbody dim" style="font-size:11px;margin-top:8px">魂器 · cloud-glm52 ${p.work_log_glm?"✓":"—"} · cloud-deepseek ${p.work_log_ds?"✓":"—"}</div>`;
+  }
+  h+=`</div>`;
+  return h;
+}
+function buildOptionHtml(rawEv){
+  const scoutBriefs=rawEv.scoutBriefs||[];
+  const today=tradeDateEt();
+  const primary=pickScoutBriefForSurface(scoutBriefs);
+  let h=`<div class="tab-hint">OPTION · Scout 情报面 · 与 TRADING 隔离 · 晚报 21:00 / 晨报 06:45</div>`;
+  h+=`<div class="day-section"><div class="section-head">最新 Scout ${primary?briefDateBadgeHtml(primary.payload?.date||locDate(primary.ts)):esc(today.slice(5))}</div>`;
+  if(!primary){
+    h+=`<div class="brief"><div class="bbody dim">待产 · briefs/ + console 任务 + cloud work_log 合并后 emit 到此</div></div>`;
+  }else{
+    const d=primary.payload?.date||"";
+    if(d&&d!==today) h+=`<div class="stale-banner">显示最近 Scout · ${esc(d)} · 今日 ${esc(today.slice(5))} 尚未 emit</div>`;
+    h+=renderScoutBriefCard(primary);
+    const p=primary.payload||{};
+    if(p.work_log_ds||p.work_log_glm){
+      h+=`<details class="brief" style="margin-top:10px"><summary>魂器 work_log 摘录</summary>`;
+      if(p.work_log_ds) h+=`<div class="bbody" style="margin-top:8px;font-size:12px"><b>cloud-deepseek</b>\n${esc(p.work_log_ds)}</div>`;
+      if(p.work_log_glm) h+=`<div class="bbody" style="margin-top:8px;font-size:12px"><b>cloud-glm52</b>\n${esc(p.work_log_glm)}</div>`;
+      h+=`</details>`;
+    }
+    if(p.brief_path){
+      h+=`<div class="kills" style="margin-top:8px">file · ${esc(p.brief_path)}</div>`;
+    }
+  }
+  h+=`</div>`;
+  const rest=scoutBriefs.filter(e=>!primary||e.id!==primary.id).slice(0,6);
+  if(rest.length){
+    h+=`<div class="day-section"><div class="section-head">近期 Scout</div>`;
+    for(const ev of rest) h+=renderScoutBriefCard(ev,{compact:true});
+    h+=`</div>`;
+  }
+  if(!primary&&!rest.length){
+    h+=`<div id="empty">OPTION 暂无 Scout 事件
+      <code>grid-scout evening/morning → aether_scout_brief\n或: python3 scout_agent.py --emit-only --mode evening --ds-task N --glm-task N</code></div>`;
+  }
+  return h;
+}
+function openScoutBriefReader(id){
+  const n=Number(id);
+  const ev=(pickEvents().scoutBriefs||[]).find(x=>x.id===n||String(x.id)===String(id));
+  if(!ev) return;
+  const p=ev.payload||{};
+  const parts=[p.body||""];
+  if(p.work_log_ds) parts.push("\n——\ncloud-deepseek work_log\n"+p.work_log_ds);
+  if(p.work_log_glm) parts.push("\n——\ncloud-glm52 work_log\n"+p.work_log_glm);
+  if(p.brief_path) parts.push("\n——\nfile: "+p.brief_path);
+  $("#brief-modal-title").textContent=p.title||"Scout";
+  $("#brief-modal-body").textContent=parts.join("\n");
+  const meta=[
+    p.console_ds_task!=null?`DS#${p.console_ds_task} ${p.console_ds_status||""}`:"",
+    p.console_glm_task!=null?`GLM#${p.console_glm_task} ${p.console_glm_status||""}`:"",
+    p.via?`via ${p.via}`:"",
+  ].filter(Boolean).join(" · ");
+  $("#brief-modal-trace").textContent=meta;
+  $("#brief-modal").classList.add("open");
+}
+function renderPostMarketBriefSlot(briefs,ev){
+  const today=tradeDateEt();
+  const slotOpen=postMarketBriefSlotOpen();
+  if(!briefs.length){
+    const msg=slotOpen
+      ? "今日简报尚未生成 · post-market 16:40 ET 未 emit（可 schedule_catchup 或手动 --once）"
+      : "待产 · 今日收盘后生成（16:40 ET）";
+    return `<div class="day-section"><div class="section-head">盘后简报 ${esc(today.slice(5))}</div>`
+      +`<div class="brief"><div class="bbody dim">${esc(msg)}</div></div></div>`;
+  }
+  const briefDate=briefs[0].payload?.date||locDate(briefs[0].ts);
+  const anchor=anchorTradeDate(ev);
+  const staleBrief=briefDate&&anchor&&briefDate<anchor;
+  const staleDays=briefStaleDays(briefDate);
+  const preClose=!slotOpen&&briefDate!==today;
+  let h="";
+  if(preClose)
+    h+=`<div class="stale-banner">收盘前 · 显示最近简报 ${esc(briefDate.slice(5))} · 今日 ${esc(today.slice(5))} 16:40 ET 后更新</div>`;
+  if(staleDays>1&&!staleBrief)
+    h+=`<div class="stale-banner">简报日期 ${esc(briefDate.slice(5))} · 落后当前交易日 ${staleDays} 天</div>`;
+  h+=renderBriefStaleBanner(briefDate,anchor);
+  h+=`<div class="day-section${staleBrief||staleDays>1?" stale-day":""}"><div class="section-head">盘后简报 ${briefDateBadgeHtml(briefDate)}${staleBrief?" · 上一交易日":""}</div>`;
+  const p=briefs[0].payload||{};
+  const body=stripPremarketAbBody(p.body||"");
+  const isDry=p.dry_run||briefs[0].kind==="aether_brief_dryrun";
+  const longBody=body.length>120;
+  const split=splitBriefItems(p.items);
+  h+=`<div class="brief${staleBrief?" data-stale":""}" data-brief-date="${esc(p.date||"")}" style="cursor:pointer;margin-top:0">`;
+  h+=`<div class="bdate">${isDry?"DRY-RUN · ":""}#${briefs[0].id||"?"} · 点击查看全文${split.anomaly.length?`<span class="diag-dot" title="integrity ${split.anomaly.length}"></span>`:""}</div>`;
+  h+=`<div class="btitle">${esc(p.title||"盘后摘要")}</div>`;
+  if(!longBody&&body) h+=`<div class="bbody">${esc(body.slice(0,160))}${body.length>160?"…":""}</div>`;
+  h+=`</div></div>`;
+  return {html:h,longBody,body,brief:briefs[0],split};
+}
 function renderBriefStaleBanner(briefDate,anchorDate){
   if(!briefDate||!anchorDate||briefDate>=anchorDate) return "";
   const b=briefDate.slice(5), a=anchorDate.slice(5);
   return `<div class="stale-banner">简报停留在 ${esc(b)} · 当前盘前/scan ${esc(a)} · post-market 尚未 emit 今日简报</div>`;
+}
+function briefStaleDays(briefDate){
+  if(!briefDate) return 0;
+  const today=tradeDateEt();
+  try{
+    return Math.floor((Date.parse(today+"T12:00:00Z")-Date.parse(briefDate+"T12:00:00Z"))/86400000);
+  }catch(e){ return 0; }
+}
+function briefDateBadgeHtml(briefDate){
+  if(!briefDate) return "";
+  const stale=briefStaleDays(briefDate)>1;
+  return `<span class="brief-date-badge">${esc(briefDate.slice(5))}</span>`
+    +(stale?`<span class="brief-stale-tag">陈旧</span>`:"");
+}
+function relativeMinutesAgo(ts){
+  if(!ts) return "—";
+  const m=Math.max(0,Math.round((Date.now()/1000-Number(ts))/60));
+  if(m<1) return "刚刚";
+  if(m<60) return m+" 分钟前";
+  return Math.round(m/60)+" 小时前";
+}
+function scoreStrength(score){
+  const n=Number(score);
+  if(!Number.isFinite(n)) return {label:"—",cls:"weak"};
+  if(n>=50) return {label:"强",cls:"strong"};
+  if(n>=40) return {label:"中等",cls:"mid"};
+  return {label:"弱",cls:"weak"};
+}
+function formatContractRow(r){
+  const exp=String(r.expiry||"").replace(/-/g,"").slice(0,8);
+  const strike=r.strike!=null?String(r.strike).replace(/\.0+$/,""):"";
+  if(exp&&strike) return exp+" "+strike+"C";
+  return String(r.sym||r.symbol||"—").toUpperCase();
+}
+function midEntryPrice(r){
+  const b=Number(r.bid), a=Number(r.ask);
+  if(Number.isFinite(b)&&Number.isFinite(a)&&b>0&&a>0) return ((b+a)/2).toFixed(2);
+  if(r.premium_dollars!=null) return fmtScanMoney(r.premium_dollars);
+  return null;
+}
+function inTradingWatchlist(sym){
+  const s=String(sym||"").toUpperCase();
+  return s&&!SURFACE_EXCLUDE.has(s);
+}
+function filterBfsRows(rows){
+  return (rows||[]).filter(r=>inTradingWatchlist(r.sym||r.symbol));
+}
+const SCAN_QUARANTINE={rounds:[{ids:[46318,46435],date:"2026-07-27",window:"AM"}]};
+function scanIsQuarantined(ev){
+  if(!ev) return false;
+  for(const r of SCAN_QUARANTINE.rounds){
+    if(r.ids&&r.ids.includes(ev.id)) return true;
+    const d=scanDateForEvent(ev), w=scanWindowForEvent(ev);
+    if(r.date===d&&r.window===w) return true;
+  }
+  return false;
+}
+function signalCardEligible(r){
+  const entry=midEntryPrice(r);
+  const stop=r.stop??r.stop_price;
+  const target=r.target??r.target_price;
+  return entry!=null&&stop!=null&&target!=null;
+}
+function filterReasonForRow(r){
+  if(r.bid==null||r.ask==null) return "missing bid/ask";
+  if(!signalCardEligible(r)) return "entry/stop/target incomplete";
+  return "";
+}
+function renderFilteredScanTable(ev,rows){
+  const body=rows.map(r=>{
+    const sym=String(r.sym||r.symbol||"—").toUpperCase();
+    return {sym,score:r.score??"—",reason:filterReasonForRow(r)||"—"};
+  });
+  if(!body.length) return "";
+  return `<div class="brief"><div class="bdate">滤除明细 · #${ev.id||"?"} · ${esc(scanWindowForEvent(ev))}</div>`
+    +rowsTable(body,[{h:"SYM",k:"sym"},{h:"SCORE",k:"score"},{h:"滤除原因",k:"reason"}])
+    +`</div>`;
+}
+function postMarketBriefSlotOpen(){
+  const parts=new Intl.DateTimeFormat("en-US",{timeZone:ET_TZ,hour:"numeric",minute:"numeric",hour12:false}).formatToParts(new Date());
+  const h=Number(parts.find(p=>p.type==="hour")?.value||0);
+  const m=Number(parts.find(p=>p.type==="minute")?.value||0);
+  return h>16||(h===16&&m>=40);
+}
+function bfsTodayScans(ev){
+  return scansByLabel(ev.scans||[],"BFS sp500").filter(e=>scanDateForEvent(e)===tradeDateEt());
+}
+function renderSignalWaitCard(win){
+  const sched=win==="AM"?"~09:45 ET":"~15:35 ET";
+  return `<div class="signal-card wait-card"><div class="sig-head"><span class="sig-sym">—</span><span class="chip-win">${esc(win)}</span></div>`
+    +`<div class="kills">等待 ${esc(win)} 窗口 · ${esc(sched)}</div></div>`;
+}
+function renderSignalDeck(ev){
+  const bfs=bfsTodayScans(ev);
+  let h=`<div class="day-section signal-deck"><div class="section-head">信号 · BFS 决策面 · universe: SP500 全域 · 按 score 降序</div><div class="signal-grid">`;
+  for(const win of ["AM","PM"]){
+    const evWin=pickLatestScan(bfs.filter(e=>scanWindowForEvent(e)===win));
+    if(!evWin){
+      h+=renderSignalWaitCard(win);
+      continue;
+    }
+    if(scanIsQuarantined(evWin)){
+      h+=`<div class="status-banner">${esc(win)} · 本轮查证中 · 不作数 · scan #${evWin.id||"?"}</div>`;
+      continue;
+    }
+    const rows=filterBfsRows([...(evWin.payload?.rows||[])].sort((a,b)=>(Number(b.score)||0)-(Number(a.score)||0)));
+    if(!rows.length){
+      h+=`<div class="signal-card wait-card"><div class="sig-head"><span class="chip-win">${esc(win)}</span></div>`
+        +`<div class="kills">${esc(win)} 已扫 · 0 命中 · #${evWin.id||"?"}</div></div>`;
+      continue;
+    }
+    let shown=0;
+    for(const r of rows){
+      if(!signalCardEligible(r)) continue;
+      const sym=String(r.sym||r.symbol||"").toUpperCase();
+      h+=renderSignalCardS2({...r,_ev:evWin,_sym:sym});
+      shown++;
+    }
+    if(!shown){
+      h+=`<div class="signal-card wait-card"><div class="sig-head"><span class="chip-win">${esc(win)}</span></div>`
+        +`<div class="kills">${rows.length} 候选 · 无可执行卡(缺入场/止损/目标) · #${evWin.id||"?"}</div></div>`;
+    }
+  }
+  h+=`</div></div>`;
+  return h;
+}
+function renderSignalExpandBody(r){
+  const d=r.delta!=null?`Δ ${esc(String(r.delta))}`:"";
+  const g=r.gamma_theta_ratio!=null?`Γ/Θ ${esc(String(r.gamma_theta_ratio))}`:"";
+  const iv=r.iv!=null?`IV ${esc(String(r.iv))}${r.iv_source?`(${esc(String(r.iv_source))})`:""}`:"";
+  const hv=r.hv_rank!=null?`HVrank ${esc(String(r.hv_rank))}`:"";
+  const ivhv=r.iv_hv_ratio!=null?`IV/HV ${esc(String(r.iv_hv_ratio))}`:"";
+  const ba=(r.bid!=null||r.ask!=null)?`Bid/Ask ${esc(String(r.bid??"—"))}/${esc(String(r.ask??"—"))}`:"";
+  const vol=r.volume!=null?`Vol ${esc(String(r.volume))}`:"";
+  const oi=r.open_interest!=null?`OI ${esc(String(r.open_interest))}`:"";
+  const sp=fmtScanPct(r.spread_pct);
+  const prem=r.premium_dollars!=null?`Premium $${esc(fmtScanMoney(r.premium_dollars)||String(r.premium_dollars))}`:"";
+  const lines=[d,g,iv,hv,ivhv,ba,vol,oi,sp?`Spread ${sp}`:"",prem].filter(Boolean);
+  return `<div class="kills" style="opacity:.9;margin-top:6px">${lines.join(" · ")}</div>`
+    +renderScoreBreakdown(r.score_breakdown);
+}
+function renderSignalCardS2(r){
+  const sym=esc(r._sym||String(r.sym||r.symbol||"—"));
+  const str=scoreStrength(r.score);
+  const scoreDisp=r.score!=null&&r.score!==""?esc(String(r.score)):"—";
+  const ts=r._ev?.ts;
+  const entry=midEntryPrice(r);
+  const contract=esc(formatContractRow(r));
+  const isNew=ts&&(Date.now()/1000-Number(ts)<7200);
+  const win=scanWindowForEvent(r._ev)||r._ev?.payload?.window||"";
+  const sDate=scanDateForEvent(r._ev)||tradeDateEt();
+  let h=`<div class="signal-card">`;
+  h+=`<div class="sig-top"><div class="sig-head" style="margin:0;flex:1">`;
+  h+=`<span class="sig-sym">$${sym}</span><span class="chip-call">CALL</span>`;
+  h+=`<span class="sig-age"><span class="sig-age-dot"></span>${esc(relativeMinutesAgo(ts))}</span></div>`;
+  h+=`<div class="sig-score-block"><div class="sig-score">${scoreDisp}</div>`;
+  h+=`<div class="sig-score-label">${esc(str.label)} · 共振强度</div></div></div>`;
+  h+=`<div class="sig-trio">`;
+  h+=`<div><span class="k">执行合约</span><b>${contract}</b></div>`;
+  h+=`<div class="entry"><span class="k">建议入场</span><b>${entry?"$"+esc(entry):"—"}</b></div>`;
+  h+=`<div><span class="k">风控止损</span><b>--</b></div></div>`;
+  h+=`<div class="sig-badges">`;
+  h+=`<span class="chip-res">${esc(str.label)} · 共振</span>`;
+  h+=`<span class="chip-date">${esc(sDate.slice(5))}</span>`;
+  if(win) h+=`<span class="chip-win">${esc(win)}</span>`;
+  if(isNew) h+=`<span> · 新信号</span>`;
+  h+=`</div>`;
+  h+=`<details class="sig-expand"><summary>展开解析 ∨</summary>${renderSignalExpandBody(r)}</details>`;
+  h+=`</div>`;
+  return h;
+}
+
+/** @deprecated unused — deck uses per-window rows above */
+function collectSignalRows(ev){
+  const rows=[];
+  for(const win of ["AM","PM"]){
+    const evWin=pickLatestScan(bfsTodayScans(ev).filter(e=>scanWindowForEvent(e)===win));
+    if(!evWin) continue;
+    for(const r of (evWin.payload?.rows||[])){
+      const sym=String(r.sym||r.symbol||"").toUpperCase();
+      rows.push({...r,_ev:evWin,_sym:sym});
+    }
+  }
+  return rows;
 }
 
 /** P2: 浮点渲染 — kill_value 等禁止 0.37829999999999997 */
@@ -834,11 +1230,28 @@ function pipelineDots(ph){
   ];
   return flags.map(ok=>`<span class="dot ${ok?"ok":"stale"}"></span>`).join("");
 }
+const AETHER_FACE_PERIOD_S=30; // poll interval; 节奏不动,仅可见性
+let lastFaceReadTs=null;
+function renderDataAgeBadge(){
+  const el=$("#data-age");
+  if(!el) return;
+  const storeTs=cache.reduce((m,e)=>{
+    const t=typeof e.ts==="number"?e.ts:(e.ts?Date.parse(e.ts)/1000:0);
+    return Math.max(m, t||0);
+  }, 0);
+  const now=Date.now()/1000;
+  const storeAge=storeTs?Math.max(0, Math.round(now-storeTs)):null;
+  const readAge=lastFaceReadTs!=null?Math.max(0, Math.round(now-lastFaceReadTs)):null;
+  const amber=storeAge!=null && storeAge>AETHER_FACE_PERIOD_S*2;
+  el.className=amber?"amber":"";
+  el.textContent=`数据龄 · store写 ${storeAge!=null?storeAge+"s":"—"} · 本面读 ${readAge!=null?readAge+"s":"—"} · 周期 ${AETHER_FACE_PERIOD_S}s${amber?" · 琥珀(>2×)":""}`;
+}
 function renderStatusCompact(ph){
   const el=$("#status-compact");
   if(!el) return;
   const updated=ph?.checked_at?fmtBlockTsEt(ph.checked_at):fmtBlockTsEt(Date.now()/1000);
   el.innerHTML=`${esc(PAGE_VER)} · ${pipelineDots(ph)} · ${esc(updated)}`;
+  renderDataAgeBadge();
 }
 function fmtEventTs(ts){
   return fmtBlockTsEt(ts);
@@ -1064,7 +1477,7 @@ function renderPremarketLegacy(premarkets){
 function renderPremarketDeepseekSection(ev){
   const p=ev?.payload||{};
   const sDate=p.date||(ev?locDate(ev.ts):"");
-  const sItems=premarketSortedItems(p.items);
+  const sItems=premarketSortedItems(p.items).filter(i=>inTradingWatchlist(i.sym||i.symbol));
   const win=p.window||p.label||"deepseek";
   const notes=(p.items||[]).map(i=>`${i.note||""} ${i.value||""}`).join(" ");
   let h=`<div class="brief offpool">`;
@@ -1216,39 +1629,7 @@ function renderBriefDeepseekPerformance(briefPayload){
 }
 function renderBriefPremarketAb(ab){
   if(!ab||( !ab.grid_n && !ab.sonnet_n)) return "";
-  const fsg=v=>v==null?"—":`${(Number(v)*100>=0?"+":"")}${(Number(v)*100).toFixed(2)}%`;
-  const startMd=(ab.ab_ledger_start||"2026-07-15").slice(5);
-  const f30=(v,w)=>w?`30d→${startMd}`:fsg(v);
-  const fwr=(x,w)=>w?`→${startMd}`:(x?.win_rate==null?"—":`${(Number(x.win_rate)*100).toFixed(0)}% (${x.wins||0}/${x.n_scored||0})`);
-  const warm=!!ab.warmup;
-  const dl=ab.dual_leaderboard||{};
-  const vb=ab.verdict_bootstrap||{};
-  const fdelta=(v,w)=>w?`→${startMd}`:`${Number(v||0).toFixed(2)}pp`;
-  const igLabel=dl.info_gap_label||"信息差成本";
-  const igVal=warm&&!dl.raw?`→${startMd}`:(dl.info_gap_cost_bps==null?"—":`${Number(dl.info_gap_cost_bps).toFixed(1)}bps`);
-  const r=vb.raw||{}, a=vb.adjusted||{};
-  const ciRaw=warm&&!r.verdict?`→${startMd}`:(r.verdict||"—");
-  const ciAdj=a.verdict?` · adj ${a.verdict}`:"";
-  const winDays=Number(dl.verdict_window_days||vb.verdict_window_days||30);
-  const pairedN=Number(
-    dl.paired_scorable_n??r.n_paired_scorable??ab.grid_scorable_days_30d??0
-  );
-  const E4B_MIN=5;
-  const inconclusive=r.verdict==="INCONCLUSIVE"||a.verdict==="INCONCLUSIVE";
-  const insufficient=warm||pairedN<E4B_MIN||inconclusive;
-  if(insufficient){
-    const ciNote=ciRaw!=="—"?` · CI ${esc(ciRaw)}`:" · CI INCONCLUSIVE";
-    return `<div class="e4b-line e4b-insufficient">E4-B · 样本不足 (n=${esc(String(pairedN))}/${esc(String(winDays))}) · 不可判`
-      +`${ciNote}`
-      +` · 当日参考 GRID ${esc(fsg(ab.grid_return_pct))} · SON ${esc(fsg(ab.sonnet_return_pct))}`
-      +`<span class="e4b-dim"> · 30d/rawΔ/adjΔ 待 n≥${E4B_MIN} 再展示</span>`
-      +(warm?" · warmup":"")+`</div>`;
-  }
-  return `<div class="e4b-line">E4-B · GRID ${esc(fsg(ab.grid_return_pct))}/${esc(f30(ab.grid_return_30d_pct,warm))}`
-    +` · SON ${esc(fsg(ab.sonnet_return_pct))}/${esc(f30(ab.sonnet_return_30d_pct,warm))}`
-    +` · 30d胜率 ${esc(fwr(ab.grid_rolling_win_rate,warm))}/${esc(fwr(ab.sonnet_rolling_win_rate,warm))}`
-    +` · rawΔ ${esc(fdelta(dl.raw?.diff_pct_pts,warm))} adjΔ ${esc(fdelta(dl.adjusted?.diff_pct_pts,warm))}`
-    +` · ${esc(igLabel)} ${esc(igVal)} · CI ${esc(ciRaw)}${esc(ciAdj)}${warm?" · warmup":""}</div>`;
+  return `<div class="e4b-line e4b-insufficient">Premarket A/B · 已封存 ${esc(AB_SEALED_DATE.slice(5))} · Sonnet lane 停用 · 不再展示 GRID/SON 对照</div>`;
 }
 function fmtScanPct(v){
   const n=Number(v);
@@ -1323,11 +1704,16 @@ function bfsSlotMap(scans,tradeDate){
 }
 function renderBfsScanEventBody(ev){
   const p=ev.payload||{};
-  const rows=p.rows||[];
+  const allRows=p.rows||[];
+  const rows=filterBfsRows(allRows);
   const t=new Date(ev.ts*1000).toLocaleTimeString("en-US",{timeZone:ET_TZ,hour:"2-digit",minute:"2-digit",hour12:false});
-  let h=`<div class="lane-meta">${esc(scanDateForEvent(ev))} ${esc(t)} ET · #${ev.id||"?"} · universe ${esc(String(p.universe_size??"—"))} · ${rows.length} 命中</div>`;
+  let h=`<div class="lane-meta">${esc(scanDateForEvent(ev))} ${esc(t)} ET · #${ev.id||"?"} · universe ${esc(String(p.universe_size??"—"))} · ${rows.length} 命中(env)`;
+  if(allRows.length>rows.length) h+=` · BFS ${allRows.length} 全量`;
+  h+=`</div>`;
   if(rows.length) h+=rows.map(renderScanCandidateCard).join("");
-  else{
+  else if(allRows.length){
+    h+=`<div class="kills">BFS ${allRows.length} 命中均不在 env 观察名单 · 决策面不展示</div>`;
+  }else{
     const bad=(p.status&&p.status!=="ok")||p.universe_size===0;
     const msg=`0 命中 · universe=${esc(String(p.universe_size??"?"))}`
       +(p.status&&p.status!=="ok"?` · ${esc(String(p.status))}`:"")
@@ -1347,7 +1733,7 @@ function renderBfsScanSection(scans){
   if(!anyToday&&lastAll){
     h+=`<div class="stale-banner">今日未产出 · 末次 ${esc(scanDateForEvent(lastAll))}</div>`;
   }
-  h+=`<div class="bdate">R5.4.1 · BFS SP500 Scan · ${esc(today)}</div>`;
+  h+=`<div class="bdate">R5.4.1 · BFS SP500 Scan · ${esc(today)} · universe: SP500 全域</div>`;
   for(const win of ["AM","PM"]){
     const list=slots[win];
     const ev=pickLatestScan(list);
@@ -1377,7 +1763,7 @@ function renderLabelScanSection(scans,label){
 }
 function renderGenericScanEvent(ev,title){
   const p=ev.payload||{};
-  const rows=p.rows||[];
+  const rows=filterBfsRows(p.rows||[]);
   const scanDay=scanDateForEvent(ev);
   const t=new Date(ev.ts*1000).toLocaleTimeString("en-US",{timeZone:ET_TZ,hour:"2-digit",minute:"2-digit",hour12:false});
   const scanNotes=rows.map(r=>`${r.note||""} ${r.score||""}`).join(" ");
@@ -1513,12 +1899,19 @@ function openBriefReader(date){
 }
 $("#brief-close")?.addEventListener("click",()=>$("#brief-modal").classList.remove("open"));
 document.addEventListener("click",e=>{
+  const pbtn=e.target.closest?.("[data-policy-action]");
+  if(pbtn){
+    submitPolicyDecision(pbtn.dataset.proposalId,pbtn.dataset.policyAction);
+    return;
+  }
   const chip=e.target.closest?.(".trace-chip");
   if(chip){
     const t=chip.dataset.trace||chip.dataset.tracefile||"";
     if(t&&navigator.clipboard) navigator.clipboard.writeText(t).catch(()=>{});
     return;
   }
+  const scoutCard=e.target.closest?.("[data-scout-id]");
+  if(scoutCard){ openScoutBriefReader(scoutCard.dataset.scoutId); return; }
   const card=e.target.closest?.("[data-brief-date]");
   if(card) openBriefReader(card.dataset.briefDate);
 });
@@ -1683,54 +2076,118 @@ function buildWatcherHtml(rawEv,snap){
   return h;
 }
 
+function renderPolicyProposalSection(proposals){
+  if(!proposals?.length) return "";
+  const ev=proposals[0];
+  const p=ev.payload||{};
+  const items=Array.isArray(p.items)?p.items:[];
+  const wired=items.filter(it=>it.recommend);
+  const unwired=items.filter(it=>!it.recommend);
+  const status=String(p.status||"pending_lyra_approval");
+  const stats=p.stats||{};
+  const pid=ev.id||"?";
+  let h=`<div class="day-section policy-proposal" data-proposal-id="${esc(String(pid))}">`;
+  h+=`<div class="section-head">Policy V2 提案 · owner glm<span class="policy-pending">${esc(status)}</span></div>`;
+  h+=`<div class="bdate">#${esc(String(pid))} · ${esc(p.trade_date||locDate(ev.ts))} · 只读 · 零生效</div>`;
+  if(stats.hard_killed!=null){
+    h+=`<div class="kills" style="opacity:.95;margin:6px 0;word-break:break-word">hard=${esc(String(stats.hard_killed))} · v2_would_kill=${esc(String(stats.v2_would_kill??"—"))} · <b>rescued=${esc(String(stats.v2_rescued??"—"))}</b></div>`;
+  }
+  if(wired.length){
+    h+=`<div class="bdate" style="margin-top:8px">待批参数（批准即生效）</div>`;
+    h+=rowsTable(wired.map(it=>({
+      param:it.param||"—",
+      change:`${it.current??"—"} → ${it.proposed??"—"}`,
+      rec:"建议改",
+    })),[{h:"参数",k:"param"},{h:"现值→提议",k:"change"},{h:"判定",k:"rec"}]);
+  }
+  if(unwired.length){
+    h+=`<div class="bdate dim" style="margin-top:10px;opacity:.65">依赖未就绪 · 不出待批表</div>`;
+    h+=rowsTable(unwired.map(it=>({
+      param:it.param||"—",
+      note:String(it.proposed||it.evidence||"未接线").slice(0,80),
+    })),[{h:"参数",k:"param"},{h:"说明",k:"note"}]);
+  }
+  const citeN=items.reduce((n,it)=>n+(it.citations||[]).length,0);
+  h+=`<details style="margin-top:10px"><summary class="kills" style="cursor:pointer">展开依据 · GLM + jsonl ${citeN} 条</summary>`;
+  if(p.glm_summary) h+=`<div class="policy-glm" style="word-break:break-word"><b>GLM 摘要</b> · ${esc(p.glm_summary)}</div>`;
+  for(const it of items){
+    for(const c of (it.citations||[])){
+      h+=`<div class="kills" style="font-size:11px;margin:4px 0;word-break:break-word">L${esc(String(c.line))} · ${esc(String(c.symbol||"—"))} · ${esc(String(c.kill_rule||""))}</div>`;
+    }
+  }
+  h+=`</details>`;
+  h+=`<div class="policy-actions"><button type="button" class="approve" data-policy-action="approve" data-proposal-id="${esc(String(pid))}">Approve</button>`;
+  h+=`<button type="button" class="reject" data-policy-action="reject" data-proposal-id="${esc(String(pid))}">Reject</button></div>`;
+  h+=`<div class="kills policy-decision-note" style="margin-top:6px;display:none"></div>`;
+  h+=`</div>`;
+  return h;
+}
+
+async function submitPolicyDecision(proposalId, decision){
+  const note=document.querySelector(`.policy-proposal[data-proposal-id="${proposalId}"] .policy-decision-note`);
+  const body={source:"aether",kind:"aether_policy_decision",payload:{
+    proposal_id:Number(proposalId),decision,
+    status:decision==="approve"?"Lyra_Approved":"Lyra_Rejected",
+    decided_at:new Date().toISOString(),actor:"lyra_ui"}};
+  try{
+    const r=await fetch(`${gw}/store/events`,{method:"POST",headers:{...authHeaders(),"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(!r.ok) throw new Error(String(r.status));
+    if(note){note.style.display="block";note.textContent=`已记录 ${decision} · proposal #${proposalId} · ${body.payload.status}`;}
+  }catch(e){
+    if(note){note.style.display="block";note.textContent=`审批写入失败 · ${e}`;}
+  }
+}
+
 function buildTradingHtml(rawEv){
   const ev=pickEventsForToday(rawEv);
-  const{briefs,premarkets,scans,mmts,filts,opool,paperW,paperF,paperD,earnings}=ev;
+  const policyProposals=rawEv.policyProposals||[];
+  const{briefs,premarkets,scans,mmts,filts,opool,paperW,paperF,paperD}=ev;
   const today=tradeDateEt();
-  const bfsToday=scansByLabel(ev.scans,"BFS sp500").find(e=>scanDateForEvent(e)===today);
-  const scD=bfsToday?scanDateForEvent(bfsToday):(ev.scans[0]?scanDateForEvent(ev.scans[0]):"");
-  let h=tradingMetaLine(ev);
+  let h=renderSignalDeck(ev);
   let sunkBody="";
-  const briefAnomaly=briefs.length?splitBriefItems(briefs[0].payload?.items||[]).anomaly:[];
-  h+=`<div class="day-section"><div class="section-head">SCAN · 决策 lanes · 同格式表格</div>`;
-  h+=`<div class="kills" style="margin:-4px 0 10px;color:#8B8FB8">${esc(laneStampLine(ev))}</div>`;
-  if(scD&&scD!==today){
-    h+=`<div class="stale-banner">存在非 ${esc(today.slice(5))} 数据 · 见各块日期与 #event id · 不得当日志</div>`;
+  let serverHtml="";
+  h+=renderPremarketBriefSlot(ev);
+  const briefSlot=renderPostMarketBriefSlot(briefs,ev);
+  const briefAnomaly=briefs.length&&typeof briefSlot==="object"?briefSlot.split?.anomaly||[]:[];
+  if(typeof briefSlot==="string"){
+    h+=briefSlot;
+  }else if(briefSlot&&briefSlot.html){
+    h+=briefSlot.html;
+    if(briefSlot.longBody)
+      sunkBody=`<details class="brief" open><summary>复盘全文 · ${esc(briefSlot.brief.payload?.date||locDate(briefSlot.brief.ts))}</summary>`
+        +`<div class="bbody" style="margin-top:10px">${esc(briefSlot.body)}</div>`
+        +renderTraceChip(briefSlot.brief.payload,briefSlot.brief)+`</details>`;
   }
+  h+=renderPolicyProposalSection(policyProposals);
+  serverHtml+=`<div class="kills" style="margin:0 0 10px;color:#8B8FB8">${esc(tradingMetaLine(ev))} · ${esc(laneStampLine(ev))}</div>`;
+  const scD=scansByLabel(ev.scans,"BFS sp500").find(e=>scanDateForEvent(e)===today);
+  const scDay=scD?scanDateForEvent(scD):(ev.scans[0]?scanDateForEvent(ev.scans[0]):"");
+  if(scDay&&scDay!==today){
+    serverHtml+=`<div class="stale-banner">存在非 ${esc(today.slice(5))} 数据 · 见各块日期与 #event id</div>`;
+  }
+  serverHtml+=`<div class="day-section"><div class="section-head">SCAN · 决策 lanes</div>`;
   for(const blk of collectTradingBlocks(ev)){
-    h+=wrapTradingBlock(blk.html,blk.ev,blk.meta);
+    serverHtml+=wrapTradingBlock(blk.html,blk.ev,blk.meta);
   }
-  h+=`</div>`;
-  h+=renderPaperLanes(["equity"],paperW,paperF,null,null);
+  serverHtml+=`</div>`;
+  serverHtml+=renderPaperLanes(["equity"],paperW,paperF,null,null);
+  if(paperD.length){
+    const p=paperD[0].payload||{};
+    serverHtml+=`<div class="brief paper"><div class="bdate">PAPER DAILY · ${esc(p.date||"")} · 16:40</div>`;
+    if(p.body) serverHtml+=`<div class="bbody" style="font-size:13px;margin:6px 0">${esc(p.body)}</div>`;
+    if(p.items&&p.items.length)
+      serverHtml+=rowsTable(p.items,[{h:"LANE",k:"sym"},{h:"EQ",k:"value"},{h:"备注",k:"note"}]);
+    serverHtml+=`</div>`;
+  }
+  h+=`<details class="layer-server-room"><summary>机房 · pipeline / lanes / paper</summary>${serverHtml}</details>`;
   let evidenceHtml="";
   let diagHtml="";
   if(briefs.length){
-    const briefDate=briefs[0].payload?.date||locDate(briefs[0].ts);
-    const anchor=anchorTradeDate(ev);
-    const staleBrief=briefDate&&anchor&&briefDate<anchor;
-    h+=renderBriefStaleBanner(briefDate,anchor);
-    h+=`<div class="day-section${staleBrief?" stale-day":""}"><div class="section-head">盘后简报 · ${esc(briefDate.slice(5))}${staleBrief?" · 上一交易日":""}</div>`;
-    const p=briefs[0].payload||{};
-    const body=stripPremarketAbBody(p.body||"");
-    const isDry=p.dry_run||briefs[0].kind==="aether_brief_dryrun";
-    const longBody=body.length>120;
-    const split=splitBriefItems(p.items);
-    h+=`<div class="brief${staleBrief?" data-stale":""}" data-brief-date="${esc(p.date||"")}" style="cursor:pointer;margin-top:0">
-      <div class="bdate">${isDry?"DRY-RUN · ":""}点击查看全文${split.anomaly.length?`<span class="diag-dot" title="integrity ${split.anomaly.length}"></span>`:""}</div>
-      <div class="btitle">${esc(p.title||"盘后摘要")}</div>`;
-    if(!longBody&&body) h+=`<div class="bbody">${esc(body.slice(0,160))}${body.length>160?"…":""}</div>`;
-    h+=renderBriefPremarketAb(p.premarket_ab);
-    h+=renderBriefDeepseekPerformance(p);
-    h+=renderTraceChip(p,briefs[0]);
-    h+=`</div></div>`;
-    if(longBody)
-      sunkBody=`<details class="brief" open><summary>复盘全文 · ${esc(p.date||locDate(briefs[0].ts))}</summary>
-        <div class="bbody" style="margin-top:10px">${esc(body)}</div>`
-        +renderTraceChip(p,briefs[0])+`</details>`;
+    const split=splitBriefItems(briefs[0].payload?.items);
     if(split.regular.length)
       evidenceHtml+=rowsTable(split.regular,[{h:"SYM",k:"sym"},{h:"指标",k:"label"},{h:"值",k:"value"},{h:"备注",k:"note"}]);
     if(split.anomaly.length)
-      diagHtml+=renderAnomalySection(split.anomaly,p.date||locDate(briefs[0].ts),briefs[0].ts);
+      diagHtml+=renderAnomalySection(split.anomaly,briefs[0].payload?.date||locDate(briefs[0].ts),briefs[0].ts);
   }
   if(filts.length){
     const p=filts[0].payload||{};
@@ -1742,6 +2199,13 @@ function buildTradingHtml(rawEv){
     if(near.length)
       evidenceHtml+=rowsTable(near,[{h:"高分被杀",k:"sym"},{h:"SCORE",k:"score"},{h:"KILL",k:"note"}]);
     evidenceHtml+=`</div>`;
+  }
+  for(const win of ["AM","PM"]){
+    const evWin=pickLatestScan(bfsTodayScans(ev).filter(e=>scanWindowForEvent(e)===win));
+    if(!evWin) continue;
+    const rows=evWin.payload?.rows||[];
+    const rejected=rows.filter(r=>filterReasonForRow(r));
+    if(rejected.length) evidenceHtml+=renderFilteredScanTable(evWin,rejected);
   }
   if(mmts.length){
     const rows=[];
@@ -1762,17 +2226,9 @@ function buildTradingHtml(rawEv){
     }
   }
   if(evidenceHtml)
-    h+=`<details class="layer-evidence"><summary>证据层 · scan / filter / 明细</summary>${evidenceHtml}</details>`;
+    h+=`<details class="layer-evidence"><summary>证据层 · filter / 明细</summary>${evidenceHtml}</details>`;
   if(diagHtml)
     h+=`<details class="layer-diag"><summary>诊断层 · integrity / anomaly${briefAnomaly.length?` · ${briefAnomaly.length}`:""}</summary>${diagHtml}</details>`;
-  if(paperD.length){
-    const p=paperD[0].payload||{};
-    h+=`<div class="brief paper"><div class="bdate">PAPER DAILY · ${esc(p.date||"")} · 16:40</div>`;
-    if(p.body) h+=`<div class="bbody" style="font-size:13px;margin:6px 0">${esc(p.body)}</div>`;
-    if(p.items&&p.items.length)
-      h+=rowsTable(p.items,[{h:"LANE",k:"sym"},{h:"EQ",k:"value"},{h:"备注",k:"note"}]);
-    h+=`</div>`;
-  }
   h+=sunkBody;
   if(briefs.length>1){
     h+=`<details><summary>过往简报 · ${briefs.length-1}${showDryRun?" (含 dry-run)":""}</summary>`;
@@ -1842,6 +2298,7 @@ function render(){
   const B=$("#body");
   if(activeTab==="crypto") B.innerHTML=buildCryptoHtml(ev);
   else if(activeTab==="watcher") B.innerHTML=buildWatcherHtml(ev,watcherSnap);
+  else if(activeTab==="option") B.innerHTML=buildOptionHtml(ev);
   else B.innerHTML=buildTradingHtml(ev);
 }
 
@@ -1956,10 +2413,13 @@ async function poll(){
     needsBackfill=needsTradingBackfill();
     const ev=pickEvents();
     const tkCount=TRADING_LANE_KINDS.filter(k=>cache.some(e=>e.kind===k)).length;
+    lastFaceReadTs=Date.now()/1000;
     renderStatusCompact(ph);
     $("#stamp").textContent="↻";
     render();
   }catch(e){
+    lastFaceReadTs=Date.now()/1000;
+    renderDataAgeBadge();
     $("#stamp").textContent="offline · 缓存视图";
     render();
   }

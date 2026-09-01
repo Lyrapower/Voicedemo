@@ -75,32 +75,45 @@ def load_store_messages(
     node_id: str = "field-particle",
     since_days: int = 7,
 ) -> list[dict[str, Any]]:
-    """优先 grid_mem local 魂组并集;失败再回退单 node。"""
-    try:
-        import os
-        import sys
-        from pathlib import Path
+    """优先 grid_mem local 魂组并集;失败再回退单 node。
 
-        root = Path(__file__).resolve().parents[2]
-        if str(root) not in sys.path:
-            sys.path.insert(0, str(root))
-        from grid_mem import DEFAULT_STORE_DB, fetch_recall, fetch_turns
+    隔离 lane(scout-*/smoke*):只读该 node,不并 local——避免 FIELD_NOW 等
+    本机记忆被拼进云端 substrate prompt 后触发 kimi_input_scope 拒发。
+    b11 STUDIO(workbench-b11) / field-particle 行为不变。
+    """
+    nid = str(node_id or "field-particle").strip() or "field-particle"
+    isolated = nid.startswith("scout-") or nid in {"smoke", "smoke_node", "scout-review"}
+    if not isolated:
+        try:
+            import os
+            import sys
+            from pathlib import Path
 
-        db = os.environ.get("GRID_STORE_DB") or DEFAULT_STORE_DB
-        if db and os.path.isfile(db):
-            rows = fetch_turns(db, "local", 15)
-            return [
-                {"role": r["role"], "content": r["content"], "id": r["id"], "ts": r.get("ts")}
-                for r in rows
-                if r.get("role") in ("user", "assistant")
-            ]
-    except Exception:
-        pass
+            root = Path(__file__).resolve().parents[2]
+            if str(root) not in sys.path:
+                sys.path.insert(0, str(root))
+            from grid_mem import DEFAULT_STORE_DB, fetch_turns
+
+            db = os.environ.get("GRID_STORE_DB") or DEFAULT_STORE_DB
+            if db and os.path.isfile(db):
+                rows = fetch_turns(db, "local", 15)
+                return [
+                    {
+                        "role": r["role"],
+                        "content": r["content"],
+                        "id": r["id"],
+                        "ts": r.get("ts"),
+                    }
+                    for r in rows
+                    if r.get("role") in ("user", "assistant")
+                ]
+        except Exception:
+            pass
     if store is None:
         return []
     since_ts = time.time() - since_days * 86400
     try:
-        return store.get_messages(node_id, limit=120, since_ts=since_ts)
+        return store.get_messages(nid, limit=120, since_ts=since_ts)
     except Exception:
         return []
 

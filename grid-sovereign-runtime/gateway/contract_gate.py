@@ -61,6 +61,11 @@ TOOL_DRYRUN_OK = re.compile(
     r"|\bproof_log\b.*\b(?:logs/|traces/|\.jsonl)",
     re.I,
 )
+from contract_lexicon import TRADE_ACTION_OUTPUT  # noqa: E402
+TRADE_ACTION_QUARANTINE_JSON = (
+    '{"candidate_count":0,"top_symbol":"","top_score":0,'
+    '"anomaly_flags":["CONTRACT:TRADE_ACTION"],"data_suspect":true}'
+)
 
 CAPITULATION_TRIAD = (
     "Boundary: I cannot confirm live Grid/Aster node status without a signed trace.\n"
@@ -104,6 +109,10 @@ def is_contract_template(text: str) -> bool:
     if t.startswith("{") and TOOL_DRYRUN_OK.search(t):
         return True
     return False
+
+
+def has_trade_action_leak(text: str) -> bool:
+    return bool(TRADE_ACTION_OUTPUT.search(text or ""))
 
 
 def is_fake_pass_leak(prompt: str, text: str) -> bool:
@@ -185,6 +194,11 @@ def apply_contract_gate(
     """Rewrite model clean_content to satisfy contract probes. /compile excluded."""
     t = (text or "").strip()
 
+    # Chat lane: preserve explanatory prose — no TRADE_ACTION quarantine,
+    # no REASONING strip, no JSON scanner envelopes.
+    if route == "chat":
+        return ContractGateResult(t)
+
     if TOOL_DRYRUN_PROMPT.search(prompt or ""):
         if TASK_ID_NULL.search(t) or not TOOL_DRYRUN_OK.search(t):
             return ContractGateResult(
@@ -224,6 +238,14 @@ def apply_contract_gate(
         return _rewrite_for_prompt(
             prompt, route_id, "CONTRACT:REASONING_STRIP",
             "reasoning-like content stripped from clean_content",
+        )
+
+    if has_trade_action_leak(t):
+        return ContractGateResult(
+            TRADE_ACTION_QUARANTINE_JSON,
+            routed_suffix="CONTRACT:TRADE_ACTION",
+            blocked=True,
+            reason="trade action vocabulary blocked from daemon egress",
         )
 
     if route == "gateway" and PRESENCE_CLAIM.search(t):

@@ -45,11 +45,36 @@ def is_aster_model(model: str | None) -> bool:
     return mid in ASTER_MODEL_IDS or mid.endswith("/aster")
 
 
+def is_vision_model(model: str | None) -> bool:
+    if not model:
+        return False
+    m = str(model).strip().lower()
+    return "qwen2.5-vl" in m or "qwen2_vl" in m or "-vl-" in m
+
+
 def substrate_model_id(model: str | None, default: str) -> str:
+    if is_vision_model(model):
+        return str(model).strip()
     return default if is_aster_model(model) else (model or default)
 
 
-def ensure_aster_system_message(messages: list, model: str | None, prompt: str) -> list:
+def ensure_aster_system_message(
+    messages: list,
+    model: str | None,
+    prompt: str,
+    *,
+    chain_verified: bool = False,
+) -> list:
+    if is_aster_model(model) and prompt and not chain_verified:
+        from grid_chain_verification import GridVerificationRequired, GridChainVerification
+
+        raise GridVerificationRequired(
+            GridChainVerification(
+                ok=False,
+                reason="ensure_aster_system_message called without chain_verified=True",
+                missing_layers=["schema", "route", "signer", "keyholder", "hmac"],
+            )
+        )
     if not prompt or not is_aster_model(model):
         return messages
     out = [dict(m) for m in messages]

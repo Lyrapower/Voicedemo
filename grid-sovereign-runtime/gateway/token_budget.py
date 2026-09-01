@@ -42,6 +42,9 @@ def merge_aster_budget(cfg: dict, demo_root: Path) -> dict:
             out[dst] = budget[src]
     if budget.get("thinking_cap") is not None:
         out["max_reasoning_tokens"] = budget["thinking_cap"]
+    ls = data.get("lm_studio") or {}
+    if isinstance(ls, dict) and ls.get("vl_model_id"):
+        out["vl_model"] = str(ls["vl_model_id"]).strip()
     return out
 
 
@@ -54,15 +57,14 @@ def route_default_max_tokens(route: str, config: dict) -> int:
 
 
 def resolve_max_tokens(route: str, client_max: int | None, config: dict) -> int:
-    """Route default when client omits max_tokens; explicit client value passes through (no floor)."""
-    route = route if route in ROUTE_KEYS else "chat"
-    default = route_default_max_tokens(route, config)
-    if client_max is None:
-        return default
-    explicit = int(client_max)
-    if route == "compile":
-        return min(explicit, default)
-    return explicit
+    """8501 owns route budgets; client may set a lower ceiling (never raise above config)."""
+    cap = route_default_max_tokens(route, config)
+    if client_max is not None:
+        try:
+            return min(cap, max(1, int(client_max)))
+        except (TypeError, ValueError):
+            pass
+    return cap
 
 
 def resolve_chat_route(body: dict) -> str:

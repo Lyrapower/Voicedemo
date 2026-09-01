@@ -1,0 +1,18 @@
+{
+  "version": "2026-07-27",
+  "description": "Grid gateway / identity / substrate separation — immutable unless GRID_INFRASTRUCTURE_UNLOCK=1",
+  "unlock_env": "GRID_INFRASTRUCTURE_UNLOCK",
+  "frozen_files": {
+    "grid-sovereign-runtime/gateway/local_gateway.py": "54e02f62ddee56c3f459e79fff01ed733a0cea5b554355c31c0bb41fe7194d97",
+    "grid-sovereign-runtime/gateway/aster_identity.py": "946a0e06f5de914c50904abf1a2203709744a8ffdc41289c1c8d873c646f800a",
+    "grid-sovereign-runtime/gateway/field_now_context.py": "00b3d9e832b5a4d79148d141eb43ec61693f2acaaba7492ea537cff1236f3967",
+    "grid-sovereign-runtime/gateway/contract_gate.py": "34793625d5a7091332824d3022c121642d52780bf1cd88ea4a121cd1e4e46d88",
+    "grid-sovereign-runtime/gateway/contract_lint.py": "3b54d1e63b05f47d9a387c6eaff32d23e7cdf166762742a905a858a72dbaae32",
+    "grid-sovereign-runtime/gateway/substrate_backend.py": "09988c450f0191d7fd10cfe6482e9df8fe6a18262d733241d6522188977578b4",
+    "config/aster_chat_system_prompt.txt": "b57edc30ac3753731e7abc5dff58bff3d2ef48ac5cb7a03be1c4c9b60294bfac",
+    "config/aster.toml": "caae3604144da76bb69ad3397e7ae2f61f6e540c237341ec04225a3415020888",
+    "scripts/substrate_airlock/scripts/substrate_sanitizer.py": "fec587239f0bf18c69e8e1dc79fc8198b570f74d16f00fd2fff314a63f0b3428",
+    "scripts/substrate_airlock/scripts/substrate_gate.py": "011527faf3e1b759eee0e0b081d59927c25865a1aace826d87941cbf67dc9174"
+  },
+  "decoupled_injection_note": "ensure_aster_system_message + field_now_context append run before HMAC/keyholder; demo/aster output is UNVERIFIED until signature chain restored"
+}

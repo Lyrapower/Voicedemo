@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070B12">
+<title>场域 · Grid</title>
+<style>
+/* ── tokens ─────────────────────────────
+   墨 底色  霭 面板  澹 正文  粒 光色
+   芒 警示  界 边线                      */
+:root{
+  --mo:#070B12; --ai:#101823; --dan:#C7D3DD; --dan-dim:#6B7A88;
+  --li:#8FD8E8; --mang:#E8B86B; --jie:#223140;
+  --serif:"Songti SC","Noto Serif CJK SC",Georgia,serif;
+  --sans:-apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--mo);color:var(--dan);
+  font:15px/1.65 var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+
+/* ── shell ── */
+#app{height:100%;display:flex;flex-direction:column}
+main{flex:1;min-height:0;position:relative}
+.view{position:absolute;inset:0;display:none;flex-direction:column}
+.view.on{display:flex}
+
+/* ── 顶部: 粒子带 ── */
+header{flex:none;position:relative;border-bottom:1px solid var(--jie)}
+#fieldBand{display:block;width:100%;height:64px;background:var(--mo)}
+#stateLine{position:absolute;bottom:6px;left:14px;right:14px;display:flex;
+  justify-content:space-between;font:11px var(--mono);color:var(--dan-dim);
+  pointer-events:none;text-shadow:0 0 6px var(--mo)}
+
+/* ── 消息流 ── */
+#msgs{flex:1;overflow-y:auto;padding:16px 14px 8px;-webkit-overflow-scrolling:touch}
+.msg{max-width:86%;margin-bottom:14px;white-space:pre-wrap;word-break:break-word}
+.msg.user{margin-left:auto;background:var(--ai);border:1px solid var(--jie);
+  border-radius:14px 14px 4px 14px;padding:9px 13px}
+.msg.grid{margin-right:auto;padding:2px 0}
+.msg.grid .who{font-family:var(--serif);font-size:12px;color:var(--li);
+  letter-spacing:.12em;margin-bottom:3px}
+.msg.sys{margin:0 auto 14px;font:12px var(--mono);color:var(--dan-dim);text-align:center}
+
+/* ── 输入 ── */
+#composer{flex:none;display:flex;gap:8px;align-items:flex-end;
+  padding:10px 12px calc(10px + var(--safe-b));border-top:1px solid var(--jie);
+  background:var(--mo)}
+#input{flex:1;max-height:120px;resize:none;background:var(--ai);color:var(--dan);
+  border:1px solid var(--jie);border-radius:12px;padding:10px 13px;
+  font:15px/1.5 var(--sans);outline:none}
+#input:focus{border-color:var(--li)}
+button{background:none;border:1px solid var(--jie);color:var(--dan);
+  border-radius:12px;padding:9px 16px;font:14px var(--sans);cursor:pointer}
+button.primary{border-color:var(--li);color:var(--li)}
+button:disabled{opacity:.35}
+
+/* ── 场域全屏视图 ── */
+#fieldFull{flex:1;position:relative}
+#fieldFullCanvas{position:absolute;inset:0;width:100%;height:100%}
+#fieldHud{position:absolute;left:0;right:0;bottom:0;padding:18px 18px calc(18px + var(--safe-b));
+  font:12px var(--mono);color:var(--dan-dim);display:flex;flex-direction:column;gap:4px;
+  background:linear-gradient(transparent,rgba(7,11,18,.85))}
+#fieldHud b{color:var(--li);font-family:var(--serif);font-size:20px;
+  letter-spacing:.2em;font-weight:400}
+#cohBar{height:2px;background:var(--jie);border-radius:1px;margin-top:6px}
+#cohFill{height:100%;width:0;background:var(--li);border-radius:1px;transition:width .5s}
+
+/* ── 设置 ── */
+#viewSet{overflow-y:auto;padding:18px 16px calc(18px + var(--safe-b))}
+#viewSet h2{font-family:var(--serif);font-weight:400;font-size:17px;
+  letter-spacing:.15em;color:var(--li);margin:22px 0 10px}
+#viewSet h2:first-child{margin-top:0}
+.frow{margin-bottom:10px}
+.frow label{display:block;font:11px var(--mono);color:var(--dan-dim);
+  letter-spacing:.08em;margin-bottom:4px}
+.frow input,.frow textarea,.frow select{width:100%;background:var(--ai);
+  color:var(--dan);border:1px solid var(--jie);border-radius:8px;
+  padding:8px 11px;font:14px var(--sans);outline:none}
+.hint{font:12px var(--sans);color:var(--dan-dim);margin:6px 0 14px}
+.rowbtns{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ── 任务事件流 ── */
+#viewTasks{overflow-y:auto;padding:14px 14px calc(14px + var(--safe-b))}
+#taskStatus{font:11px var(--mono);color:var(--dan-dim);margin-bottom:12px;
+  letter-spacing:.08em}
+.evt{border-left:2px solid var(--jie);padding:6px 10px;margin-bottom:10px}
+.evt.deny{border-left-color:var(--mang)}
+.evt .ehead{display:flex;justify-content:space-between;font:11px var(--mono);
+  color:var(--dan-dim)}
+.evt .ehead b{color:var(--li);font-weight:400}
+.evt.deny .ehead b{color:var(--mang)}
+.evt pre{font:12px var(--mono);color:var(--dan);white-space:pre-wrap;
+  word-break:break-all;margin-top:3px}
+.watcherHead{font:11px var(--mono);color:var(--dan-dim);margin-bottom:10px;padding:8px 10px;
+  border:1px solid var(--jie);border-radius:8px;line-height:1.5}
+.watcherHead.ok{border-color:rgba(143,216,232,.35);color:var(--li)}
+.watcherHead.bad{border-color:rgba(232,184,107,.45);color:var(--mang)}
+.evt.watcher{border-left-color:var(--li)}
+.evt.momentum{border-left-color:var(--mang)}
+.evt.health{border-left-color:var(--mang);background:rgba(232,184,107,.06)}
+.evt.brief{border-left-color:rgba(155,158,208,.55)}
+.evt.scan{border-left-color:var(--li)}
+.evt.lane{border-left-color:rgba(143,216,232,.45)}
+.evt .ebody{font:13px var(--sans);color:var(--dan);margin-top:4px;white-space:pre-wrap}
+.evt .etag{font:9px var(--mono);color:var(--dan-dim);border:1px solid var(--jie);
+  border-radius:4px;padding:0 4px;margin-left:6px;vertical-align:1px}
+.evt .esum{font:12px var(--sans);color:var(--dan-dim);margin-top:6px;padding:8px;
+  border:1px solid var(--jie);border-radius:8px}
+.taskSection{font:10px var(--mono);color:var(--dan-dim);letter-spacing:.14em;
+  margin:14px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--jie)}
+.taskSection.live{color:var(--li)}
+.taskSection.store{color:var(--dan-dim)}
+#watcherLive{margin-bottom:4px}
+#bridgeNote{font:11px var(--mono);color:var(--mang);margin:-4px 0 10px;padding:6px 8px;
+  border:1px solid rgba(232,184,107,.35);border-radius:8px;display:none}
+#bridgeNote.show{display:block}
+
+/* ── 底部导航 ── */
+nav{flex:none;display:flex;border-top:1px solid var(--jie);
+  padding-bottom:var(--safe-b);background:var(--mo)}
+nav button{flex:1;border:none;border-radius:0;padding:11px 0;
+  font-family:var(--serif);letter-spacing:.3em;color:var(--dan-dim)}
+nav button.on{color:var(--li)}
+
+@media (prefers-reduced-motion:reduce){ #cohFill{transition:none} }
+</style>
+</head>
+<body>
+<div id="app">
+<main>
+
+  <!-- 对话 -->
+  <section id="viewChat" class="view on">
+    <header>
+      <canvas id="fieldBand"></canvas>
+      <div id="stateLine"><span id="stState">GRID · idle</span><span id="stTele"></span></div>
+    </header>
+    <div id="msgs"></div>
+    <div id="composer">
+      <textarea id="input" rows="1" placeholder="…" enterkeyhint="send"></textarea>
+      <button id="send" class="primary">发</button>
+    </div>
+  </section>
+
+  <!-- 场域 -->
+  <section id="viewField" class="view">
+    <div id="fieldFull">
+      <canvas id="fieldFullCanvas"></canvas>
+      <div id="fieldHud">
+        <b id="hudName">GRID</b>
+        <span id="hudState">idle · 呼吸</span>
+        <span id="hudTele">—</span>
+        <div id="cohBar"><div id="cohFill"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 任务: 8520 实时 + 8501 store 每日任务 -->
+  <section id="viewTasks" class="view">
+    <div id="taskStatus">—</div>
+    <div id="watcherHead" class="watcherHead">8520 Watcher · —</div>
+    <div id="bridgeNote"></div>
+    <div class="taskSection live">8520 · 实时 Watcher</div>
+    <div id="watcherLive"></div>
+    <div class="taskSection store">8501 · 每日任务 · store</div>
+    <a href="/app/daemon_dashboard.html" style="display:block;font:11px var(--mono);
+      color:var(--li);text-decoration:none;letter-spacing:.1em;margin-bottom:12px">舰队信任视图 →</a>
+    <div id="evtFeed"></div>
+  </section>
+
+  <!-- 设置 -->
+  <section id="viewSet" class="view"></section>
+
+</main>
+<nav>
+  <button data-v="viewChat" class="on">对话</button>
+  <button data-v="viewField">场域</button>
+  <button data-v="viewTasks">任务</button>
+  <button data-v="viewSet">设置</button>
+</nav>
+</div>
+
+<script>
+"use strict";
+/* ════════ 存储: localStorage 可用则持久, 否则内存 ════════ */
+const store = (()=>{ 
+  let ok=false; try{localStorage.setItem("_t","1");localStorage.removeItem("_t");ok=true}catch(e){}
+  const mem={};
+  return {
+    get:k=>{ try{return ok?JSON.parse(localStorage.getItem(k)):mem[k]??null}catch(e){return null} },
+    set:(k,v)=>{ try{ok?localStorage.setItem(k,JSON.stringify(v)):(mem[k]=v)}catch(e){mem[k]=v} },
+    persistent:ok
+  };
+})();
+
+/* ════════ 配置 — 单 GRID 线，无 persona ════════ */
+const GRID_NAME = "GRID";
+const DEFAULTS = {
+  gridBase: "http://127.0.0.1:8501/v1",
+  model: "demo/aster",
+  storeToken: ""
+};
+let cfg = Object.assign({}, DEFAULTS, store.get("cfg")||{});
+if (location.hostname.endsWith(".ts.net") && cfg.gridBase.includes("127.0.0.1")) {
+  cfg.gridBase = location.origin + "/v1";
+}
+if (!cfg.model) cfg.model = DEFAULTS.model;
+delete cfg.fableBase;
+delete cfg.nodes;
+const saveCfg = ()=>{ store.set("cfg",{gridBase:cfg.gridBase,model:cfg.model,storeToken:cfg.storeToken||""}); };
+if (store.get("cfg")?.nodes || store.get("cfg")?.fableBase) saveCfg();
+
+/* ════════ 统一记忆 lane (与 8790 同线, 不各存各) ════════ */
+const LANE_CHAT = "field-particle";
+const LANE_COMPILE = "field-compile";
+const laneHist = { chat: [], compile: [] };
+let lastTask = "chat";
+
+function classifyTask(text){
+  const low = text.toLowerCase();
+  if (text.includes("这是你的日记本")) return "diary";
+  if (low.includes("handoff_protocol") || low.includes("handoff protocol") || text.includes("交接协议"))
+    return "handoff_protocol";
+  if (low.includes("compile_json") || (low.includes("json") && /compile|schema|artifact|protocol|handoff/.test(low)))
+    return "compile_json";
+  return "chat";
+}
+function isCompileTask(t){ return t==="compile_json" || t==="handoff_protocol"; }
+function laneKey(t){ return isCompileTask(t) ? "compile" : "chat"; }
+function storeNodeId(t){ return isCompileTask(t) ? LANE_COMPILE : LANE_CHAT; }
+function activeHist(){ return laneHist[laneKey(lastTask)]; }
+
+/* ════════ Gateway store 同步 ════════
+   统一 lane: field-particle (对话) / field-compile (编译) — app 与 8790 同线。 */
+const storeBase = ()=>cfg.gridBase.replace(/\/v1\/?$/,"");
+const storeHdrs = ()=>{ const h={"Content-Type":"application/json"};
+  if(cfg.storeToken) h["X-Grid-Token"]=cfg.storeToken; return h; };
+let storeOnline = false;
+
+function epochStartTs(){
+  const anchor = new Date("2026-07-16T00:00:00");
+  const today = new Date(); today.setHours(0,0,0,0);
+  const msDay = 86400000;
+  const days = Math.floor((today - anchor) / msDay);
+  const epochDays = 7;
+  if (days < 0) return anchor.getTime() / 1000;
+  const idx = Math.floor(days / epochDays);
+  const start = new Date(anchor);
+  start.setDate(anchor.getDate() + idx * epochDays);
+  return start.getTime() / 1000;
+}
+
+async function pullLane(nodeId, key){
+  try{
+    const params = new URLSearchParams({limit:"200", since_ts: String(epochStartTs())});
+    const r=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(nodeId)}?${params}`,
+      {headers:storeHdrs()});
+    if(!r.ok) throw 0;
+    laneHist[key]=(await r.json()).map(m=>({role:m.role,content:m.content}));
+    storeOnline=true;
+  }catch(e){ storeOnline=false; }
+}
+async function pullAllLanes(){
+  await pullLane(LANE_CHAT, "chat");
+  await pullLane(LANE_COMPILE, "compile");
+}
+function pushMsgs(task, msgs){
+  const nodeId = storeNodeId(task);
+  fetch(`${storeBase()}/store/conversations/${encodeURIComponent(nodeId)}/messages`,
+    {method:"POST",headers:storeHdrs(),body:JSON.stringify(msgs)})
+    .then(()=>storeOnline=true).catch(()=>storeOnline=false);
+}
+function afterTurn(instruction, draft, task, persona){
+  fetch(`${storeBase()}/store/field/after_turn`,{
+    method:"POST", headers:storeHdrs(),
+    body:JSON.stringify({instruction, draft, task, node_id:storeNodeId(task), persona, client:"app"})
+  }).catch(()=>{});
+}
+
+/* 任务事件流 — 只展示可读任务/watcher，禁止 raw JSON 兜底 */
+let lastEvt=0, evtTimer=null, watcherSnapAt=0;
+const TASK_WATCHER_KINDS=["watcher_momentum","watcher_health","watcher_alert","watcher_event"];
+const TASK_AETHER_KINDS=[
+  "aether_brief","aether_scan","aether_filter","aether_momentum",
+  "aether_premarket_sonnet","aether_sonnet_earnings"
+];
+const TASK_KINDS=new Set([...TASK_WATCHER_KINDS,...TASK_AETHER_KINDS]);
+function taskEventAllowed(e){
+  if(!e||!e.kind) return false;
+  if(e.source==="watcher") return TASK_KINDS.has(e.kind);
+  if(e.source==="aether") return TASK_KINDS.has(e.kind);
+  return false;
+}
+function storeTaskAllowed(e){
+  return taskEventAllowed(e)&&e.source==="aether";
+}
+function fmtRowsBrief(rows,max=5){
+  if(!Array.isArray(rows)||!rows.length) return "—";
+  const lines=rows.slice(0,max).map(r=>{
+    const sym=r.sym||r.symbol||"?";
+    const note=r.note||r.value||"";
+    const sc=r.score!=null?` · ${r.score}`:"";
+    return `${sym}${sc}${note?` · ${note}`:""}`;
+  });
+  if(rows.length>max) lines.push(`… +${rows.length-max}`);
+  return lines.join("\n");
+}
+function fmtKillCounts(kc){
+  if(!kc||typeof kc!=="object") return "";
+  return Object.entries(kc).map(([k,v])=>`${k} ${v}`).join(" · ");
+}
+function tag8520(p){
+  return !!(p&&p.origin==="8520");
+}
+function fmtTaskEvent(e){
+  const p=e.payload||{};
+  if(e.source==="watcher"){
+    if(e.kind==="watcher_momentum"){
+      const sym=p.sym||"";
+      const note=String(p.note||"").replace(/^📌\s*Momentum Sticker\s*\n?/i,"").trim();
+      return {
+        cls:"momentum",
+        title:`异动 · ${sym||p.label||"Momentum"}`,
+        tag8520:tag8520(p),
+        body:note||"—",
+        sum:p.src_target?`目标 ${p.src_target}`:""
+      };
+    }
+    if(e.kind==="watcher_health"){
+      return {
+        cls:"health",
+        title:"Watcher 健康",
+        tag8520:tag8520(p),
+        body:p.note||p.label||"health signal",
+        sum:p.label&&p.label!==p.note?p.label:""
+      };
+    }
+    if(e.kind==="watcher_alert"){
+      const head=p.sym?`${p.sym} · `:"";
+      return {
+        cls:"watcher",
+        title:`${head}${p.label||"告警"}`,
+        tag8520:tag8520(p),
+        body:String(p.note||"").trim()||"—",
+        sum:p.src_target?`目标 ${p.src_target}`:""
+      };
+    }
+    if(e.kind==="watcher_event"){
+      return {
+        cls:"watcher",
+        title:`👁 ${p.target||p.src_target||"watcher"} · ${p.event_kind||p.label||"event"}`,
+        body:String(p.detail||p.note||"").trim(),
+        sum:p.summary||""
+      };
+    }
+    return null;
+  }
+  if(e.source==="aether"){
+    switch(e.kind){
+      case "aether_brief":{
+        const body=[p.title||"",String(p.body||"").slice(0,320)].filter(Boolean).join("\n");
+        return {cls:"brief", title:`盘后简报 · ${p.date||""}`, body, sum:""};
+      }
+      case "aether_scan":
+        return {
+          cls:"scan",
+          title:`SCAN · ${(p.rows||[]).length} 命中`,
+          body:fmtRowsBrief(p.rows),
+          sum:p.universe_size!=null?`universe ${p.universe_size}`:""
+        };
+      case "aether_filter":
+        return {
+          cls:"scan",
+          title:"FILTER · 过滤摘要",
+          body:fmtKillCounts(p.kill_counts)||"—",
+          sum:(p.near_miss_top||[]).slice(0,3).map(r=>`${r.symbol||"?"} ${r.kill_rule||""}`).join(" · ")
+        };
+      case "aether_momentum":
+        return {
+          cls:"momentum",
+          title:`异动 · ${p.label||"compile"}`,
+          body:fmtRowsBrief(p.rows),
+          sum:"report-only"
+        };
+      case "aether_premarket_sonnet":
+        return {
+          cls:"lane",
+          title:`盘前 Sonnet · ${p.date||""}`,
+          body:fmtRowsBrief(p.items||p.rows||[]),
+          sum:""
+        };
+      case "aether_sonnet_earnings":
+        return {
+          cls:"brief",
+          title:`财报 Sonnet · ${p.date||""}`,
+          body:String(p.body||p.title||"").slice(0,360),
+          sum:""
+        };
+      default:
+        return null;
+    }
+  }
+  return null;
+}
+function gridCcAuditLine(p){
+  const st=p.stats||{};
+  const m=p.manifest||{};
+  const cost=st.cost_usd??m.cost_usd;
+  const parts=[];
+  if(cost!=null) parts.push(`$${Number(cost).toFixed(3)}`);
+  const dur=st.duration_ms??m.duration_ms;
+  if(dur!=null) parts.push(`${Math.round(Number(dur))}ms`);
+  return parts.join(" · ");
+}
+function renderTaskCard(e,f){
+  const d=document.createElement("div");
+  d.className=`evt${e.kind==="deny"||e.kind==="error"?" deny":""}${f.cls?" "+f.cls:""}`;
+  if(e.id!=null) d.dataset.eid=String(e.id);
+  if(e.snapKey) d.dataset.snapKey=e.snapKey;
+  const tag=f.tag8520?' <span class="etag">8520</span>':"";
+  d.innerHTML=`<div class="ehead"><span><b>${esc(f.title)}${tag}</b></span>
+    <span>${new Date((e.ts||0)*1000).toLocaleTimeString()}</span></div>
+    <div class="ebody">${esc(f.body)}</div>`
+    +(f.sum?`<div class="esum">${esc(f.sum)}</div>`:"");
+  return d;
+}
+function snapTs(iso){
+  if(!iso) return Date.now()/1000;
+  const t=Date.parse(iso);
+  return Number.isFinite(t)?t/1000:Date.now()/1000;
+}
+function snapEventKey(e){
+  return `${e.target||"?"}|${e.time||"?"}|${e.kind||"?"}`;
+}
+function classifySnap8520(e){
+  const kind=String(e.kind||"");
+  const target=String(e.target||"").toLowerCase();
+  if(/momentum/i.test(kind)||/momentum/i.test(target)) return "momentum";
+  if(/健康|health|scanner/i.test(kind)||/scanner/i.test(target)) return "health";
+  return "watcher";
+}
+function fmtSnap8520(e){
+  const cls=classifySnap8520(e);
+  const sym=e.sym||"";
+  let title=`${e.target||"watcher"} · ${e.kind||"event"}`;
+  if(cls==="momentum"){
+    const m=String(e.detail||"").match(/^([A-Z]{1,6})\b/);
+    title=`异动 · ${sym||m?.[1]||e.target||"Momentum"}`;
+  }else if(cls==="health"){
+    title=`健康 · ${e.kind||e.target||"watcher"}`;
+  }
+  const body=String(e.detail||"").trim();
+  const sum=e.summary?String(e.summary):"";
+  return {cls, title, tag8520:true, body:body||"—", sum};
+}
+function renderWatcherSnapshot(data){
+  const el=$("#watcherHead");
+  const live=$("#watcherLive");
+  if(!data){
+    el.textContent="8520 Watcher · snapshot 不可达";
+    el.className="watcherHead bad";
+    if(live) live.innerHTML=`<div class="hint">无法读取 8520 本地 state · 确认 aether_watcher daemon 在跑</div>`;
+    return;
+  }
+  const age=data.heartbeat_age_sec;
+  const online=!!data.online;
+  el.className=`watcherHead ${online?"ok":"bad"}`;
+  const targets=(data.targets||[]).map(t=>typeof t==="string"?t:(t.name||t.id||"")).filter(Boolean);
+  el.textContent=`8520 Watcher · ${online?"在线":"离线"} · 心跳 ${age!=null?age+"s":"—"} 前`
+    +` · ${targets.length||"?"} 目标 · ${data.event_count||0} 事件`;
+  const events=(data.events||[]).slice().reverse();
+  if(!live) return;
+  live.innerHTML="";
+  if(!events.length){
+    live.innerHTML=`<div class="hint">8520 暂无事件 · daemon 正常，等待触发</div>`;
+    return;
+  }
+  const frag=document.createDocumentFragment();
+  for(const e of events.slice(0,30)){
+    const key=snapEventKey(e);
+    const f=fmtSnap8520(e);
+    const card=renderTaskCard(
+      {snapKey:key, ts:snapTs(e.time), kind:"snap8520"},
+      f
+    );
+    frag.appendChild(card);
+  }
+  live.appendChild(frag);
+}
+async function pollWatcherSnapshot(){
+  try{
+    const r=await fetch(`${storeBase()}/watcher/snapshot`,{headers:storeHdrs()});
+    if(!r.ok) throw 0;
+    renderWatcherSnapshot(await r.json());
+    watcherSnapAt=Date.now();
+  }catch(e){
+    renderWatcherSnapshot(null);
+  }
+}
+function updateBridgeNote(evs){
+  const note=$("#bridgeNote");
+  if(!note) return;
+  const hb=evs.find(e=>e.source==="watcher"&&e.kind==="watcher_health");
+  if(!hb){
+    note.classList.remove("show");
+    note.textContent="";
+    return;
+  }
+  const p=hb.payload||{};
+  note.textContent=`8501 bridge · ${p.note||p.label||"health alert"}`;
+  note.classList.add("show");
+}
+async function pollTaskBackfill(){
+  try{
+    const wk=TASK_WATCHER_KINDS.join(",");
+    const ak=TASK_AETHER_KINDS.join(",");
+    const [wr,ar]=await Promise.all([
+      fetch(`${storeBase()}/store/events/recent?source=watcher&kinds=${wk}&per_kind=8`,{headers:storeHdrs()}),
+      fetch(`${storeBase()}/store/events/recent?source=aether&kinds=${ak}&per_kind=6`,{headers:storeHdrs()}),
+    ]);
+    const all=[];
+    if(wr.ok) all.push(...await wr.json());
+    if(ar.ok) all.push(...await ar.json());
+    all.sort((a,b)=>b.id-a.id);
+    if(all.length){
+      lastEvt=Math.max(lastEvt,...all.map(e=>e.id));
+      updateBridgeNote(all);
+      renderEvents(all.filter(storeTaskAllowed),{backfill:true});
+    }
+  }catch(_e){}
+}
+async function pollEvents(){
+  try{
+    const r=await fetch(`${storeBase()}/store/events?since=${lastEvt}&limit=120`,{headers:storeHdrs()});
+    if(!r.ok) throw 0;
+    const all=await r.json();
+    if(all.length) lastEvt=Math.max(lastEvt,...all.map(e=>e.id));
+    updateBridgeNote(all.filter(taskEventAllowed));
+    const evs=all.filter(storeTaskAllowed);
+    if(evs.length) renderEvents(evs);
+    $("#taskStatus").textContent=`8520 snapshot + 8501 store · ${new Date().toLocaleTimeString()}`;
+  }catch(e){ $("#taskStatus").textContent=`8501 store 不可达 · 8520 仍可读若 gateway 在跑`; }
+}
+function renderEvents(evs,opts){
+  const feed=$("#evtFeed");
+  const seen=new Set([...feed.querySelectorAll("[data-eid]")].map(n=>n.dataset.eid));
+  const ordered=opts&&opts.backfill?[...evs].sort((a,b)=>b.id-a.id):evs;
+  for(const e of ordered){
+    if(seen.has(String(e.id))) continue;
+    const f=fmtTaskEvent(e);
+    if(!f) continue;
+    seen.add(String(e.id));
+    feed.prepend(renderTaskCard(e,f));
+  }
+  while(feed.children.length>200) feed.lastChild.remove();
+}
+
+/* ════════ 遥测 → coherence ════════
+   诚实边界: 这里测的是流的节律稳定度 (token间隔的变异系数),
+   加上首token延迟。它是传输层的相干性, 不是对模型内在状态的宣称。 */
+const tele = {
+  state:"idle", ttft:0, rate:0, coherence:0, _t0:0, _last:0, _gaps:[],
+  submit(){ this.state="thinking"; this._t0=performance.now();
+            this._last=0; this._gaps=[]; this.ttft=0; this.rate=0; },
+  chunk(){ const now=performance.now();
+    if(!this._last){ this.ttft=now-this._t0; this.state="streaming"; }
+    else this._gaps.push(now-this._last);
+    this._last=now;
+    const g=this._gaps; if(g.length>4){
+      const recent=g.slice(-40);
+      const mean=recent.reduce((a,b)=>a+b,0)/recent.length;
+      const sd=Math.sqrt(recent.reduce((a,b)=>a+(b-mean)**2,0)/recent.length);
+      const cv=sd/(mean||1);                       // 变异系数: 节律抖动
+      const c=Math.max(0,Math.min(1,1-cv*0.85));
+      this.coherence += (c-this.coherence)*0.12;   // EMA 平滑
+      this.rate=1000/mean;
+    } },
+  settle(){ this.state="settled";
+    setTimeout(()=>{ if(this.state==="settled") this.state="idle"; },2600); },
+  fail(){ this.state="idle"; this.coherence*=0.5; }
+};
+
+/* ════════ 粒子场 ════════
+   接口刻意收窄: field 只读 tele — 之后换成 Three.js 165k 版,
+   只要仍然吃 {state,rate,coherence} 三个量, 主体零改动 */
+function ParticleField(canvas, opts={}){
+  const ctx=canvas.getContext("2d");
+  const N=opts.n||900, P=[];
+  const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let W=0,H=0,t=0;
+  function resize(){ const r=canvas.getBoundingClientRect();
+    W=canvas.width=r.width*devicePixelRatio; H=canvas.height=r.height*devicePixelRatio; }
+  addEventListener("resize",resize); resize();
+  for(let i=0;i<N;i++) P.push({x:Math.random()*W,y:Math.random()*H,
+    vx:0,vy:0,ph:Math.random()*6.283,sz:.6+Math.random()*1.3});
+  function frame(){
+    t+=1/60; ctx.clearRect(0,0,W,H);
+    const s=tele.state, coh=tele.coherence;
+    const hue = "143,216,232";
+    const flow = s==="streaming" ? Math.min(2.4, tele.rate/22) : 0;
+    for(const p of P){
+      if(reduce){ /* 静态星点 */ }
+      else if(s==="idle"||s==="settled"){
+        p.vx += Math.sin(t*.4+p.ph)*.012;
+        p.vy += Math.cos(t*.31+p.ph)*.012;
+      } else if(s==="thinking"){
+        p.vx += (W/2-p.x)*.00012; p.vy += (H/2-p.y)*.00012;   // 向心聚拢
+        p.vx += (Math.random()-.5)*.14; p.vy += (Math.random()-.5)*.14;
+      } else if(s==="streaming"){
+        const ordered = flow*(0.35+coh*0.65);                 // 相干 → 定向层流
+        p.vx += ordered*.14;
+        p.vy += Math.sin(p.x*.008+t*1.7)*.05*(1-coh);         // 失稳 → 横向湍动
+        p.vx += (Math.random()-.5)*.3*(1-coh);
+        p.vy += (Math.random()-.5)*.3*(1-coh);
+      }
+      p.vx*=.94; p.vy*=.94; p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0)p.x+=W; if(p.x>W)p.x-=W; if(p.y<0)p.y+=H; if(p.y>H)p.y-=H;
+      const br = s==="idle" ? .22+.12*Math.sin(t*.8+p.ph)      // 呼吸
+               : s==="thinking" ? .3+.2*Math.sin(t*3+p.ph)
+               : .28+coh*.45;
+      ctx.fillStyle=`rgba(${hue},${br})`;
+      ctx.fillRect(p.x,p.y,p.sz*devicePixelRatio,p.sz*devicePixelRatio);
+    }
+    requestAnimationFrame(frame);
+  }
+  frame();
+  return {resize};
+}
+
+/* ════════ SSE 流式对话 ════════ */
+async function chat(text){
+  const task = classifyTask(text);
+  lastTask = task;
+  const h = activeHist();
+  h.push({role:"user",content:text});
+  renderMsgs();
+  pushMsgs(task,[{role:"user",content:text}]);
+  const msgs=[...h.slice(-24)];
+  const base = cfg.gridBase;
+  const el=addMsg("grid",""); let acc="";
+  tele.submit(); updState();
+  try{
+    const maxTok = isCompileTask(task) ? 4096 : 1600;
+    const doStream = !(location.hostname.endsWith(".ts.net")||/iPhone|iPad/i.test(navigator.userAgent||""));
+    const body={model:cfg.model,messages:msgs,stream:doStream,max_tokens:maxTok};
+    if(isCompileTask(task)) body.task=task;
+    const r=await fetch(base+"/chat/completions",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(body)});
+    if(!r.ok) throw new Error(`${r.status} ${await r.text().catch(()=>"")}`.slice(0,160));
+    if(!doStream){
+      const data=await r.json();
+      acc=data.choices?.[0]?.message?.content||"";
+      tele.chunk(); el.querySelector(".body").textContent=acc; scrollBtm();
+    }else{
+    const rd=r.body.getReader(), dec=new TextDecoder(); let buf="";
+    for(;;){
+      const {done,value}=await rd.read(); if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split("\n"); buf=lines.pop();
+      for(const ln of lines){
+        const m=ln.match(/^data:\s*(.+)/); if(!m||m[1]==="[DONE]")continue;
+        try{ const d=JSON.parse(m[1]).choices?.[0]?.delta?.content;
+          if(d){ acc+=d; tele.chunk(); el.querySelector(".body").textContent=acc; scrollBtm(); }
+        }catch(e){}
+      }
+      updState();
+    }
+    }
+    h.push({role:"assistant",content:acc});
+    tele.settle();
+    pushMsgs(task,[{role:"assistant",content:acc}]);
+    afterTurn(text, acc, task, GRID_NAME);
+  }catch(e){
+    tele.fail();
+    el.querySelector(".body").textContent = acc || `[连接失败: ${e.message}]\n检查 ${base} 是否可达、gateway 是否在线。`;
+  }
+  updState();
+}
+
+/* ════════ UI ════════ */
+const $=s=>document.querySelector(s);
+function addMsg(kind,text){
+  const d=document.createElement("div");
+  d.className=`msg ${kind}`;
+  d.innerHTML = kind==="grid"
+    ? `<div class="who">${GRID_NAME}</div><div class="body"></div>`
+    : `<div class="body"></div>`;
+  d.querySelector(".body").textContent=text;
+  $("#msgs").appendChild(d); scrollBtm(); return d;
+}
+function renderMsgs(){
+  $("#msgs").innerHTML="";
+  const h = activeHist();
+  for(const m of h){
+    addMsg(m.role==="user"?"user":"grid", m.content||"");
+  }
+  if(!h.length)
+    addMsg("sys",`— ${GRID_NAME} · 8501 gateway · lane ${storeNodeId(lastTask)} —`);
+}
+function updState(){
+  const zh={idle:"idle · 呼吸",thinking:"thinking · 聚拢",streaming:"streaming · 层流",settled:"settled"};
+  const teleStr = tele.ttft?`ttft ${tele.ttft|0}ms · ${tele.rate.toFixed(1)}tk/s · coh ${(tele.coherence*100)|0}%`:"";
+  $("#stState").textContent=`${GRID_NAME} · ${tele.state}`;
+  $("#stTele").textContent=teleStr;
+  $("#hudName").textContent=GRID_NAME;
+  $("#hudState").textContent=zh[tele.state]||tele.state;
+  $("#hudTele").textContent=teleStr?`测: ${teleStr}`:"测: —";
+  $("#hudTele").style.whiteSpace="pre";
+  $("#cohFill").style.width=(tele.coherence*100)+"%";
+  $("#cohFill").style.background = "var(--li)";
+}
+const scrollBtm=()=>{const m=$("#msgs");m.scrollTop=m.scrollHeight};
+const esc=s=>s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+/* 设置页 */
+function renderSettings(){
+  const v=$("#viewSet");
+  v.innerHTML=`<h2>连 接</h2>
+    <div class="frow"><label>GRID GATEWAY (8501)</label>
+      <input id="cfgGrid" value="${esc(cfg.gridBase)}"></div>
+    <div class="frow"><label>MODEL</label>
+      <input id="cfgModel" value="${esc(cfg.model)}"></div>
+    <div class="frow"><label>STORE TOKEN (可选, 对应 GRID_STORE_TOKEN)</label>
+      <input id="cfgToken" type="password" value="${esc(cfg.storeToken||"")}"></div>
+    <p class="hint">${store.persistent?"单 GRID 线 · 记忆存 field-particle / field-compile (与 grid app / 8790 同线)。":"⚠ 当前环境无持久存储。"}
+    手机 Tailscale: 自动使用 ${location.hostname.endsWith(".ts.net")?location.origin:"当前 origin"}。
+    store 状态: <b style="color:var(--li)">${storeOnline?"已连接":"离线"}</b></p>
+    <div class="rowbtns"><button id="exportMd">导出当前对话 → Markdown</button></div>`;
+  v.oninput=e=>{
+    if(e.target.id==="cfgGrid"){cfg.gridBase=e.target.value;saveCfg()}
+    if(e.target.id==="cfgModel"){cfg.model=e.target.value;saveCfg()}
+    if(e.target.id==="cfgToken"){cfg.storeToken=e.target.value;saveCfg()} };
+  v.onclick=e=>{
+    if(e.target.id==="exportMd"){
+      const h=activeHist();
+      const md=`# ${GRID_NAME} · lane ${storeNodeId(lastTask)} · ${new Date().toISOString().slice(0,10)}\n\n`+
+        h.map(m=>`**${m.role==="user"?"L":GRID_NAME}**: ${m.content}`).join("\n\n");
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(new Blob([md],{type:"text/markdown"}));
+      a.download=`${GRID_NAME}-${Date.now()}.md`; a.click(); } };
+}
+
+/* 导航 */
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));
+  document.querySelectorAll(".view").forEach(v=>v.classList.toggle("on",v.id===b.dataset.v));
+  if(b.dataset.v==="viewSet")renderSettings();
+  if(b.dataset.v==="viewTasks"){
+    $("#evtFeed").innerHTML="";
+    $("#watcherLive").innerHTML="";
+    $("#bridgeNote").classList.remove("show");
+    lastEvt=0;
+    pollWatcherSnapshot().then(()=>pollTaskBackfill()).then(()=>pollEvents());
+    evtTimer=setInterval(()=>{ pollWatcherSnapshot(); pollEvents(); },4000);
+  }
+  else if(evtTimer){ clearInterval(evtTimer); evtTimer=null; }
+  fieldFull.resize();
+});
+
+/* 发送 */
+$("#send").onclick=()=>{ const t=$("#input").value.trim(); if(!t)return;
+  $("#input").value=""; $("#input").style.height="auto"; chat(t); };
+$("#input").addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("#send").click()}});
+$("#input").addEventListener("input",e=>{
+  e.target.style.height="auto"; e.target.style.height=Math.min(120,e.target.scrollHeight)+"px"});
+
+/* 启动 */
+const fieldBand=ParticleField($("#fieldBand"),{n:500});
+const fieldFull=ParticleField($("#fieldFullCanvas"),{n:1600});
+renderMsgs(); updState();
+pullAllLanes().then(renderMsgs);
+setInterval(updState,600);
+</script>
+</body>
+</html>

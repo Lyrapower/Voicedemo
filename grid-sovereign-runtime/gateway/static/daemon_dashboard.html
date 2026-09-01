@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>daemon fleet</title>
+<!-- [枢-合并a] 字体走本地栈: 装了 Space Grotesk/JetBrains Mono 就用,
+     没装降级系统字体, 永不出网 — 原 Google Fonts 外链已移除 -->
+<style>
+  :root{
+    --bg:#090a12;
+    --bg-bloom:#141534;
+    --panel:rgba(20,21,38,0.55);
+    --panel-line:rgba(140,138,200,0.10);
+    --lilac:#a9a6e0;
+    --text:#d9dae9;
+    --dim:#6b6d88;
+    --faint:#474963;
+    --green:#5ad19a;
+    --amber:#e0b453;
+    --red:#cf6b6b;
+    --steel:#828cba;
+    --track:rgba(120,124,170,0.14);
+    --gate:rgba(169,166,224,0.45);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+    min-height:100vh;
+    line-height:1.5;
+    padding:clamp(20px,5vw,64px) clamp(16px,4vw,48px);
+    background-image:
+      radial-gradient(120% 55% at 50% -8%, var(--bg-bloom) 0%, rgba(20,21,52,0) 60%);
+    background-repeat:no-repeat;
+  }
+  /* sparse fixed starfield, no motion, sits behind everything */
+  .field{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5}
+  .wrap{position:relative;z-index:1;max-width:760px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;
+    flex-wrap:wrap;gap:8px 16px;margin-bottom:8px}
+  .mark{font-family:"Space Grotesk",-apple-system,"PingFang SC",sans-serif;font-weight:600;
+    font-size:clamp(20px,4.5vw,26px);letter-spacing:.16em;color:var(--text)}
+  .mark b{color:var(--lilac);font-weight:600}
+  .served{font-size:12px;color:var(--faint);letter-spacing:.04em}
+
+  .summary{display:flex;gap:22px;flex-wrap:wrap;
+    padding:14px 0 22px;border-bottom:1px solid var(--panel-line);
+    margin-bottom:6px;font-size:12.5px;color:var(--dim);letter-spacing:.03em}
+  .summary b{color:var(--text);font-weight:500}
+  .summary .k{color:var(--faint)}
+
+  ul{list-style:none}
+  .row{
+    display:grid;
+    grid-template-columns:1fr auto;
+    grid-template-areas:"name state" "track track";
+    gap:6px 14px;
+    align-items:center;
+    padding:16px 4px;
+    border-bottom:1px solid var(--panel-line);
+  }
+  .name{grid-area:name;display:flex;align-items:center;gap:12px;min-width:0}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none;position:relative}
+  .dot::after{content:"";position:absolute;inset:-5px;border-radius:50%;
+    background:radial-gradient(circle,currentColor 0%,transparent 70%);
+    opacity:.35}
+  .dot.live{animation:pulse 3.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  .label{font-family:"Space Grotesk",-apple-system,"PingFang SC",sans-serif;font-size:15.5px;
+    font-weight:500;letter-spacing:.01em;color:var(--text);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kind{font-size:11px;color:var(--faint);letter-spacing:.03em;margin-top:1px}
+
+  .state{grid-area:state;text-align:right;white-space:nowrap}
+  .days{font-size:15px;font-weight:500;font-variant-numeric:tabular-nums}
+  .days .u{font-size:11px;color:var(--dim);margin-left:3px;font-weight:400}
+  .frozen{font-size:12.5px;letter-spacing:.14em;text-transform:uppercase}
+
+  /* trust track: ticks at the two permission gates */
+  .track{grid-area:track;height:3px;background:var(--track);border-radius:2px;
+    position:relative;margin-top:9px;overflow:visible}
+  .track .fill{position:absolute;left:0;top:0;bottom:0;border-radius:2px}
+  .track .gate{position:absolute;top:-3px;width:1px;height:9px;background:var(--gate)}
+  .track .glabel{position:absolute;top:8px;font-size:9.5px;color:var(--faint);
+    transform:translateX(-50%);letter-spacing:.02em}
+  .row.dim .track{opacity:.4}
+
+  footer{margin-top:26px;padding-top:16px;border-top:1px solid var(--panel-line);
+    font-size:11.5px;color:var(--faint);letter-spacing:.02em;
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:7px;height:7px;border-radius:50%;display:inline-block}
+
+  @media (max-width:460px){
+    .row{grid-template-columns:1fr auto}
+    .label{font-size:14.5px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .dot.live{animation:none}
+  }
+</style>
+</head>
+<body>
+<canvas class="field" id="field"></canvas>
+<div class="wrap">
+
+  <header>
+    <div class="mark">DAEMON <b>FLEET</b></div>
+    <div class="served" id="served">served_by gateway-v4.11 · finish stop</div>
+  </header>
+
+  <div class="summary" id="summary"></div>
+
+  <ul id="list"></ul>
+
+  <footer>
+    <div class="legend">
+      <span><i style="background:var(--green)"></i>past 7-day gate</span>
+      <span><i style="background:var(--amber)"></i>in trust window</span>
+      <span><i style="background:var(--red)"></i>frozen</span>
+      <span><i style="background:var(--steel)"></i>execution locked</span>
+    </div>
+    <div id="stamp"></div>
+  </footer>
+
+</div>
+
+<script>
+/* ─────────────────────────────────────────────────────────────
+   SINGLE SOURCE OF TRUTH — edit this array to add projects.
+   Later: generate this from the ledger instead of hand-editing.
+
+   status: "running" | "building" | "frozen" | "locked"
+     running/building  -> needs `days` (clean days in ledger)
+     frozen            -> execution intentionally stopped (red)
+     locked            -> execution frozen by flag, e.g. CC_CLI (steel)
+   kind: short note shown under the name (report-only, action, etc.)
+
+   GATES: the trust ladder. 7 = report-only proven, 30 = action review.
+   A daemon is green once it clears the first gate (7d), amber before.
+   ───────────────────────────────────────────────────────────── */
+const GATES = [7, 30];
+const SCALE_MAX = 40; // day at which the track is visually full
+
+let DAEMONS = [];
+
+const EMBEDDED_FALLBACK = [
+  { name:"Post-market",   kind:"report-only",        status:"running",  days:0 },
+  { name:"Research",      kind:"report-only",        status:"running",  days:0 },
+  { name:"Trading Screen",kind:"report-only",        status:"running",  days:0 },
+  { name:"OCR",           kind:"read · multimodal",  status:"running",  days:0 },
+  { name:"Build",         kind:"in trust window",    status:"building", days:0 },
+  { name:"Deploy",        kind:"write · gated",      status:"frozen"           },
+  { name:"CC CLI",        kind:"EXECUTION_FROZEN=1",  status:"locked"           },
+];
+
+/* [枢-合并b] 数据源阶梯: 先 gateway /store/fleet (手机经 Tailscale 同样可达),
+   退回同目录 fleet_status.json, 都不在则内嵌数据成立。
+   事实源不变: exporter 从 ledger 生成, gateway 只转不算。 */
+function tryFleet(urls){
+  if(!urls.length) return Promise.resolve(null);
+  return fetch(urls[0], {cache:"no-store"})
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .catch(() => tryFleet(urls.slice(1)));
+}
+document.getElementById("served").textContent = "loading fleet…";
+tryFleet(["/store/fleet", "fleet_status.json"])
+  .then(j => {
+    if (!j || !Array.isArray(j.daemons)) throw new Error("no fleet");
+    DAEMONS = j.daemons;
+    document.getElementById("served").textContent =
+      "source ledger · generated " + (j.generated_at || "").slice(0,16).replace("T"," ");
+    render();
+  })
+  .catch(() => {
+    DAEMONS = EMBEDDED_FALLBACK;
+    document.getElementById("served").textContent = "embedded fallback (fleet API unreachable)";
+    render();
+  });
+
+const COLORS = { running:"var(--green)", building:"var(--amber)",
+                 frozen:"var(--red)", locked:"var(--steel)" };
+
+function clearedGate(d){ return d.status==="running" && d.days>=GATES[0]; }
+
+function render(){
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+
+  for(const d of DAEMONS){
+    const li = document.createElement("li");
+    li.className = "row" + ((d.status==="frozen"||d.status==="locked") ? " dim":"");
+    const color = COLORS[d.status];
+    const alive = d.status==="running" || d.status==="building";
+
+    // name + status dot
+    const name = document.createElement("div");
+    name.className = "name";
+    name.innerHTML =
+      `<span class="dot ${alive?"live":""}" style="background:${color};color:${color}"></span>`+
+      `<span style="min-width:0"><span class="label">${d.name}</span>`+
+      `<div class="kind">${d.kind}</div></span>`;
+
+    // right-side state
+    const state = document.createElement("div");
+    state.className = "state";
+    if(alive){
+      state.innerHTML = `<span class="days" style="color:${color}">${d.days}<span class="u">clean d</span></span>`;
+    } else {
+      const word = d.status==="locked" ? "Locked" : "Frozen";
+      state.innerHTML = `<span class="frozen" style="color:${color}">${word}</span>`;
+    }
+
+    li.appendChild(name);
+    li.appendChild(state);
+
+    // trust track (only meaningful for alive daemons)
+    const track = document.createElement("div");
+    track.className = "track";
+    if(alive){
+      const pct = Math.min(d.days / SCALE_MAX, 1) * 100;
+      const fill = document.createElement("div");
+      fill.className = "fill";
+      fill.style.width = pct + "%";
+      fill.style.background = color;
+      track.appendChild(fill);
+      for(const g of GATES){
+        const pos = Math.min(g / SCALE_MAX, 1) * 100;
+        const tick = document.createElement("div");
+        tick.className = "gate"; tick.style.left = pos + "%";
+        track.appendChild(tick);
+        const gl = document.createElement("div");
+        gl.className = "glabel"; gl.style.left = pos + "%"; gl.textContent = g + "d";
+        track.appendChild(gl);
+      }
+    }
+    li.appendChild(track);
+    list.appendChild(li);
+  }
+
+  // summary counts
+  const c = { running:0, building:0, frozen:0, locked:0 };
+  DAEMONS.forEach(d=>c[d.status]++);
+  document.getElementById("summary").innerHTML =
+    `<span><b>${c.running}</b> <span class="k">running</span></span>`+
+    `<span><b>${c.building}</b> <span class="k">building</span></span>`+
+    `<span><b>${c.frozen}</b> <span class="k">frozen</span></span>`+
+    `<span><b>${c.locked}</b> <span class="k">locked</span></span>`;
+
+  const now = new Date();
+  document.getElementById("stamp").textContent =
+    "snapshot " + now.toISOString().slice(0,16).replace("T"," ") + " UTC";
+}
+
+/* faint fixed starfield — drawn once, no animation */
+function drawField(){
+  const cv = document.getElementById("field");
+  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  cv.width = innerWidth*dpr; cv.height = innerHeight*dpr;
+  cv.style.width = innerWidth+"px"; cv.style.height = innerHeight+"px";
+  const ctx = cv.getContext("2d"); ctx.scale(dpr,dpr);
+  const n = Math.floor(innerWidth*innerHeight/9000);
+  for(let i=0;i<n;i++){
+    const x=Math.random()*innerWidth, y=Math.random()*innerHeight;
+    const r=Math.random()*1.1+0.2;
+    const bright = Math.random();
+    ctx.beginPath(); ctx.arc(x,y,r,0,7);
+    ctx.fillStyle = `rgba(${180+bright*40},${178+bright*40},${230},${0.15+bright*0.5})`;
+    ctx.fill();
+  }
+}
+
+drawField();
+let t; addEventListener("resize",()=>{clearTimeout(t);t=setTimeout(drawField,200)});
+</script>
+</body>
+</html>
