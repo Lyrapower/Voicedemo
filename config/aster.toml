@@ -37,10 +37,13 @@ enabled = true
 
 # Substrate token budgets — gateway :8501 reads this via merge_aster_budget()
 [budget]
-compile_max_tokens = 256
-chat_max_tokens = 400
-gateway_max_tokens = 1024
+compile_max_tokens = 2048
+chat_max_tokens = 8192
+gateway_max_tokens = 8192
 task_max_tokens = 4096
+diary_max_tokens = 800
+compile_json_max_tokens = 4096
+handoff_protocol_max_tokens = 4096
 thinking_cap = 128
 
 # LM Studio Aster tab — deploy syncs budgets + dual-path (gateway generator plugin | direct :1234)
@@ -56,4 +59,5 @@ virtual_model_id = "demo/aster"
 conversation_id = "17797865158102"
 chat_name = "Aster"
 gateway_plugin = "demo/aster"
+vl_model_id = "qwen/qwen3.5-9b"
 archived_conversation_ids = ["17797865158101"]
