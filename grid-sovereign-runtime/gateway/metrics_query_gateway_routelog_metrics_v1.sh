@@ -44,6 +44,7 @@ shifts AS (
 )
 SELECT
   COUNT(*) AS n,
+  (SELECT COUNT(*) FROM shifts) AS shifts_n,
   ROUND(AVG(duration_ms), 1) AS mean_ms,
   MIN(duration_ms) AS min_ms,
   MAX(duration_ms) AS max_ms,
@@ -61,9 +62,10 @@ FROM mod;
 
 echo ""
 echo "采样兜底:"
-echo "  n < 200:不出 p95(采样未达),回执写 \"采样未达 n=<数>\""
-echo "  n < 20:采样期延长到 5-7 日,不用小样本 p95"
-echo "  5-7 日仍 n < 20:切保守方案(只监控 blocked/QPS/并发闸,不设延迟 fault_line)"
+echo "  p95 门按 shifts_n(五班窗内 duration 非空行数,与 p95 同过滤集),不是 n"
+echo "  shifts_n < 200:不出 p95(采样未达),回执写 \"采样未达 shifts_n=<数>\""
+echo "  shifts_n < 20:采样期延长到 5-7 日,不用小样本 p95"
+echo "  5-7 日仍 shifts_n < 20:切保守方案(只监控 blocked/QPS/并发闸,不设延迟 fault_line)"
 echo ""
 echo "阈值算法:GLM 决策官灰度 Day 3 起 fault_line = p95_ms * 1.5"
 echo "采样窗起点 = 埋点落地时刻(见回执),不是 now-72h"

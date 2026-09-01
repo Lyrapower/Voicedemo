@@ -68,11 +68,20 @@ def check_tree_changes(mode: str, *, base_ref: str = "origin/main") -> list[str]
         return touched
     if touched and _unlocked():
         want_map = lock.get("frozen_files") or {}
+        unsealed: list[str] = []
         for p in touched:
             staged = _staged_sha256(p)
             want = want_map.get(p)
             if staged is None or want is None or staged != want:
-                print(f"WARN: {p} staged sha256 ≠ manifest — run update-lock before commit (got={staged and staged[:12]} want={want and want[:12]})")
+                unsealed.append(p)
+        if unsealed:
+            print(f"P0 BLOCK: frozen files staged with {UNLOCK_ENV}=1 but manifest not re-sealed — run update-lock before commit:", file=sys.stderr)
+            for p in unsealed:
+                staged = _staged_sha256(p)
+                want = want_map.get(p)
+                print(f"  - {p} (staged={staged and staged[:12]} manifest={want and want[:12]})", file=sys.stderr)
+            print(f"  re-seal: {UNLOCK_ENV}=1 python3 scripts/grid_infrastructure_guard.py update-lock", file=sys.stderr)
+            return unsealed
     return []
 
 
