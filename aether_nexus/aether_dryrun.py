@@ -17,7 +17,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
-from io import StringIO
+from io import BytesIO, StringIO
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
@@ -26,6 +26,13 @@ import pytz
 import requests
 from dotenv import load_dotenv
 
+from aether_filter_patch import (
+    Candidate,
+    PolicyV2Audit,
+    PolicyV2Config,
+    RejectionLogger,
+    policy_v2_shadow,
+)
 from aether_shared import (
     AETHER_VERSION,
     EST,
@@ -38,19 +45,27 @@ from aether_shared import (
     SP500_URL,
     TOP_CANDIDATES,
     _telegram_configured,
+    attach_nexus_live_log,
     export_dryrun_candidates_to_ib,
+    send_notification,
 )
+from aether_grid_emit import emit_filter, emit_momentum, emit_scan
 
-try:
-    import yfinance as yf  # fallback only
-except Exception:  # pragma: no cover
-    yf = None
+# 2026-08-17:yfinance 全量下线(Lyra 拍板:FMP premium 主源 + Alpaca 备份)。
+# FMP stable API(2025-08-31 后新订阅 /api/v3 legacy 已 403)。
 
 load_dotenv()
+
+# FMP 配置(放在 load_dotenv 之后以读取 .env)
+FMP_API_KEY = os.getenv("FMP_API_KEY", "").strip()
+FMP_BASE = os.getenv("FMP_BASE", "https://financialmodelingprep.com/stable").rstrip("/")
+# 模块级 earnings 日历缓存(FMP /earnings-calendar 不支持单票过滤 → 每日一拉全量,按 symbol 客户端过滤)
+_FMP_EARNINGS_CACHE: dict = {"date": "", "by_sym": {}}
 
 # ======================== Paths ========================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATE_DIR = os.path.join(BASE_DIR, "dryrun_state")
+REJECTION_LOG_DIR = os.path.join(BASE_DIR, "logs", "rejections")
 WATCHLIST_PATH = os.path.join(BASE_DIR, "watchlist.json")
 EARNINGS_CACHE_PATH = os.path.join(STATE_DIR, "earnings_cache.json")
 IV_HISTORY_PATH = os.path.join(STATE_DIR, "iv_history.json")
@@ -85,6 +100,7 @@ MIN_GAMMA = float(os.getenv("DRYRUN_MIN_GAMMA", os.getenv("MIN_GAMMA", "0.01")))
 MAX_IV = float(os.getenv("DRYRUN_MAX_IV", os.getenv("MAX_IV", "0.80")))
 MIN_VOLUME = int(os.getenv("DRYRUN_MIN_VOLUME", os.getenv("MIN_VOLUME", "10")))
 MIN_OPEN_INTEREST = int(os.getenv("DRYRUN_MIN_OPEN_INTEREST", os.getenv("MIN_OPEN_INTEREST", "50")))
+MIN_VOLUME_MISSING_OI = 100  # AETHER_OI_HARDZERO_v1: 缺 OI 时准入闸的 volume 门(Lyra 2026-08-30 拍)
 MAX_SPREAD_PCT = float(os.getenv("DRYRUN_MAX_SPREAD_PCT", os.getenv("MAX_SPREAD_PCT", "0.10")))
 
 SCAN_MIN_PRICE = float(os.getenv("SCAN_MIN_PRICE", str(SCAN_MIN_PRICE)))
@@ -94,9 +110,10 @@ SCAN_MAX_DTE = int(os.getenv("SCAN_MAX_DTE", str(SCAN_MAX_DTE)))
 TOP_CANDIDATES = int(os.getenv("TOP_CANDIDATES", str(TOP_CANDIDATES)))
 SCAN_MAX_SYMBOLS = DRYRUN_SCAN_MAX_SYMBOLS
 
-# Cleaner data sources first; yfinance only as fallback.
-DATA_PROVIDER_ORDER = [x.strip().lower() for x in os.getenv("DATA_PROVIDER_ORDER", "alpaca,stooq,yfinance").split(",") if x.strip()]
-OPTION_PROVIDER_ORDER = [x.strip().lower() for x in os.getenv("OPTION_PROVIDER_ORDER", "alpaca,yfinance").split(",") if x.strip()]
+# 2026-08-17:FMP premium 主源 + Alpaca 备份;yfinance/stooq 已下线。
+DATA_PROVIDER_ORDER = [x.strip().lower() for x in os.getenv("DATA_PROVIDER_ORDER", "fmp,alpaca").split(",") if x.strip()]
+# FMP 无期权链端点 → 期权链 Alpaca only;yfinance 已下线。
+OPTION_PROVIDER_ORDER = [x.strip().lower() for x in os.getenv("OPTION_PROVIDER_ORDER", "alpaca").split(",") if x.strip()]
 
 ALPACA_API_KEY = os.getenv("ALPACA_API_KEY", "")
 ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY", "")
@@ -115,9 +132,10 @@ NEAR_STRIKES_PER_EXPIRY = int(os.getenv("NEAR_STRIKES_PER_EXPIRY", "5"))  # unif
 # Shared HTTP session (connection reuse)
 SESSION = requests.Session()
 
-_DEFAULT_POOL = "MU,MRVL,AMD,HOOD,DELL,APA,OXY,IONQ,NVDA,TSLA,PLTR,COIN"
-POOL_SYMBOLS = [s.strip().upper() for s in os.getenv("POOL_SYMBOLS", _DEFAULT_POOL).split(",") if s.strip()]
-POOL_SYMBOLS_SET = set(POOL_SYMBOLS)
+from pool_config import pool_symbols, pool_symbols_set  # noqa: E402
+
+POOL_SYMBOLS = pool_symbols()
+POOL_SYMBOLS_SET = pool_symbols_set()
 CAPITAL_PER_TRADE = float(os.getenv("CAPITAL_PER_TRADE", "1000.0"))
 RISK_FREE_RATE = float(os.getenv("RISK_FREE_RATE", "0.05"))
 
@@ -137,6 +155,9 @@ BFS_STAGE2_KEEP = int(os.getenv("BFS_STAGE2_KEEP", "20"))
 STAGE1_MIN_DOLLAR_VOL = float(os.getenv("STAGE1_MIN_DOLLAR_VOL", "20000000"))
 STAGE1_SECTOR_CAP_DIV = int(os.getenv("STAGE1_SECTOR_CAP_DIV", "4"))
 LOGGING_FIRST = os.getenv("LOGGING_FIRST", "true").lower() == "true"
+POLICY_V2_SHADOW = os.getenv("POLICY_V2_SHADOW", "true").lower() == "true"
+THETA_RATIO_BAND = float(os.getenv("THETA_RATIO_BAND", "0.03"))
+POLICY_V2_CFG = PolicyV2Config(theta_ratio_band=THETA_RATIO_BAND)
 
 MAX_EXPIRIES_PER_SYMBOL = int(os.getenv("MAX_EXPIRIES_PER_SYMBOL", "3"))
 
@@ -151,8 +172,14 @@ if not logger.handlers:
     sh.setFormatter(fmt)
     logger.addHandler(fh)
     logger.addHandler(sh)
+attach_nexus_live_log(logger)
 
 LAST_REASON_COUNTS: Dict[str, int] = {}
+LAST_REJECTION_DIGEST: str = ""
+LAST_REJECTION_LOG_PATH: str = ""
+LAST_REJECTION_SUMMARY: Dict[str, Any] = {}
+LAST_POLICY_V2_DIGEST: str = ""
+LAST_STAGE3_BEST_BY_SYMBOL: Dict[str, dict] = {}
 DATA_HEALTH: List[Dict[str, Any]] = []
 
 
@@ -215,10 +242,6 @@ def _alpaca_headers() -> Optional[dict]:
     return {"APCA-API-KEY-ID": ALPACA_API_KEY, "APCA-API-SECRET-KEY": ALPACA_SECRET_KEY}
 
 
-def normalize_symbol_for_yf(symbol: str) -> str:
-    return symbol.replace(".", "-").upper()
-
-
 def normalize_symbol_for_stooq(symbol: str) -> str:
     return symbol.replace(".", "-").lower() + ".us"
 
@@ -238,7 +261,7 @@ def get_perilla_symbols(watchlist: dict) -> set:
 
 
 def get_fda_catalyst_map(watchlist: dict) -> Dict[str, dict]:
-    today = dt.date.today()
+    today = dt.datetime.now(EST).date()
     out: Dict[str, dict] = {}
     for item in watchlist.get("fda_catalysts", []):
         try:
@@ -306,6 +329,8 @@ def fetch_alpaca_history(symbol: str, days: int = 370) -> Optional[pd.DataFrame]
         "adjustment": "raw",
         "feed": ALPACA_DATA_FEED,
         "limit": 10000,
+        # 必须 sort=desc:与 alpha/scout 同坑锁;下方再按 Date 正序
+        "sort": "desc",
     }
     data = _request_json(url, headers=headers, params=params, provider="alpaca", symbol=symbol, endpoint="stock_bars")
     if not data:
@@ -326,6 +351,7 @@ def fetch_alpaca_history(symbol: str, days: int = 370) -> Optional[pd.DataFrame]
     df = pd.DataFrame(rows).dropna(subset=["Close"])
     if df.empty:
         return None
+    df = df.sort_values("Date")
     return df.set_index(pd.to_datetime(df["Date"]))[["Open", "High", "Low", "Close", "Volume"]]
 
 
@@ -373,31 +399,52 @@ def fetch_stooq_history(symbol: str) -> Optional[pd.DataFrame]:
         return None
 
 
-def fetch_yfinance_history(symbol: str) -> Optional[pd.DataFrame]:
-    if yf is None:
+def fetch_fmp_history(symbol: str, days: int = 370) -> Optional[pd.DataFrame]:
+    """FMP stable /historical-price-eod/full → DataFrame[Date,Open,High,Low,Close,Volume]。
+    v3 legacy /historical-price-full 已对 2025-08-31 后新订阅 403。"""
+    if not FMP_API_KEY:
         return None
     try:
-        ticker = yf.Ticker(normalize_symbol_for_yf(symbol))
-        hist = ticker.history(period="1y", auto_adjust=False)
-        time.sleep(YF_SLEEP)
-        if hist is None or hist.empty:
-            _record_health("yfinance", symbol, "history", False, "empty")
+        end = dt.datetime.now(EST).date()
+        start = end - dt.timedelta(days=days + 30)
+        params = {"symbol": symbol, "from": start.isoformat(), "to": end.isoformat(), "apikey": FMP_API_KEY}
+        data = _request_json(f"{FMP_BASE}/historical-price-eod/full", params=params,
+                             provider="fmp", symbol=symbol, endpoint="history_eod")
+        if not isinstance(data, list) or not data:
+            _record_health("fmp", symbol, "history", False, "empty")
             return None
-        _record_health("yfinance", symbol, "history", True)
-        return hist[["Open", "High", "Low", "Close", "Volume"]].dropna(subset=["Close"])
+        rows = []
+        for h in data:  # FMP 返回倒序
+            try:
+                rows.append({
+                    "Date": pd.to_datetime(str(h.get("date"))[:10]).date(),
+                    "Open": float(h.get("open", np.nan)),
+                    "High": float(h.get("high", np.nan)),
+                    "Low": float(h.get("low", np.nan)),
+                    "Close": float(h.get("close", np.nan)),
+                    "Volume": float(h.get("volume", 0) or 0),
+                })
+            except (KeyError, TypeError, ValueError):
+                continue
+        if not rows:
+            _record_health("fmp", symbol, "history", False, "no_rows")
+            return None
+        df = pd.DataFrame(rows).sort_values("Date").dropna(subset=["Close"])
+        _record_health("fmp", symbol, "history", True)
+        return df
     except Exception as e:
-        _record_health("yfinance", symbol, "history", False, str(e))
+        _record_health("fmp", symbol, "history", False, str(e))
         return None
 
 
 def get_stock_history(symbol: str) -> Tuple[Optional[pd.DataFrame], str]:
     for provider in DATA_PROVIDER_ORDER:
-        if provider == "alpaca":
+        if provider == "fmp":
+            hist = fetch_fmp_history(symbol)
+        elif provider == "alpaca":
             hist = fetch_alpaca_history(symbol)
         elif provider == "stooq":
             hist = fetch_stooq_history(symbol)
-        elif provider == "yfinance":
-            hist = fetch_yfinance_history(symbol)
         else:
             continue
         if hist is not None and not hist.empty:
@@ -405,12 +452,19 @@ def get_stock_history(symbol: str) -> Tuple[Optional[pd.DataFrame], str]:
     return None, "none"
 
 
-def get_latest_price(symbol: str, hist: pd.DataFrame, hist_provider: str) -> Tuple[float, str]:
+def get_latest_price(symbol: str, hist: pd.DataFrame, hist_provider: str) -> Tuple[float, str, bool]:
+    """Return (price, source, stale).
+
+    H12: when Alpaca latest trade is unavailable and we fall back to the last
+    historical close, ``stale`` is True so callers can stamp ``price_stale`` on
+    the candidate row — downstream stages and the emit layer can then gate on a
+    bool instead of string-matching ``_last_close`` in the source name.
+    """
     if "alpaca" in DATA_PROVIDER_ORDER:
         p = fetch_alpaca_latest_price(symbol)
         if p and p > 0:
-            return float(p), "alpaca_latest_trade"
-    return float(hist["Close"].iloc[-1]), f"{hist_provider}_last_close"
+            return float(p), "alpaca_latest_trade", False
+    return float(hist["Close"].iloc[-1]), f"{hist_provider}_last_close", True
 
 
 # ======================== Options data ========================
@@ -441,6 +495,96 @@ def _snap_get_quote_value(q: dict, *names: str, default: float = 0.0) -> float:
             except Exception:
                 pass
     return default
+
+
+OI_MISSING_SOURCES = frozenset({"missing", "missing_in_snapshot"})
+
+
+def _oi_missing(opt: dict) -> bool:
+    """True when OI is absent. Missing must never be treated as 0."""
+    src = str(opt.get("oi_source") or "")
+    if src in OI_MISSING_SOURCES:
+        return True
+    return opt.get("open_interest") is None
+
+
+def _oi_liquidity_component(opt: dict) -> float:
+    """AETHER_OI_HARDZERO_v1: missing OI contributes 0, not a 0.35 proxy."""
+    if _oi_missing(opt):
+        return 0.0
+    try:
+        return min(float(opt["open_interest"]) / 500.0, 1.0)
+    except (TypeError, ValueError, KeyError):
+        return 0.0
+
+
+def _parse_contract_oi_field(raw: Any) -> Optional[int]:
+    """None if field absent/unparseable. Integer 0 is a real zero, not missing."""
+    if raw is None or raw == "":
+        return None
+    try:
+        return int(float(raw))
+    except (TypeError, ValueError):
+        return None
+
+
+def join_contract_open_interest(rows: List[dict], oi_map: Dict[str, Optional[int]]) -> None:
+    """In-place OCC join. Hit with int (incl. 0) → alpaca_contracts. Else null + missing."""
+    for opt in rows:
+        occ = str(opt.get("occ") or "")
+        if occ and occ in oi_map and oi_map[occ] is not None:
+            opt["open_interest"] = int(oi_map[occ])
+            opt["oi_source"] = "alpaca_contracts"
+            opt["oi_unverified"] = False
+        else:
+            opt["open_interest"] = None
+            opt["oi_source"] = "missing"
+            opt["oi_unverified"] = True
+
+
+def fetch_alpaca_contracts_open_interest(
+    symbol: str,
+    expiry_gte: str,
+    expiry_lte: str,
+) -> Dict[str, Optional[int]]:
+    """GET /v2/options/contracts → OCC symbol → OI (None if field absent).
+
+    Trading API, not snapshots. Does not import deprecated OWS alpaca_loader.
+    """
+    headers = _alpaca_headers()
+    if not headers:
+        return {}
+    out: Dict[str, Optional[int]] = {}
+    page_token: Optional[str] = None
+    for _page in range(20):
+        params: Dict[str, Any] = {
+            "underlying_symbols": symbol,
+            "status": "active",
+            "limit": 1000,
+            "expiration_date_gte": expiry_gte,
+            "expiration_date_lte": expiry_lte,
+        }
+        if page_token:
+            params["page_token"] = page_token
+        data = _request_json(
+            f"{ALPACA_TRADING_BASE}/v2/options/contracts",
+            headers=headers,
+            params=params,
+            provider="alpaca",
+            symbol=symbol,
+            endpoint="option_contracts_oi",
+        )
+        if not data:
+            break
+        for c in data.get("option_contracts") or []:
+            occ = str(c.get("symbol") or "").strip()
+            if not occ:
+                continue
+            out[occ] = _parse_contract_oi_field(c.get("open_interest"))
+        page_token = data.get("next_page_token")
+        if not page_token:
+            break
+    return out
 
 
 def fetch_alpaca_option_chain(symbol: str, price: float) -> List[dict]:
@@ -526,6 +670,8 @@ def fetch_alpaca_option_chain(symbol: str, price: float) -> List[dict]:
             # Keep parse strict: R5.4 does not invent Greeks for Alpaca chain unless yfinance fallback exists.
             continue
 
+        theta_daily = _alpaca_theta_daily(price, strike, dte, iv, float(theta))
+
         out.append({
             "strike": round(strike, 2),
             "expiry": meta["expiry"],
@@ -536,18 +682,20 @@ def fetch_alpaca_option_chain(symbol: str, price: float) -> List[dict]:
             "option_price": round(option_price, 4),
             "price_source": price_source,
             "quote_stale": quote_stale,
+            "occ": contract_symbol,
             "volume": volume,
-            "open_interest": 0,
-            "oi_source": "missing_in_snapshot",
+            "open_interest": None,
+            "oi_source": "missing",
+            "oi_unverified": True,  # snapshot has no OI; joined from /v2/options/contracts below
             "iv": round(iv, 4),
             "iv_source": f"alpaca_{ALPACA_OPTION_FEED}",
             "delta": round(delta, 4),
             "gamma": round(gamma, 4),
-            "theta": round(theta, 6),
-            "gamma_theta_ratio": round(gamma / abs(theta), 4) if abs(theta) > 1e-8 else 0,
+            "theta": round(theta_daily, 6),
+            "gamma_theta_ratio": round(gamma / abs(theta_daily), 4) if abs(theta_daily) > 1e-8 else 0,
             "premium_dollars": round(option_price * 100, 2),
             "spread_pct": round((ask - bid) / ((ask + bid) / 2), 4) if (ask + bid) > 0 else 1.0,
-            "theta_ratio": round(abs(theta) / option_price, 4) if option_price > 0 else 999,
+            "theta_ratio": round(abs(theta_daily) / option_price, 4) if option_price > 0 else 999,
             "data_provider": "alpaca",
         })
     # R5.4.1: unify candidate window with yfinance path — keep N strikes nearest 1.02x target
@@ -563,6 +711,15 @@ def fetch_alpaca_option_chain(symbol: str, price: float) -> List[dict]:
             trimmed.extend(sorted(by_expiry[e], key=lambda o: abs(o["strike"] - target))[:NEAR_STRIKES_PER_EXPIRY])
         out = trimmed
         _theta_unit_sanity(symbol, price, out)
+        expiry_gte = (today + dt.timedelta(days=SCAN_MIN_DTE)).isoformat()
+        expiry_lte = (today + dt.timedelta(days=SCAN_MAX_DTE)).isoformat()
+        oi_map = fetch_alpaca_contracts_open_interest(symbol, expiry_gte, expiry_lte)
+        join_contract_open_interest(out, oi_map)
+        n_hit = sum(1 for o in out if o.get("oi_source") == "alpaca_contracts")
+        logger.info(
+            "OI join %s: map=%d hit=%d missing=%d",
+            symbol, len(oi_map), n_hit, len(out) - n_hit,
+        )
 
     _record_health("alpaca", symbol, "option_chain_parse", bool(out), f"contracts={len(out)}")
     return out
@@ -615,89 +772,25 @@ def bs_greeks(S: float, K: float, T: float, r: float, sigma: float, q: float = 0
     return {"price": round(price, 4), "delta": round(delta, 4), "gamma": round(gamma, 4), "theta": round(theta_day, 6), "iv": round(sigma, 4)}
 
 
-def fetch_yfinance_option_chain(symbol: str, price: float, hv_fallback: float, q: float = 0.0) -> List[dict]:
-    if yf is None:
-        return []
+def _alpaca_theta_daily(underlying: float, strike: float, dte: int, iv: float, raw_theta: float) -> float:
+    """Normalize Alpaca annualized theta to daily before theta_ratio caps."""
     try:
-        ticker = yf.Ticker(normalize_symbol_for_yf(symbol))
-        expirations = ticker.options or []
-        today = dt.datetime.now(EST).date()
-        valid_expiries = []
-        for exp_str in expirations:
-            try:
-                dte = (dt.date.fromisoformat(exp_str) - today).days
-            except ValueError:
-                continue
-            if SCAN_MIN_DTE <= dte <= SCAN_MAX_DTE:
-                valid_expiries.append(exp_str)
-            if len(valid_expiries) >= MAX_EXPIRIES_PER_SYMBOL:
-                break
-        out: List[dict] = []
-        for expiry in valid_expiries:
-            chain = ticker.option_chain(expiry)
-            calls = chain.calls.copy()
-            if calls.empty:
-                continue
-            exp_date = dt.date.fromisoformat(expiry)
-            dte = (exp_date - today).days
-            T = dte / 365.0
-            target = price * 1.02
-            calls["distance"] = abs(calls["strike"] - target)
-            calls = calls.sort_values("distance").head(NEAR_STRIKES_PER_EXPIRY)
-            for _, row in calls.iterrows():
-                strike = float(row.get("strike", 0) or 0)
-                bid = float(row.get("bid", 0) or 0)
-                ask = float(row.get("ask", 0) or 0)
-                last = float(row.get("lastPrice", 0) or 0)
-                volume = int(row.get("volume", 0) or 0)
-                oi = int(row.get("openInterest", 0) or 0)
-                chain_iv = row.get("impliedVolatility", None)
-                if chain_iv and chain_iv > 0 and not (isinstance(chain_iv, float) and math.isnan(chain_iv)):
-                    sigma = float(chain_iv)
-                    iv_source = "yfinance_market"
-                else:
-                    sigma = hv_fallback
-                    iv_source = "hv_fallback"
-                greeks = bs_greeks(price, strike, T, RISK_FREE_RATE, sigma, q=q)
-                if bid > 0 and ask > 0:
-                    option_price = (bid + ask) / 2.0
-                    price_source = "yfinance_mid"
-                elif last > 0:
-                    option_price = last
-                    price_source = "yfinance_last"
-                else:
-                    option_price = greeks["price"]
-                    price_source = "bs_model"
-                theta = float(greeks["theta"])
-                gamma = float(greeks["gamma"])
-                out.append({
-                    "strike": round(strike, 2), "expiry": expiry, "dte": dte,
-                    "bid": round(bid, 2), "ask": round(ask, 2), "last_price": round(last, 2),
-                    "option_price": round(option_price, 4), "price_source": price_source,
-                    "quote_stale": bid <= 0 or ask <= 0,
-                    "volume": volume, "open_interest": oi, "oi_source": "yfinance",
-                    "iv": round(float(sigma), 4), "iv_source": iv_source,
-                    "delta": round(float(greeks["delta"]), 4), "gamma": round(gamma, 4), "theta": round(theta, 6),
-                    "gamma_theta_ratio": round(gamma / abs(theta), 4) if abs(theta) > 1e-8 else 0,
-                    "premium_dollars": round(option_price * 100, 2),
-                    "spread_pct": round((ask - bid) / ((ask + bid) / 2), 4) if (ask + bid) > 0 else 1.0,
-                    "theta_ratio": round(abs(theta) / option_price, 4) if option_price > 0 else 999,
-                    "data_provider": "yfinance",
-                })
-            time.sleep(YF_SLEEP)
-        _record_health("yfinance", symbol, "option_chain", bool(out), f"contracts={len(out)}")
-        return out
-    except Exception as e:
-        _record_health("yfinance", symbol, "option_chain", False, str(e))
-        return []
+        t_years = max(dte, 1) / 365.0
+        bs = bs_greeks(underlying, strike, t_years, RISK_FREE_RATE, max(iv, 0.01))
+        bs_theta = abs(float(bs["theta"]))
+        a_theta = abs(float(raw_theta))
+        if bs_theta > 1e-8 and a_theta / bs_theta > 30:
+            return raw_theta / 365.0
+    except Exception:
+        pass
+    return raw_theta
 
 
 def get_option_chain(symbol: str, price: float, hv_fallback: float, q: float = 0.0) -> Tuple[List[dict], str]:
+    # 2026-08-17:FMP 无期权链端点 → 期权链 Alpaca only;yfinance 已下线。
     for provider in OPTION_PROVIDER_ORDER:
         if provider == "alpaca":
             opts = fetch_alpaca_option_chain(symbol, price)
-        elif provider == "yfinance":
-            opts = fetch_yfinance_option_chain(symbol, price, hv_fallback, q=q)
         else:
             continue
         if opts:
@@ -780,6 +873,110 @@ def _reason_counts(filtered: list) -> Dict[str, int]:
     return counts
 
 
+def _quote_source(opt: dict) -> str:
+    src = str(opt.get("iv_source", "")).lower()
+    if "indicative" in src or ALPACA_OPTION_FEED == "indicative":
+        return "indicative"
+    return "realtime"
+
+
+def _opt_to_candidate(opt: dict, item: dict, score: float = 0.0) -> Candidate:
+    return Candidate(
+        symbol=item["symbol"],
+        strike=float(opt["strike"]),
+        expiry=str(opt["expiry"]),
+        dte=int(opt["dte"]),
+        spot=float(item["price"]),
+        delta=float(opt["delta"]),
+        gamma=float(opt["gamma"]),
+        theta=float(opt["theta"]),
+        iv=float(opt["iv"]),
+        bid=float(opt["bid"]),
+        ask=float(opt["ask"]),
+        volume=int(opt["volume"]),
+        open_interest=int(opt.get("open_interest") or 0),
+        quote_source=_quote_source(opt),
+        score=float(score),
+    )
+
+
+def _parse_filter_reason(reason: str, opt: dict) -> Tuple[str, float, float]:
+    if reason == "stale_quote":
+        return "stale_quote", 1.0, 0.0
+    if reason.startswith("delta="):
+        val = float(reason.split("=", 1)[1])
+        threshold = MIN_DELTA if val < MIN_DELTA else MAX_DELTA
+        return "delta", val, threshold
+    if reason.startswith("gamma="):
+        val = float(reason.split("=", 1)[1])
+        return "gamma", val, MIN_GAMMA
+    if reason.startswith("theta_ratio="):
+        val = float(reason.split("=", 1)[1].split("(")[0])
+        return "theta_ratio", val, _theta_ratio_cap(opt["dte"])
+    if reason.startswith("iv="):
+        val = float(reason.split("=", 1)[1])
+        return "iv", val, MAX_IV
+    if reason.startswith("spread="):
+        raw = reason.split("=", 1)[1].strip().rstrip("%")
+        val = float(raw) / 100.0 if "%" in reason else float(raw)
+        return "spread", val, MAX_SPREAD_PCT
+    if reason.startswith("vol="):
+        vol_part = reason.split("=", 1)[1]
+        vol = float(vol_part.split("/")[0])
+        return "vol", vol, float(MIN_VOLUME)
+    if reason.startswith("premium="):
+        val = float(reason.split("$", 1)[1])
+        return "premium", val, CAPITAL_PER_TRADE
+    return reason.split("=")[0], 0.0, 0.0
+
+
+def _hypothetical_score(opt: dict, item: dict, perilla_boost: float, fda_boost: float) -> float:
+    """Logging-only proxy score for near-miss ranking; does not affect filtering."""
+    # AETHER_OI_HARDZERO_v1: 缺 OI 硬扣 0(_hypothetical_score 内同公式)
+    oi_component = _oi_liquidity_component(opt)
+    liquidity_raw = (
+        min(opt["volume"] / 300, 1.0) * 0.40
+        + oi_component * 0.25
+        + item.get("liquidity_proxy", 0) * 0.35
+    )
+    liquidity_score = liquidity_raw * 25
+    spread_score = max(0, 1 - opt["spread_pct"] / MAX_SPREAD_PCT) * 15
+    delta_score = max(0, 1 - abs(opt["delta"] - 0.38) / 0.15) * 15
+    gtr_score = 0.5 * 15
+    hv_rank = item.get("hv_rank", 0.5)
+    iv_hv = (opt["iv"] / item["hv"]) if item.get("hv", 0) > 0 else 1.5
+    iv_hv_score = max(0.0, min(1.0, (1.8 - iv_hv) / 1.0))
+    iv_value_score = (0.5 * (1 - hv_rank) + 0.5 * iv_hv_score) * IV_VALUE_WEIGHT
+    catalyst_score = 0.0
+    if item.get("has_earnings_catalyst"):
+        catalyst_score += EARNINGS_SCORE_BOOST
+    if item.get("has_fda"):
+        catalyst_score += fda_boost
+    if item.get("is_perilla"):
+        catalyst_score += perilla_boost
+    return round(
+        float(
+            liquidity_score
+            + spread_score
+            + delta_score
+            + gtr_score
+            + iv_value_score
+            + catalyst_score
+        ),
+        2,
+    )
+
+
+def _append_rejection_digest(msg: str) -> str:
+    if LAST_REJECTION_DIGEST:
+        msg += "\n\n" + LAST_REJECTION_DIGEST
+    if LAST_POLICY_V2_DIGEST:
+        msg += "\n\n" + LAST_POLICY_V2_DIGEST
+    if LAST_REJECTION_LOG_PATH:
+        msg += f"\n(rejection log: {LAST_REJECTION_LOG_PATH})"
+    return msg
+
+
 def _append_iv_history(snapshots: Dict[str, float]) -> None:
     try:
         with open(IV_HISTORY_PATH, "r") as f:
@@ -842,8 +1039,26 @@ def get_pool_universe() -> pd.DataFrame:
 
 
 def get_sp500_universe() -> pd.DataFrame:
+    import ssl
+    import urllib.request
+
     try:
-        tables = pd.read_html(SP500_URL)
+        import certifi
+    except ImportError:
+        certifi = None  # type: ignore[assignment,misc]
+    try:
+        req = urllib.request.Request(
+            SP500_URL,
+            headers={"User-Agent": "Mozilla/5.0 (AetherNexus/1.0)"},
+        )
+        if certifi:
+            ctx = ssl.create_default_context(cafile=certifi.where())
+            with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+                html = resp.read()
+        else:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                html = resp.read()
+        tables = pd.read_html(BytesIO(html))
         df = tables[0].copy().rename(columns={"Symbol": "symbol", "Security": "name", "GICS Sector": "sector", "GICS Sub-Industry": "industry"})
         df = df[[c for c in ["symbol", "name", "sector", "industry"] if c in df.columns]].dropna(subset=["symbol"])
         df["symbol"] = df["symbol"].astype(str).str.strip().str.upper()
@@ -870,46 +1085,45 @@ def _save_earnings_cache(cache: dict) -> None:
 
 
 def _fetch_next_earnings_date(symbol: str) -> Optional[str]:
-    # Keep yfinance as non-critical enrichment only. If it fails, scanner remains usable.
-    if yf is None:
+    """FMP /earnings-calendar → 下一个 earnings 日(ISO)。非关键 enrichment,失败返 None。
+    FMP 限制:/earnings-calendar 硬限 4000 行、不支持 symbol 过滤、无可用分页 →
+    大票(如 AAPL)常不在首批,per-symbol 查找不可靠。命中则返回,未命中返 None
+    (扫描器仍可用,earnings proximity 信号降级——yfinance 下线的已知代价)。"""
+    if not FMP_API_KEY:
         return None
-    try:
-        ticker = yf.Ticker(normalize_symbol_for_yf(symbol))
-        cal = ticker.calendar
-        today = dt.date.today()
-        if cal is None:
+    today = dt.datetime.now(EST).date()
+    cache = _FMP_EARNINGS_CACHE
+    if cache.get("date") != today.isoformat():
+        try:
+            end = today + dt.timedelta(days=120)
+            params = {"from": today.isoformat(), "to": end.isoformat(), "apikey": FMP_API_KEY}
+            data = _request_json(f"{FMP_BASE}/earnings-calendar", params=params,
+                                 provider="fmp", symbol="*", endpoint="earnings_calendar")
+            by_sym: dict = {}
+            if isinstance(data, list):
+                for r in data:
+                    s = str(r.get("symbol") or "").upper()
+                    d = str(r.get("date") or "")[:10]
+                    if s and d:
+                        by_sym.setdefault(s, []).append(d)
+            cache.clear()
+            cache["date"] = today.isoformat()
+            cache["by_sym"] = by_sym
+        except Exception:
             return None
-        if isinstance(cal, pd.DataFrame):
-            if cal.empty:
-                return None
-            if "Earnings Date" in cal.columns:
-                dates = cal["Earnings Date"].tolist()
-            elif "Earnings Date" in cal.index:
-                dates = cal.loc["Earnings Date"].tolist()
-            else:
-                return None
-        elif isinstance(cal, dict):
-            dates = cal.get("Earnings Date", [])
-        else:
-            return None
-        if not isinstance(dates, list):
-            dates = [dates]
-        for x in dates:
-            if hasattr(x, "date"):
-                d = x.date()
-            elif isinstance(x, str):
-                d = dt.datetime.strptime(x[:10], "%Y-%m-%d").date()
-            else:
-                continue
-            if (d - today).days >= 0:
-                return d.isoformat()
-    except Exception:
-        return None
+    dates = cache.get("by_sym", {}).get(str(symbol).upper(), [])
+    for d in sorted(dates):
+        try:
+            dd = dt.date.fromisoformat(d)
+        except ValueError:
+            continue
+        if (dd - today).days >= 0:
+            return dd.isoformat()
     return None
 
 
 def get_earnings_proximity(symbol: str, cache: dict) -> Optional[int]:
-    today = dt.date.today()
+    today = dt.datetime.now(EST).date()
     ent = cache.get(symbol)
     if ent:
         try:
@@ -935,12 +1149,12 @@ def _batch_price_metrics(symbols: List[str]) -> Optional[pd.DataFrame]:
         hist, provider = get_stock_history(sym)
         if hist is None or len(hist) < 5:
             continue
-        price, price_source = get_latest_price(sym, hist, provider)
+        price, price_source, price_stale = get_latest_price(sym, hist, provider)
         stat = hist.tail(5).copy()
         dollar_vol = float((stat["Volume"] * stat["Close"]).mean())
         abs_ret_5d = abs(float(price / stat["Close"].iloc[0] - 1))
         range_pct = float(((stat["High"] - stat["Low"]) / stat["Close"]).mean())
-        rows.append({"symbol": sym, "price": price, "dollar_vol": dollar_vol, "abs_ret_5d": abs_ret_5d, "range_pct": range_pct, "data_provider": provider, "price_source": price_source})
+        rows.append({"symbol": sym, "price": price, "dollar_vol": dollar_vol, "abs_ret_5d": abs_ret_5d, "range_pct": range_pct, "data_provider": provider, "price_source": price_source, "price_stale": price_stale})
     if not rows:
         return None
     logger.info(f"Stage 1 data coverage: {len(rows)}/{len(symbols)}")
@@ -958,10 +1172,19 @@ def stage1_static_filter(universe_df: pd.DataFrame, perilla_symbols: set, fda_ma
     slots = max(0, BFS_STAGE1_KEEP - len(priority))
     metrics = _batch_price_metrics(rest["symbol"].tolist()) if slots > 0 else pd.DataFrame()
     if metrics is None or metrics.empty:
-        logger.warning("Stage 1 metrics empty; using date-rotating sample fallback")
-        seed = int(dt.date.today().strftime("%Y%m%d"))
+        logger.warning(
+            "Stage 1 metrics empty; using date-rotating sample fallback — PRICE VALIDATION SKIPPED "
+            "(candidates enter pipeline unvalidated; stamped data_stale=True)"
+        )
+        seed = int(dt.datetime.now(EST).date().strftime("%Y%m%d"))
         sampled = rest.sample(min(len(rest), slots), random_state=seed).copy() if slots else pd.DataFrame(columns=df.columns)
         sampled["stage1_reason"] = "fallback_rotating_sample"
+        # H11: these candidates bypassed the price/dollar_vol filter (line 1132)
+        # because no metrics were available. Stamp data_stale so the pipeline and
+        # emit layer can refuse or banner them instead of treating them as
+        # validated scan candidates.
+        sampled["data_stale"] = True
+        sampled["data_source"] = "fallback_rotating_sample"
     else:
         merged = rest.merge(metrics, on="symbol", how="inner")
         merged = merged[(merged["price"] >= SCAN_MIN_PRICE) & (merged["price"] <= SCAN_MAX_PRICE) & (merged["dollar_vol"] >= STAGE1_MIN_DOLLAR_VOL)].copy()
@@ -988,7 +1211,7 @@ def get_stock_data_light(symbol: str) -> Optional[dict]:
     hist, provider = get_stock_history(symbol)
     if hist is None or hist.empty or len(hist) < 30:
         return None
-    price, price_source = get_latest_price(symbol, hist, provider)
+    price, price_source, price_stale = get_latest_price(symbol, hist, provider)
     closes = hist["Close"].astype(float).values
     hv, hv_rank = _hv_rank(closes, HV_RANK_WINDOW)
     recent = hist.tail(5)
@@ -998,6 +1221,7 @@ def get_stock_data_light(symbol: str) -> Optional[dict]:
         "symbol": symbol,
         "price": float(price),
         "price_source": price_source,
+        "price_stale": price_stale,
         "data_provider": provider,
         "avg_volume": avg_volume,
         "dollar_vol": dollar_vol,
@@ -1025,7 +1249,7 @@ def stage2_light_data(
         if not data:
             fetch_fail += 1
             if is_catalyst:
-                logger.warning(f"催化剂标的 Stage 2 数据失败: {symbol}")
+                logger.info("unverified_catalyst skip Stage 2: %s reason=data_fetch_fail", symbol)
             continue
         price = data["price"]
         is_pool = symbol in POOL_SYMBOLS
@@ -1067,6 +1291,12 @@ def stage3_full_analysis(stage2_results: List[dict], watchlist: dict) -> List[di
     filtered_log: List[dict] = []
     fetch_fail = 0
     iv_snapshots: Dict[str, float] = {}
+    rejection_logger: Optional[RejectionLogger] = None
+    policy_v2_audit: Optional[PolicyV2Audit] = None
+    if LOGGING_FIRST:
+        rejection_logger = RejectionLogger(log_dir=REJECTION_LOG_DIR)
+    if POLICY_V2_SHADOW:
+        policy_v2_audit = PolicyV2Audit(POLICY_V2_CFG)
 
     for item in stage2_results:
         symbol = item["symbol"]
@@ -1076,7 +1306,7 @@ def stage3_full_analysis(stage2_results: List[dict], watchlist: dict) -> List[di
         if not options:
             fetch_fail += 1
             if item.get("is_perilla") or item.get("has_fda"):
-                logger.warning(f"催化剂标的 Stage 3 期权数据全失败: {symbol}")
+                logger.info("unverified_catalyst skip Stage 3: %s reason=option_chain_fail", symbol)
             continue
         market_ivs = [o["iv"] for o in options if o.get("iv") and "fallback" not in o.get("iv_source", "")]
         if market_ivs:
@@ -1096,18 +1326,49 @@ def stage3_full_analysis(stage2_results: List[dict], watchlist: dict) -> List[di
                 reasons.append(f"iv={opt['iv']}")
             if opt["spread_pct"] > MAX_SPREAD_PCT:
                 reasons.append(f"spread={opt['spread_pct']:.2%}")
-            # R5.4: when OI is unavailable from free snapshot, do not kill all Alpaca candidates.
-            if opt.get("oi_source") == "missing_in_snapshot":
-                if opt["volume"] < MIN_VOLUME:
-                    reasons.append(f"vol={opt['volume']}/oi=NA")
+            # R5.4: when OI is unavailable, do not kill all Alpaca candidates.
+            if _oi_missing(opt):
+                # AETHER_OI_HARDZERO_v1: 缺 OI 用 MIN_VOLUME_MISSING_OI(默认 100)
+                if opt["volume"] < MIN_VOLUME_MISSING_OI:
+                    reasons.append(f"vol={opt['volume']}/oi=NA (缺OI闸,门={MIN_VOLUME_MISSING_OI})")
             else:
-                if opt["volume"] < MIN_VOLUME and opt["open_interest"] < MIN_OPEN_INTEREST:
+                if opt["volume"] < MIN_VOLUME and int(opt["open_interest"]) < MIN_OPEN_INTEREST:
                     reasons.append(f"vol={opt['volume']}/oi={opt['open_interest']}")
             if opt["premium_dollars"] > CAPITAL_PER_TRADE:
                 reasons.append(f"premium=${opt['premium_dollars']}")
             if reasons:
+                qs = _quote_source(opt)
+                shadow = policy_v2_shadow(
+                    reasons,
+                    opt,
+                    qs,
+                    _theta_ratio_cap(opt["dte"]),
+                    POLICY_V2_CFG,
+                ) if policy_v2_audit is not None else {}
+                if policy_v2_audit is not None:
+                    policy_v2_audit.observe(reasons, shadow)
                 if LOGGING_FIRST:
                     filtered_log.append({"symbol": symbol, "strike": opt["strike"], "expiry": opt["expiry"], "reasons": reasons, "provider": opt.get("data_provider")})
+                    if rejection_logger is not None:
+                        proxy_score = _hypothetical_score(opt, item, perilla_boost, fda_boost)
+                        cand = _opt_to_candidate(opt, item, score=proxy_score)
+                        for reason in reasons:
+                            kill_rule, kill_value, threshold = _parse_filter_reason(reason, opt)
+                            rejection_logger.log(
+                                cand,
+                                kill_rule,
+                                kill_value,
+                                threshold,
+                                extra={
+                                    "option_data_provider": opt.get("data_provider"),
+                                    "iv_source": opt.get("iv_source"),
+                                    "oi_source": opt.get("oi_source"),
+                                    "quote_stale": opt.get("quote_stale"),
+                                    "policy_v2_flags": shadow.get("v2_flags", []),
+                                    "policy_v2_would_kill": shadow.get("v2_would_kill"),
+                                    "policy_v2_rescued": shadow.get("v2_rescued"),
+                                },
+                            )
                 continue
             passing.append({"opt": opt, "item": item, "option_provider": option_provider})
 
@@ -1116,7 +1377,11 @@ def stage3_full_analysis(stage2_results: List[dict], watchlist: dict) -> List[di
     for i, p in enumerate(passing):
         opt, item = p["opt"], p["item"]
         # Liquidity: volume + OI when available + underlying dollar-liquidity proxy.
-        oi_component = min(opt.get("open_interest", 0) / 500, 1.0) if opt.get("oi_source") != "missing_in_snapshot" else 0.35
+        # AETHER_OI_HARDZERO_v1: 缺 OI 硬扣 0,不兜底 0.35;缺 OI 上限 18.75/满分 25
+        oi_component = _oi_liquidity_component(opt)
+        if _oi_missing(opt):
+            logger.info("HARDZERO_TRIGGERED sym=%s vol=%s strike=%s expiry=%s oi_source=%s",
+                        item["symbol"], opt["volume"], opt["strike"], opt["expiry"], opt.get("oi_source"))
         liquidity_raw = min(opt["volume"] / 300, 1.0) * 0.40 + oi_component * 0.25 + item.get("liquidity_proxy", 0) * 0.35
         liquidity_score = liquidity_raw * 25
         spread_score = max(0, 1 - opt["spread_pct"] / MAX_SPREAD_PCT) * 15
@@ -1159,14 +1424,36 @@ def stage3_full_analysis(stage2_results: List[dict], watchlist: dict) -> List[di
     for c in scored:
         if c["symbol"] not in best_by_symbol or c["score"] > best_by_symbol[c["symbol"]]["score"]:
             best_by_symbol[c["symbol"]] = c
+    global LAST_STAGE3_BEST_BY_SYMBOL
+    LAST_STAGE3_BEST_BY_SYMBOL = dict(best_by_symbol)
     top = sorted(best_by_symbol.values(), key=lambda x: x["score"], reverse=True)[:TOP_CANDIDATES]
 
     if filtered_log:
         _save_filtered_log(filtered_log)
     if iv_snapshots:
         _append_iv_history(iv_snapshots)
-    global LAST_REASON_COUNTS
+    global LAST_REASON_COUNTS, LAST_REJECTION_DIGEST, LAST_REJECTION_LOG_PATH, LAST_REJECTION_SUMMARY, LAST_POLICY_V2_DIGEST
     LAST_REASON_COUNTS = _reason_counts(filtered_log)
+    if rejection_logger is not None:
+        LAST_REJECTION_DIGEST = rejection_logger.digest_text() if rejection_logger.kill_counts else ""
+        LAST_REJECTION_LOG_PATH = str(rejection_logger.path)
+        LAST_REJECTION_SUMMARY = rejection_logger.summary() if rejection_logger.kill_counts else {}
+        logger.info(f"Rejection log: {rejection_logger.path} kills={rejection_logger.kill_counts}")
+        rejection_logger.close()
+    else:
+        LAST_REJECTION_DIGEST = ""
+        LAST_REJECTION_LOG_PATH = ""
+        LAST_REJECTION_SUMMARY = {}
+    if policy_v2_audit is not None:
+        LAST_POLICY_V2_DIGEST = policy_v2_audit.digest_text()
+        logger.info(
+            "Policy V2 shadow: hard_killed=%d v2_would_kill=%d rescued=%d",
+            policy_v2_audit.hard_killed,
+            policy_v2_audit.v2_would_kill,
+            policy_v2_audit.v2_rescued,
+        )
+    else:
+        LAST_POLICY_V2_DIGEST = ""
     _atomic_write(DATA_HEALTH_PATH, DATA_HEALTH[-500:])
 
     logger.info(f"Stage 3 done: passing={len(passing)} filtered={len(filtered_log)} fetch_fail={fetch_fail} top={len(top)}")
@@ -1205,6 +1492,33 @@ def save_signals(candidates: List[dict], scan_mode: str = "sp500") -> None:
     })
     _atomic_write(filepath, existing[-MAX_SIGNAL_ROUNDS:])
     export_dryrun_candidates_to_ib(candidates, scan_time, scan_mode)
+    try:
+        from paper_bridge import enqueue_scan_candidates
+
+        # H13: pass trade_date + window so scan_quarantine can match by (date, window)
+        # and actually skip quarantined scans. Without these, quarantine never fired.
+        _scan_dt = dt.datetime.fromisoformat(scan_time)
+        _trade_date = _scan_dt.date().isoformat()
+        _window = "AM" if _scan_dt.hour < 12 else "PM"
+        enqueue_scan_candidates(
+            candidates, scan_time, scan_mode,
+            label=scan_mode, trade_date=_trade_date, window=_window,
+        )
+    except Exception as exc:
+        logger.warning("paper_bridge: %s", exc)
+
+
+def _slim_pool_score(row: dict) -> dict:
+    return {
+        "symbol": row.get("symbol"),
+        "score": row.get("score"),
+        "delta": row.get("delta"),
+        "iv": row.get("iv"),
+        "spread_pct": row.get("spread_pct"),
+        "underlying_price": row.get("underlying_price"),
+        "dollar_vol_M": row.get("dollar_vol_M"),
+        "status": "passing",
+    }
 
 
 def save_pool_signals(candidates: List[dict]) -> None:
@@ -1217,14 +1531,43 @@ def save_pool_signals(candidates: List[dict]) -> None:
     scan_time = dt.datetime.now(EST).isoformat()
     for c in candidates:
         c["scan_mode"] = "pool"
+    universe_scores = [
+        _slim_pool_score(row)
+        for row in sorted(
+            LAST_STAGE3_BEST_BY_SYMBOL.values(),
+            key=lambda x: float(x.get("score") or 0),
+            reverse=True,
+        )
+    ]
+    if not universe_scores and candidates:
+        universe_scores = [
+            _slim_pool_score(row)
+            for row in sorted(candidates, key=lambda x: float(x.get("score") or 0), reverse=True)
+        ]
     existing.append({
         "scan_time": scan_time,
         "scan_mode": "pool",
         "pool_symbols": POOL_SYMBOLS,
         "candidates": candidates,
+        "universe_scores": universe_scores,
+        "rejection_log": LAST_REJECTION_LOG_PATH or None,
+        "rejection_digest": (LAST_REJECTION_DIGEST or "")[:800] or None,
         "top_pick": candidates[0]["symbol"] if candidates else None,
     })
     _atomic_write(filepath, existing[-MAX_SIGNAL_ROUNDS:])
+    try:
+        from paper_bridge import enqueue_scan_candidates
+
+        # H13: pass trade_date + window so scan_quarantine can match by (date, window).
+        _scan_dt = dt.datetime.fromisoformat(scan_time)
+        _trade_date = _scan_dt.date().isoformat()
+        _window = "AM" if _scan_dt.hour < 12 else "PM"
+        enqueue_scan_candidates(
+            candidates, scan_time, "pool",
+            label="pool", trade_date=_trade_date, window=_window,
+        )
+    except Exception as exc:
+        logger.warning("paper_bridge: %s", exc)
 
 
 def save_perilla_signals(candidates: List[dict], failed: List[str], buy_signals: List[dict]) -> None:
@@ -1247,20 +1590,44 @@ def safe_read_perilla_signals() -> dict:
 
 
 def send_telegram(message: str) -> None:
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        logger.warning("Telegram 未配置")
+    if not _telegram_configured() and not os.getenv("PUSHOVER_TOKEN"):
+        logger.warning("通知未配置 (TELEGRAM_* / PUSHOVER_*)")
         return
-    # R5.4.1: plain Bot API call, telebot dependency dropped
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    for i in range(0, len(message), 3900):
-        try:
-            r = SESSION.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": message[i:i + 3900]}, timeout=HTTP_TIMEOUT)
-            if r.status_code != 200:
-                logger.error(f"Telegram 发送失败: HTTP {r.status_code} {r.text[:120]}")
-            time.sleep(0.5)
-        except Exception as e:
-            logger.error(f"Telegram 发送失败: {e}")
-            break
+    send_notification(message)
+
+
+def _write_scan_heartbeat() -> None:
+    hb_dir = os.path.join(BASE_DIR, "dryrun_state")
+    os.makedirs(hb_dir, exist_ok=True)
+    ts = dt.datetime.now(dt.timezone.utc).isoformat()
+    hb_path = os.path.join(hb_dir, "heartbeat.json")
+    tmp = hb_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump({"last_scan_ts": ts, "updated_at": ts}, f)
+    os.replace(tmp, hb_path)
+
+
+def _publish_scan_to_app(
+    candidates: List[dict],
+    *,
+    label: str,
+    universe_size: int | None = None,
+    status: str = "ok",
+) -> None:
+    emit_scan(candidates, label=label, universe_size=universe_size, status=status)
+    emit_filter(LAST_REJECTION_SUMMARY or None)
+    _write_scan_heartbeat()
+    buys = [c for c in candidates if float(c.get("score") or 0) >= WATCHLIST_BUY_SCORE_MIN]
+    if buys:
+        rows = [
+            {
+                "sym": str(c.get("symbol", "")).upper(),
+                "note": f"score={c.get('score')} · {label}",
+                "dir": 1,
+            }
+            for c in buys[:12]
+        ]
+        emit_momentum(rows, label=label)
 
 
 def format_message(candidates: List[dict], label: str = "BFS Scan") -> str:
@@ -1270,7 +1637,7 @@ def format_message(candidates: List[dict], label: str = "BFS Scan") -> str:
             msg += "\n过滤原因分布:\n" + "".join(f" {k}: {v}\n" for k, v in sorted(LAST_REASON_COUNTS.items(), key=lambda x: -x[1]))
         else:
             msg += "（可能是数据源层失败，查看 dryrun_state/data_health.json 和 dryrun.log）"
-        return msg
+        return _append_rejection_digest(msg)
     now = dt.datetime.now(EST).strftime("%Y-%m-%d %H:%M:%S ET")
     msg = f"Aether Nexus {AETHER_VERSION} {label} ({now})\n\n"
     medals = ["1", "2", "3"]
@@ -1288,20 +1655,21 @@ def format_message(candidates: List[dict], label: str = "BFS Scan") -> str:
             f"{label_m}. {c['symbol']} — Score {c['score']} {' '.join(tags)}\n"
             f" Underlying ${c['underlying_price']} ({c.get('underlying_price_source')}) | Call {c['strike']} | {c['expiry']} ({c['dte']}d)\n"
             f" Δ={c['delta']} Γ/Θ={c['gamma_theta_ratio']} IV={c['iv']}({c['iv_source']}) HVrank={c.get('hv_rank')} IV/HV={c.get('iv_hv_ratio')}\n"
-            f" Bid/Ask ${c['bid']}/${c['ask']} | Vol {c['volume']} OI {c.get('open_interest','NA')} | Spread {c['spread_pct']:.2%}\n"
+            f" Bid/Ask ${c['bid']}/${c['ask']} | Vol {c['volume']} OI {'NA' if c.get('open_interest') is None else c.get('open_interest')} | Spread {c['spread_pct']:.2%}\n"
             f" Premium ${c['premium_dollars']} ({c['price_source']}) | Data {c.get('stock_data_provider')}/{c.get('option_data_provider')}\n"
             f" Score: L{sb.get('liquidity',0)} S{sb.get('spread',0)} D{sb.get('delta',0)} G{sb.get('gamma_theta',0)} V{sb.get('iv_value',0)} C{sb.get('catalyst',0)}\n\n"
         )
     msg += "---\nDry-run signal only | No order execution"
-    return msg
+    return _append_rejection_digest(msg)
 
 
 def format_pool_message(candidates: List[dict]) -> str:
     if not candidates:
-        return (
+        msg = (
             f"Aether Nexus {AETHER_VERSION}: Pool Scan — no candidates passed filters\n"
             f"Pool: {', '.join(POOL_SYMBOLS)}"
         )
+        return _append_rejection_digest(msg)
     now = dt.datetime.now(EST).strftime("%Y-%m-%d %H:%M:%S ET")
     msg = f"Aether Nexus {AETHER_VERSION} Pool Scan ({now})\n"
     msg += f"做T池 ({len(POOL_SYMBOLS)}): {', '.join(POOL_SYMBOLS)}\n\n"
@@ -1318,7 +1686,7 @@ def format_pool_message(candidates: List[dict]) -> str:
             f"D{sb.get('delta', 0)} G{sb.get('gamma_theta', 0)} V{sb.get('iv_value', 0)}\n\n"
         )
     msg += "---\nDry-run pool scan | No order execution"
-    return msg
+    return _append_rejection_digest(msg)
 
 
 def _format_candidate_block(c: dict, medal: str = "•") -> str:
@@ -1355,7 +1723,7 @@ def format_perilla_message(candidates: List[dict], failed: List[str], watchlist:
         msg += "未拉到数据 / Stage2 失败:\n"
         msg += ", ".join(failed) + "\n"
     msg += "---\nDry-run watchlist scan"
-    return msg
+    return _append_rejection_digest(msg)
 
 
 def format_buy_signal_reminder(buy_signals: List[dict], label: str = "买入信号") -> str:
@@ -1374,7 +1742,13 @@ _TRADING_DAY_CACHE: Dict[str, bool] = {}
 
 
 def is_trading_day(d: Optional[dt.date] = None) -> bool:
-    """R5.4.1: weekend gate always; Alpaca /v2/calendar holiday check when keys present."""
+    """R5.4.1: weekend gate always; Alpaca /v2/calendar holiday check when keys present.
+
+    H6: when Alpaca keys ARE present but the calendar request fails, default to
+    False (skip) instead of True — a transient calendar outage must not silently
+    turn a holiday into a scan day. When keys are absent entirely, fall back to
+    weekday-only (Mon-Fri open) since no calendar is reachable.
+    """
     d = d or dt.datetime.now(EST).date()
     if d.weekday() >= 5:
         return False
@@ -1382,12 +1756,21 @@ def is_trading_day(d: Optional[dt.date] = None) -> bool:
     if key in _TRADING_DAY_CACHE:
         return _TRADING_DAY_CACHE[key]
     headers = _alpaca_headers()
-    result = True  # default open on weekdays if calendar unavailable
-    if headers:
-        data = _request_json(f"{ALPACA_TRADING_BASE}/v2/calendar", headers=headers,
-                             params={"start": key, "end": key}, provider="alpaca", endpoint="calendar")
-        if data is not None:
-            result = any(entry.get("date") == key for entry in (data if isinstance(data, list) else []))
+    if not headers:
+        # No keys reachable — weekday-only gate (can't resolve holidays).
+        _TRADING_DAY_CACHE[key] = True
+        return True
+    # Keys present: ask the calendar. Failure → conservative skip (H6).
+    data = _request_json(f"{ALPACA_TRADING_BASE}/v2/calendar", headers=headers,
+                         params={"start": key, "end": key}, provider="alpaca", endpoint="calendar")
+    if data is None:
+        logger.warning(
+            "is_trading_day %s: Alpaca calendar request failed — conservative skip (not running on unverified day)",
+            key,
+        )
+        _TRADING_DAY_CACHE[key] = False
+        return False
+    result = any(entry.get("date") == key for entry in (data if isinstance(data, list) else []))
     _TRADING_DAY_CACHE[key] = result
     if not result:
         logger.info(f"{key} 非交易日，跳过扫描")
@@ -1520,8 +1903,18 @@ def daily_scan() -> None:
     if not is_trading_day():
         return
     logger.info("Scheduled BFS scan triggered (mode=%s)", SCAN_MODE)
-    candidates = run_sp500_scan()
-    send_telegram(format_message(candidates, label="BFS sp500 Scan"))
+    uni = get_sp500_universe()
+    uni_size = len(uni) if not uni.empty else 0
+    status = "integrity_fail" if uni.empty else "ok"
+    candidates = run_sp500_scan() if not uni.empty else []
+    msg = format_message(candidates, label="BFS sp500 Scan")
+    send_telegram(msg)
+    _publish_scan_to_app(
+        candidates,
+        label="BFS sp500",
+        universe_size=uni_size,
+        status=status,
+    )
     save_signals(candidates, scan_mode="sp500")
 
 
@@ -1530,7 +1923,14 @@ def pool_daily_scan() -> None:
         return
     logger.info("Scheduled pool scan triggered (%d symbols)", len(POOL_SYMBOLS))
     candidates = run_pool_scan()
-    send_telegram(format_pool_message(candidates))
+    msg = format_pool_message(candidates)
+    send_telegram(msg)
+    _publish_scan_to_app(
+        candidates,
+        label="Pool scan",
+        universe_size=len(POOL_SYMBOLS),
+        status="ok",
+    )
     save_pool_signals(candidates)
 
 
@@ -1539,11 +1939,26 @@ def perilla_daily_scan() -> None:
         return
     logger.info("Scheduled perilla scan triggered")
     candidates, failed, watchlist = run_perilla_scan()
-    send_telegram(format_perilla_message(candidates, failed, watchlist))
+    msg = format_perilla_message(candidates, failed, watchlist)
+    send_telegram(msg)
+    _publish_scan_to_app(
+        candidates,
+        label="Perilla",
+        universe_size=len(candidates) if candidates else None,
+        status="ok",
+    )
     buy_signals = [c for c in candidates if c.get("score", 0) >= WATCHLIST_BUY_SCORE_MIN]
     save_perilla_signals(candidates, failed, buy_signals)
     if buy_signals:
-        send_telegram(format_buy_signal_reminder(buy_signals, label="Watchlist 买入信号"))
+        reminder = format_buy_signal_reminder(buy_signals, label="Watchlist 买入信号")
+        send_telegram(reminder)
+        emit_momentum(
+            [
+                {"sym": str(c.get("symbol", "")).upper(), "note": f"买入信号 score={c.get('score')}", "dir": 1}
+                for c in buy_signals[:12]
+            ],
+            label="买入信号",
+        )
 
 
 def _reminder_time(scan_time: str, minutes_before: int) -> str:
