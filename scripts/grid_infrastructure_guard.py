@@ -67,9 +67,12 @@ def check_tree_changes(mode: str, *, base_ref: str = "origin/main") -> list[str]
         print(f"  manifest: {LOCK_PATH}", file=sys.stderr)
         return touched
     if touched and _unlocked():
-        print(f"WARN: frozen files changed with {UNLOCK_ENV}=1 — run update-lock before commit:")
+        want_map = lock.get("frozen_files") or {}
         for p in touched:
-            print(f"  - {p}")
+            staged = _staged_sha256(p)
+            want = want_map.get(p)
+            if staged is None or want is None or staged != want:
+                print(f"WARN: {p} staged sha256 ≠ manifest — run update-lock before commit (got={staged and staged[:12]} want={want and want[:12]})")
     return []
 
 
@@ -80,24 +83,37 @@ def _git_silent(*args: str) -> int:
     ).returncode
 
 
-def _staged_set() -> set[str]:
-    out = _git("diff", "--cached", "--name-only", "--diff-filter=ACMRT")
-    return {ln.strip() for ln in out.splitlines() if ln.strip()}
+def _staged_sha256(rel: str) -> str | None:
+    """sha256 of staged blob content (git show :<rel>); None if not staged."""
+    try:
+        content = subprocess.check_output(
+            ["git", "show", f":{rel}"], cwd=ROOT, stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        return None
+    return hashlib.sha256(content).hexdigest()
 
 
-def _frozen_dirty_reasons(rel: str, staged: set[str]) -> list[str]:
+def _frozen_dirty_reasons(rel: str, *, precommit: bool) -> list[str]:
+    """Reasons a frozen file is not boot-clean.
+
+    runtime 严(默认):对 HEAD 比 — staged 文件也算 dirty(防 add 后不 commit 就启动)。
+    precommit 松(--precommit):对 index 比 — staged 且 worktree==index 即 clean
+    (让冻结文件能 commit 通过,不撞鸡生蛋)。
+    """
     reasons: list[str] = []
     if _git_silent("ls-files", "--error-unmatch", rel) != 0:
         reasons.append("untracked")
-    if rel not in staged and _git_silent("diff", "--quiet", "HEAD", "--", rel) != 0:
+        return reasons
+    diff_args = ["diff", "--quiet", "--", rel] if precommit else ["diff", "--quiet", "HEAD", "--", rel]
+    if _git_silent(*diff_args) != 0:
         reasons.append("dirty")
     return reasons
 
 
-def verify_runtime(*, strict: bool = True) -> dict:
+def verify_runtime(*, strict: bool = True, precommit: bool = False) -> dict:
     lock = _load_lock()
     expected: dict[str, str] = lock.get("frozen_files") or {}
-    staged = _staged_set()
     drift: list[dict[str, str]] = []
     ok_count = 0
     for rel, want in expected.items():
@@ -106,10 +122,14 @@ def verify_runtime(*, strict: bool = True) -> dict:
             drift.append({"path": rel, "reason": "missing", "expected": want[:12]})
             print(f"FROZEN_DIRTY {rel} (missing)", file=sys.stderr)
             continue
-        reasons = _frozen_dirty_reasons(rel, staged)
+        reasons = _frozen_dirty_reasons(rel, precommit=precommit)
         if reasons:
             drift.append({"path": rel, "reason": "/".join(reasons), "expected": want[:12]})
             print(f"FROZEN_DIRTY {rel} ({'/'.join(reasons)})", file=sys.stderr)
+            continue
+        if precommit:
+            # precommit 模式只验 tracked+clean(vs index);hash 交给 redline hook + runtime boot
+            ok_count += 1
             continue
         got = _sha256(path)
         if got != want:
@@ -122,7 +142,7 @@ def verify_runtime(*, strict: bool = True) -> dict:
         else:
             ok_count += 1
     man_rel = str(LOCK_PATH.relative_to(ROOT))
-    man_reasons = _frozen_dirty_reasons(man_rel, staged)
+    man_reasons = _frozen_dirty_reasons(man_rel, precommit=precommit)
     if man_reasons:
         drift.append({"path": man_rel, "reason": "/".join(man_reasons)})
         print(f"FROZEN_DIRTY {man_rel} ({'/'.join(man_reasons)})", file=sys.stderr)
@@ -174,6 +194,8 @@ def main() -> None:
         choices=("check-staged", "check-diff", "verify-runtime", "update-lock", "snapshot"),
     )
     ap.add_argument("--base-ref", default="origin/main")
+    ap.add_argument("--precommit", action="store_true",
+                    help="pre-commit mode: compare frozen files to index (staged clean), not HEAD")
     args = ap.parse_args()
 
     if args.mode == "check-staged":
@@ -183,7 +205,7 @@ def main() -> None:
         bad = check_tree_changes("diff", base_ref=args.base_ref)
         raise SystemExit(1 if bad else 0)
     if args.mode == "verify-runtime":
-        verify_runtime(strict=True)
+        verify_runtime(strict=True, precommit=args.precommit)
         print("OK: runtime infrastructure lock verified")
     if args.mode == "update-lock":
         update_lock()
