@@ -12,7 +12,7 @@ SYSTEM="""You are a resident execution worker inside Grid.
 Return useful work, not roleplay.
 Never claim a tool ran unless the harness actually ran it.
 If you need cloud escalation, emit exactly one JSON object:
-{"action":"escalate","target":"glm|kimi","reason":"..."}
+{"action":"escalate","target":"fast|deep|full|research","reason":"..."}
 Do not invent tool results.
 """
 
@@ -341,17 +341,23 @@ class Supervisor:
 
     def _worker_for_route(self,route):
         if route==self.cfg.models.local_route:
-            return "qwen"
+            return "local"
+        if route==self.cfg.models.fast_route:
+            return "fast"
         if route==self.cfg.models.deep_route:
-            return "glm"
-        if route==self.cfg.models.multimodal_route:
-            return "kimi"
+            return "deep"
+        if route==self.cfg.models.full_route:
+            return "full"
+        if route==self.cfg.models.research_route:
+            return "research"
         raise ValueError(f"unknown model route: {route}")
 
     def _route_for(self,w):
-        if w=="qwen": return self.cfg.models.local_route
-        if w=="glm": return self.cfg.models.deep_route
-        if w=="kimi": return self.cfg.models.multimodal_route
+        if w=="local": return self.cfg.models.local_route
+        if w=="fast": return self.cfg.models.fast_route
+        if w=="deep": return self.cfg.models.deep_route
+        if w=="full": return self.cfg.models.full_route
+        if w=="research": return self.cfg.models.research_route
         raise ValueError(f"unknown worker: {w}")
 
     @staticmethod
@@ -360,5 +366,5 @@ class Supervisor:
         if not(s.startswith("{") and s.endswith("}")): return None
         try: o=json.loads(s)
         except Exception: return None
-        if o.get("action")!="escalate" or o.get("target") not in {"glm","kimi"}: return None
+        if o.get("action")!="escalate" or o.get("target") not in {"fast","deep","full","research"}: return None
         return {"target":o["target"],"reason":str(o.get("reason",""))}

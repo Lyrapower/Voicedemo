@@ -106,7 +106,7 @@ recent_turns_cap = 120
 estimator = "utf8_bytes_upper_bound"
 framing_reserve_tokens = 2048
 
-[context.qwen]
+[context.local]
 memory_domain = "local"
 max_context_tokens = 32768
 reserve_output_tokens = 8192
@@ -126,7 +126,7 @@ recent_turns_tokens = 14000
 recall_tokens = 10000
 recall_top_k = 16
 
-[context.glm]
+[context.fast]
 memory_domain = "cloud"
 max_context_tokens = 65536
 reserve_output_tokens = 8192
@@ -136,7 +136,27 @@ recent_turns_tokens = 18000
 recall_tokens = 14000
 recall_top_k = 20
 
-[context.kimi]
+[context.deep]
+memory_domain = "cloud"
+max_context_tokens = 65536
+reserve_output_tokens = 8192
+stable_core_tokens = 4000
+active_state_tokens = 5000
+recent_turns_tokens = 18000
+recall_tokens = 14000
+recall_top_k = 20
+
+[context.full]
+memory_domain = "cloud"
+max_context_tokens = 65536
+reserve_output_tokens = 8192
+stable_core_tokens = 4000
+active_state_tokens = 5000
+recent_turns_tokens = 18000
+recall_tokens = 14000
+recall_top_k = 20
+
+[context.research]
 memory_domain = "cloud"
 max_context_tokens = 65536
 reserve_output_tokens = 8192

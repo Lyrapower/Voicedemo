@@ -490,9 +490,9 @@ class ContextAssembler:
         except KeyError:
             return None
         agent_id=str(session.get("agent_id") or "")
-        if agent_id.startswith(("qwen","cc")):
+        if agent_id.startswith(("local","cc")):
             return "local"
-        if agent_id.startswith(("glm","kimi")):
+        if agent_id.startswith(("fast","deep","full","research")):
             return "cloud"
         return None
 

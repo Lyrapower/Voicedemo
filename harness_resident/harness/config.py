@@ -19,8 +19,10 @@ class CoreConfig:
 @dataclass(frozen=True)
 class ModelConfig:
     local_route: str
+    fast_route: str
     deep_route: str
-    multimodal_route: str
+    full_route: str
+    research_route: str
 
 
 @dataclass(frozen=True)
@@ -114,20 +116,26 @@ class ContextConfig:
     recent_turns_cap: int
     estimator: str
     framing_reserve_tokens: int
-    qwen: ContextProfileConfig
+    local: ContextProfileConfig
     cc: ContextProfileConfig
-    glm: ContextProfileConfig
-    kimi: ContextProfileConfig
+    fast: ContextProfileConfig
+    deep: ContextProfileConfig
+    full: ContextProfileConfig
+    research: ContextProfileConfig
 
     def profile(self, worker: str) -> ContextProfileConfig:
-        if worker == "qwen":
-            return self.qwen
+        if worker == "local":
+            return self.local
         if worker == "cc":
             return self.cc
-        if worker == "glm":
-            return self.glm
-        if worker == "kimi":
-            return self.kimi
+        if worker == "fast":
+            return self.fast
+        if worker == "deep":
+            return self.deep
+        if worker == "full":
+            return self.full
+        if worker == "research":
+            return self.research
         raise ValueError(f"unknown worker context profile: {worker}")
 
 
@@ -182,7 +190,7 @@ def load_config(path: str = "config.toml") -> Config:
     if ctx["estimator"] != "utf8_bytes_upper_bound":
         raise ValueError("V1.2 currently supports estimator=utf8_bytes_upper_bound")
 
-    for worker in ("qwen", "cc", "glm", "kimi"):
+    for worker in ("local", "cc", "fast", "deep", "full", "research"):
         p = _context_profile(ctx[worker])
         available = p.max_context_tokens - p.reserve_output_tokens - ctx["framing_reserve_tokens"]
         if available <= 0:
@@ -245,10 +253,12 @@ def load_config(path: str = "config.toml") -> Config:
             recent_turns_cap=ctx["recent_turns_cap"],
             estimator=ctx["estimator"],
             framing_reserve_tokens=ctx["framing_reserve_tokens"],
-            qwen=_context_profile(ctx["qwen"]),
+            local=_context_profile(ctx["local"]),
             cc=_context_profile(ctx["cc"]),
-            glm=_context_profile(ctx["glm"]),
-            kimi=_context_profile(ctx["kimi"]),
+            fast=_context_profile(ctx["fast"]),
+            deep=_context_profile(ctx["deep"]),
+            full=_context_profile(ctx["full"]),
+            research=_context_profile(ctx["research"]),
         ),
     )
 

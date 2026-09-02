@@ -42,12 +42,12 @@ def offline():
     g = ns["_gate_reason"]
     ok("S1a cc default gated", g("cc", False, "write_ok_no_deploy") is not None)
     ok("S1b cc gated even with cloud flag", g("cc", True, "write_ok_no_deploy") is not None)
-    ok("S3a glm unapproved gated", g("glm", False, "write_ok_no_deploy") is not None)
-    ok("S3b kimi auto!=cloud grant", g("kimi", False, "auto") is not None)
-    ok("S4a glm explicit allowed", g("glm", True, "write_ok_no_deploy") is None)
-    ok("S4b qwen ungated", g("qwen", False, "write_ok_no_deploy") is None)
+    ok("S3a fast unapproved gated", g("fast", False, "write_ok_no_deploy") is not None)
+    ok("S3b fast auto!=cloud grant", g("fast", False, "auto") is not None)
+    ok("S4a fast explicit allowed", g("fast", True, "write_ok_no_deploy") is None)
+    ok("S4b local ungated", g("local", False, "write_ok_no_deploy") is None)
     ok("S3c no silent self-grant left",
-       'if worker in {"glm","kimi"}: ca=True' not in src)
+       'if worker in {"fast","deep","full","research"}: ca=True' not in src)
 
     # S1/S2 state machine at the claim point (the executor only ever sees
     # jobs that claim_next_queued releases — blocked must be invisible).

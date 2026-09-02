@@ -9,9 +9,9 @@ with TestClient(api.app) as c:
     assert r.status_code==200
     sessions=r.json()
     ids={x["agent_id"] for x in sessions}
-    assert {"qwen-main","cc-main","glm-on-demand","kimi-on-demand"} <= ids
+    assert {"local-main","cc-main","fast-on-demand","deep-on-demand","full-on-demand","research-on-demand"} <= ids
 
-    q=next(x for x in sessions if x["agent_id"]=="qwen-main")
+    q=next(x for x in sessions if x["agent_id"]=="local-main")
     sid=q["session_id"]
     r=c.post(f"/sessions/{sid}/message",json={"text":"hello durable thread","spawn_job":False})
     assert r.status_code==200

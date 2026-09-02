@@ -4,10 +4,12 @@ from typing import Any
 from .db import Store
 
 DEFAULT_AGENT_SESSIONS = {
-    "qwen-main":"Qwen Resident",
+    "local-main":"Local Resident",
     "cc-main":"Claude Code",
-    "glm-on-demand":"GLM · on demand",
-    "kimi-on-demand":"Kimi · on demand",
+    "fast-on-demand":"Fast · on demand",
+    "deep-on-demand":"Deep · on demand",
+    "full-on-demand":"Full · on demand",
+    "research-on-demand":"Research · on demand",
 }
 
 class SessionManager:

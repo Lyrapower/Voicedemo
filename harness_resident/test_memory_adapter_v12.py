@@ -44,7 +44,7 @@ async def run():
     # gateway_owned means no duplicate external write.
     wr=await domain.write_turn(
         session_id="S1",role="user",content="x",
-        source_surface="grid",worker="qwen"
+        source_surface="grid",worker="local"
     )
     assert wr["attempted"] is False
     assert wr["mode"]=="gateway_owned"

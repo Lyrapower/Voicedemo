@@ -12,7 +12,7 @@ from harness.context import ContextAssembler
 
 async def main():
     p=argparse.ArgumentParser(description="Probe V1.2 four-layer context without sending a model request.")
-    p.add_argument("--worker",choices=["qwen","cc","glm","kimi"],default=None)
+    p.add_argument("--worker",choices=["local","cc","fast","deep","full","research"],default=None)
     p.add_argument("--session",default=None)
     p.add_argument("--query",default="Grid V1.2 context probe")
     p.add_argument("--include-content",action="store_true")
@@ -22,7 +22,7 @@ async def main():
     store=Store(cfg.core.db_path)
     memories=MemoryRouter(cfg)
     assembler=ContextAssembler(cfg,store,memories)
-    workers=[args.worker] if args.worker else ["qwen","cc","glm","kimi"]
+    workers=[args.worker] if args.worker else ["local","cc","fast","deep","full","research"]
 
     try:
         for worker in workers:

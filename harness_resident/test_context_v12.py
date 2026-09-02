@@ -58,7 +58,7 @@ async def run():
 
     with tempfile.TemporaryDirectory() as td:
         store=Store(str(Path(td)/"ctx.db"))
-        sess=store.create_session(agent_id="qwen-main",channel="grid",title="q")
+        sess=store.create_session(agent_id="local-main",channel="grid",title="q")
         sid=sess["session_id"]
         store.append_message(sid,"user","older user")
         store.append_message(sid,"assistant","older assistant")
@@ -66,7 +66,7 @@ async def run():
 
         asm=ContextAssembler(cfg,store,FakeRouter(cfg))
 
-        q=await asm.build(worker="qwen",session_id=sid,current_turn="current question",job=None)
+        q=await asm.build(worker="local",session_id=sid,current_turn="current question",job=None)
         assert q.memory_domain=="local"
         assert q.stable_core.content=="LOCAL-STABLE"
         assert q.active_state.memory_ids==["local-active"]
@@ -75,8 +75,8 @@ async def run():
         assert set(q.recall.memory_ids)<= {"local-r1","local-r2"}
         assert "local-r1" in q.receipt()["layers"]["recall"]["memory_ids"]
 
-        g=await asm.build(worker="glm",session_id=sid,current_turn="current question",job={
-            "job_id":"J-cloud","goal":"current question","status":"running","worker":"qwen",
+        g=await asm.build(worker="fast",session_id=sid,current_turn="current question",job={
+            "job_id":"J-cloud","goal":"current question","status":"running","worker":"local",
             "allowed_tools":["read","shell"],"allowed_paths":["/private/project"],
             "approval_mode":"no_deploy","cloud_allowed":True,"last_step":"handoff"
         })
@@ -90,12 +90,12 @@ async def run():
         assert "/private/project" not in g.active_state.content
 
         # Direct cloud thread keeps its own recent cloud continuity.
-        cloud_s=store.create_session(agent_id="glm-on-demand",channel="grid",title="glm")
+        cloud_s=store.create_session(agent_id="fast-on-demand",channel="grid",title="fast")
         cloud_sid=cloud_s["session_id"]
         store.append_message(cloud_sid,"user","cloud previous")
         store.append_message(cloud_sid,"assistant","cloud answer")
         store.append_message(cloud_sid,"user","cloud current")
-        gd=await asm.build(worker="glm",session_id=cloud_sid,current_turn="cloud current",job=None)
+        gd=await asm.build(worker="fast",session_id=cloud_sid,current_turn="cloud current",job=None)
         assert gd.session_domain=="cloud"
         assert gd.cross_domain_handoff is False
         assert [m["content"] for m in gd.recent_turns]==["cloud previous","cloud answer"]
@@ -115,19 +115,19 @@ async def run():
         assert fitted.truncated is True
 
         # Stable core is protected from silent truncation.
-        tiny_profile=replace(cfg.context.qwen,stable_core_tokens=1)
-        tiny_ctx=replace(cfg.context,qwen=tiny_profile)
+        tiny_profile=replace(cfg.context.local,stable_core_tokens=1)
+        tiny_ctx=replace(cfg.context,local=tiny_profile)
         tiny_cfg=replace(cfg,context=tiny_ctx)
         tiny_asm=ContextAssembler(tiny_cfg,store,FakeRouter(tiny_cfg))
         failed=False
         try:
-            await tiny_asm.build(worker="qwen",session_id=sid,current_turn="x",job=None)
+            await tiny_asm.build(worker="local",session_id=sid,current_turn="x",job=None)
         except ContextBudgetError:
             failed=True
         assert failed
 
         # Context hash is deterministic for identical state.
-        q2=await asm.build(worker="qwen",session_id=sid,current_turn="current question",job=None)
+        q2=await asm.build(worker="local",session_id=sid,current_turn="current question",job=None)
         assert q.context_hash==q2.context_hash
 
     print("CONTEXT V1.2 PASS")

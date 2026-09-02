@@ -29,7 +29,7 @@ stale_task=None
 class JobCreate(BaseModel):
     channel:str="grid"
     goal:str=Field(min_length=1)
-    worker:Literal["qwen","glm","kimi","cc"]="qwen"
+    worker:Literal["local","fast","deep","full","research","cc"]="local"
     allowed_tools:list[str]=Field(default_factory=list)
     allowed_paths:list[str]=Field(default_factory=lambda:["."])
     cloud_allowed:bool|None=None
@@ -53,25 +53,27 @@ class Decision(BaseModel):
 class VoiceEvent(BaseModel):
     transcript:str
     channel:str="voice"
-    target:Literal["qwen","glm","kimi","cc"]="qwen"
+    target:Literal["local","fast","deep","full","research","cc"]="local"
     cloud_allowed:bool|None=None
 
 def worker_for_agent(agent_id:str)->str:
-    if agent_id.startswith("qwen"): return "qwen"
+    if agent_id.startswith("local"): return "local"
     if agent_id.startswith("cc"): return "cc"
-    if agent_id.startswith("glm"): return "glm"
-    if agent_id.startswith("kimi"): return "kimi"
+    if agent_id.startswith("fast"): return "fast"
+    if agent_id.startswith("deep"): return "deep"
+    if agent_id.startswith("full"): return "full"
+    if agent_id.startswith("research"): return "research"
     raise HTTPException(400,f"unknown agent_id: {agent_id}")
 
 def _gate_reason(worker:str,cloud_allowed:bool,approval_mode:str)->str|None:
     """v1.3 执行门。危险操作默认回审批(设计 v1 链路隔离第 2 条):
     - cc = 本机任意代码执行,除非调用方显式 approval_mode="auto"(须过鉴权),一律先 blocked;
-    - glm/kimi 直连云,cloud_allowed 未显式 true 一律先 blocked(与升级路径同一条门,
-      不再有免检通道;v1.2 的 if worker in {glm,kimi}: ca=True 三处静默放行已全部拆除)。
+    - fast/deep/full/research 直连云,cloud_allowed 未显式 true 一律先 blocked(与升级路径同一条门,
+      不再有免检通道;v1.2 的 if worker in {fast,deep,full,research}: ca=True 三处静默放行已全部拆除)。
     审批复用现有流:approve/resume 按钮或 POST /jobs/{id}/requeue。"""
     if worker=="cc" and approval_mode!="auto":
         return "cc execution requires approval"
-    if worker in {"glm","kimi"} and not cloud_allowed:
+    if worker in {"fast","deep","full","research"} and not cloud_allowed:
         return "cloud worker requires approval or explicit cloud_allowed=true"
     return None
 
@@ -237,10 +239,12 @@ async def health():
             "subject_id": cfg.memory.subject_id,
             "strict_domain_isolation": cfg.memory.strict_domain_isolation,
             "worker_domains": {
-                "qwen": cfg.context.qwen.memory_domain,
+                "local": cfg.context.local.memory_domain,
                 "cc": cfg.context.cc.memory_domain,
-                "glm": cfg.context.glm.memory_domain,
-                "kimi": cfg.context.kimi.memory_domain,
+                "fast": cfg.context.fast.memory_domain,
+                "deep": cfg.context.deep.memory_domain,
+                "full": cfg.context.full.memory_domain,
+                "research": cfg.context.research.memory_domain,
             },
         },
     }
@@ -304,7 +308,7 @@ async def session_message(session_id:str,body:SessionMessage):
 @app.get("/sessions/{session_id}/context-preview")
 async def context_preview(
     session_id:str,
-    worker:Literal["qwen","cc","glm","kimi"]|None=None,
+    worker:Literal["local","cc","fast","deep","full","research"]|None=None,
     query:str="",
     include_content:bool=False,
 ):
@@ -357,7 +361,7 @@ async def ws_events(ws:WebSocket,after_seq:int=0,session_id:str|None=None):
 
 @app.post("/events/voice")
 async def voice_event(body:VoiceEvent):
-    agent_id={"qwen":"qwen-main","cc":"cc-main","glm":"glm-ephemeral","kimi":"kimi-ephemeral"}[body.target]
+    agent_id={"local":"local-main","cc":"cc-main","fast":"fast-on-demand","deep":"deep-on-demand","full":"full-on-demand","research":"research-on-demand"}[body.target]
     s=sessions.create(agent_id,channel=body.channel,title=f"voice:{body.target}")
     msg=SessionMessage(text=body.transcript,spawn_job=True,cloud_allowed=body.cloud_allowed)
     return await session_message(s["session_id"],msg)
