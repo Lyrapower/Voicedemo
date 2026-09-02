@@ -111,6 +111,9 @@ def propose_factor(idea: str, *, test: bool = False, budget_hint: str = "std") -
                 test=test,
             )
             c.commit()
+            _dup_orig = dup.get("match_id")
+            _dup_proposer = resp.get("substrate") or "grid-extended"
+            FL.record_dead_proposal(code, name, "llm", _dup_proposer, reason=f"dup of draft {_dup_orig}")
             return {
                 "draft_id": draft_id,
                 "name": name,
