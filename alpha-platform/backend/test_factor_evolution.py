@@ -212,7 +212,7 @@ class EvolveSmokeTest(unittest.TestCase):
         importlib.reload(factory_pipeline)
         with patch("factory_pipeline.factory_task", side_effect=self._stub_factory_task):
             with patch("factory_pipeline.factor_sandbox.run_factor_review",
-                       return_value={"ic": 0.05, "ir": 0.4, "n_obs": 80, "symbols": 2}):
+                       return_value=({"ic": 0.05, "ir": 0.4, "n_obs": 80, "symbols": 2}, None)):
                 # 第一轮:无 trajectory → propose(bandit 选向)
                 res = factory_pipeline.evolve_factor(test=True)
                 self.assertEqual(res["status"], "draft")
@@ -341,7 +341,7 @@ class EvolveLoopTest(unittest.TestCase):
         round_logs = []
         with patch("factory_pipeline.factory_task", side_effect=self._stub_factory_task):
             with patch("factory_pipeline.factor_sandbox.run_factor_review",
-                       return_value={"ic": 0.05, "ir": 0.4, "n_obs": 80, "symbols": 2}):
+                       return_value=({"ic": 0.05, "ir": 0.4, "n_obs": 80, "symbols": 2}, None)):
                 summary = factory_pipeline.evolve_loop(
                     rounds=15, test=True, poll_timeout=10.0,
                     on_round=lambda i, info: round_logs.append(info),

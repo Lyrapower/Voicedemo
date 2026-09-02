@@ -319,7 +319,7 @@ def _run_review_job(job_id: int, draft_id: int, *, code_source_override: str | N
         watchlist = db.resolve_watchlist()
         db_path = db.DB_PATH
         try:
-            metrics = factor_sandbox.run_factor_review(code, db_path, watchlist)
+            metrics, _work = factor_sandbox.run_factor_review(code, db_path, watchlist, return_frame=True)
             db.job_event(c, job_id, 70.0, "metrics_done", {"draft_id": draft_id, "metrics_keys": list(metrics.keys())})
             c.commit()
         except SandboxError as exc:
@@ -446,6 +446,9 @@ def _run_review_job(job_id: int, draft_id: int, *, code_source_override: str | N
         review_id = rev.lastrowid
         if lineage_id is not None:
             FL.record_sandbox(lineage_id, True, f"factor_reviews:{review_id}", "")
+            import ic_eval_v1_1 as IE
+            _s = IE.evaluate_frame(_work, horizon=5)
+            IE.write_lineage(_s, lineage_id, f"factor_reviews:{review_id}", *IE.auto_verdict(_s))
         record_glm_lane_stat(
             c,
             review_id=review_id,
