@@ -228,6 +228,7 @@ def evolve_factor(*, direction: str | None = None, test: bool = False, budget_hi
     try:
         db.assert_db_writer("evolve_factor")
         ensure_l0_schema(c)
+        _ensure_lineage_column(c)
         dup = factor_dedup.check_duplicate_or_none(c, code)
         if dup and dup.get("match_id"):
             draft_id = factor_dedup.record_dup_rejected(
@@ -261,6 +262,32 @@ def evolve_factor(*, direction: str | None = None, test: bool = False, budget_hi
         )
         draft_id = cur.lastrowid
         c.commit()
+        # lineage 接入(接入点 1 同段):origin=_evolve_origin。
+        # parent_ids 需 FL factor id(非 trajectory id)——FL.lineage 按 parent_ids 递归
+        # SELECT * FROM factors WHERE id=?,trajectory id 解析不到祖先。故从
+        # decision.parent_id(trajectory id)→ factor_trajectories.draft_id →
+        # factor_drafts.lineage_id 解析(砥要「dashboard 链能显示祖先」)。
+        # decision.origin ∈ {mutation,crossover,propose};FL ORIGINS 不含 "propose"
+        # (fresh direction 走 LLM)→映射 "propose"→"llm"。
+        _origin = _evolve_origin(meta_json) or "llm"
+        if _origin == "propose":
+            _origin = "llm"
+        _parents: list[int] = []
+        for _traj_id in (decision.parent_id, decision.crossover_parent_b):
+            if _traj_id is None:
+                continue
+            _t = c.execute("SELECT draft_id FROM factor_trajectories WHERE id=?", (_traj_id,)).fetchone()
+            if _t and _t[0]:
+                _dl = c.execute("SELECT lineage_id FROM factor_drafts WHERE id=?", (_t[0],)).fetchone()
+                if _dl and _dl[0] is not None:
+                    _parents.append(int(_dl[0]))
+        _proposer = resp.get("substrate") or "grid-extended"
+        if (hypothesis or "").strip():
+            lineage_id = FL.propose(code, name, _origin, _parents, _proposer, hypothesis, notes=f"draft_id={draft_id}")
+        else:
+            lineage_id = FL.record_dead_proposal(code, name, _origin, _proposer)
+        c.execute("UPDATE factor_drafts SET lineage_id=? WHERE id=?", (lineage_id, draft_id))
+        c.commit()
     finally:
         c.close()
     return {
@@ -268,6 +295,7 @@ def evolve_factor(*, direction: str | None = None, test: bool = False, budget_hi
         "substrate": resp.get("substrate"), "trace_id": resp.get("trace_id"), "hypothesis": hypothesis,
         "origin": decision.origin, "direction": decision.direction,
         "parent_id": decision.parent_id, "crossover_parent_b": decision.crossover_parent_b,
+        "lineage_id": lineage_id,
     }
 
 
