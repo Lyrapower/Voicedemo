@@ -5,7 +5,7 @@ import json
 import re
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 
 import db
 import factor_dedup
@@ -615,3 +615,98 @@ def decide_proposal(proposal_id: int, decision: str) -> dict[str, Any]:
     finally:
         c.close()
     return {"proposal_id": proposal_id, "status": new_st, "draft_id": draft_id}
+
+
+def _poll_job_done(job_id: int, *, timeout: float = 120.0, interval: float = 0.3) -> str:
+    """轮询 jobs 表直到 status=done 或超时;返回最终 status(done/running/timeout)。"""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        jc = db.conn_jobs()
+        try:
+            row = jc.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+        finally:
+            jc.close()
+        if row and row[0] == "done":
+            return "done"
+        time.sleep(interval)
+    return "timeout"
+
+
+def evolve_loop(*, rounds: int = 15, test: bool = False, budget_hint: str = "std",
+                poll_timeout: float = 120.0, mutation_first: bool = True,
+                on_round: Callable[[int, dict[str, Any]], None] | None = None) -> dict[str, Any]:
+    """自动进化 N 轮(QuantaAlpha 风格固定轮次循环)。
+    每轮:evolve_factor → start_review → 轮询 review 完成 → trajectory 自动落表(_run_review_job 末尾记)。
+    返回汇总:各 outcome 计数、best reward/direction、lineage 深度。
+    不破沙箱主权 + GLM 编译闸(进化层只产 draft,落盘走既有 review→proposal 链)。"""
+    from collections import Counter
+    outcomes: Counter = Counter()
+    best_reward = 0.0
+    best_direction: str | None = None
+    best_traj_id: int | None = None
+    last_draft_id: int | None = None
+    for i in range(rounds):
+        try:
+            res = evolve_factor(test=test, budget_hint=budget_hint, mutation_first=mutation_first)
+        except FactoryGridError as exc:
+            outcomes["factory_error"] += 1
+            if on_round:
+                on_round(i, {"round": i, "status": "factory_error", "error": str(exc)[:200]})
+            continue
+        last_draft_id = res.get("draft_id")
+        origin = res.get("origin", "propose")
+        direction = res.get("direction")
+        if res.get("dup_rejected"):
+            outcomes["dup_rejected"] += 1
+            if on_round:
+                on_round(i, {"round": i, "status": "dup_rejected", "origin": origin, "direction": direction})
+            continue
+        # 跑 review(异步线程)
+        job_id = start_review(last_draft_id)
+        status = _poll_job_done(job_id, timeout=poll_timeout)
+        if status != "done":
+            outcomes["review_timeout"] += 1
+            if on_round:
+                on_round(i, {"round": i, "status": "review_timeout", "draft_id": last_draft_id, "origin": origin})
+            continue
+        # 从 trajectory 表读本轮结果(_run_review_job 已落表)
+        c = db.conn_factory()
+        try:
+            factor_evolution.ensure_trajectory_schema(c)
+            row = c.execute(
+                "SELECT id, outcome, reward, direction FROM factor_trajectories "
+                "WHERE draft_id=? ORDER BY id DESC LIMIT 1", (last_draft_id,)
+            ).fetchone()
+        finally:
+            c.close()
+        if not row:
+            outcomes["no_trajectory"] += 1
+            continue
+        traj_id, outcome, reward, traj_dir = row
+        outcomes[outcome] += 1
+        if (reward or 0) > best_reward:
+            best_reward = float(reward or 0)
+            best_direction = traj_dir or direction
+            best_traj_id = traj_id
+        if on_round:
+            on_round(i, {"round": i, "status": outcome, "draft_id": last_draft_id,
+                         "traj_id": traj_id, "origin": origin, "direction": traj_dir or direction,
+                         "reward": reward})
+    # lineage 深度(追最近一条 trajectory 的 parent 链)
+    lineage_depth = 0
+    if best_traj_id is not None:
+        c = db.conn_factory()
+        try:
+            factor_evolution.ensure_trajectory_schema(c)
+            lineage_depth = len(factor_evolution.trajectory_lineage(c, best_traj_id))
+        finally:
+            c.close()
+    return {
+        "rounds": rounds,
+        "outcomes": dict(outcomes),
+        "best_reward": round(best_reward, 6),
+        "best_direction": best_direction,
+        "best_traj_id": best_traj_id,
+        "lineage_depth": lineage_depth,
+        "last_draft_id": last_draft_id,
+    }

@@ -295,5 +295,79 @@ class EvolveSmokeTest(unittest.TestCase):
         self.assertNotIn("hypothesis", metrics)  # LLM 的 hypothesis 不该进 metrics
 
 
+class EvolveLoopTest(unittest.TestCase):
+    """evolve_loop(rounds=N) 自动循环:stub LLM + 沙箱,跑 15 轮,验 trajectory 落表 + 汇总。"""
+
+    def setUp(self):
+        self.db_path = _fresh_db()
+        import importlib
+        import db
+        importlib.reload(db)
+        c = db.conn()
+        syms = ["AAPL", "MSFT"]
+        base_ts = 1700000000
+        rows = []
+        for sym in syms:
+            for i in range(40):
+                rows.append((base_ts + i * 60, sym, 100 + i * 0.1, 101 + i * 0.1, 99 + i * 0.1, 100.5 + i * 0.1, 1000 + i))
+        c.executemany("INSERT INTO bars(ts, symbol, o, h, l, c, v) VALUES(?,?,?,?,?,?,?)", rows)
+        c.commit()
+        c.close()
+        self._orig_watchlist = os.getenv("WATCHLIST")
+        os.environ["WATCHLIST"] = "AAPL,MSFT"
+
+    def tearDown(self):
+        os.unlink(self.db_path)
+        os.environ.pop("PLATFORM_DB", None)
+        if self._orig_watchlist is not None:
+            os.environ["WATCHLIST"] = self._orig_watchlist
+        else:
+            os.environ.pop("WATCHLIST", None)
+
+    def _stub_factory_task(self, kind, payload, budget_hint="std", trace_id=None):
+        return {
+            "ok": True,
+            "code": "def factor(df):\n    return df.groupby('symbol')['c'].pct_change(5).reset_index(level=0, drop=True)",
+            "hypothesis": "stub 假设:%s" % kind,
+            "route": "stub",
+            "trace_id": "stub-trace",
+            "substrate": "stub",
+        }
+
+    def test_evolve_loop_15_rounds(self):
+        import importlib
+        import factory_pipeline
+        importlib.reload(factory_pipeline)
+        round_logs = []
+        with patch("factory_pipeline.factory_task", side_effect=self._stub_factory_task):
+            with patch("factory_pipeline.factor_sandbox.run_factor_review",
+                       return_value={"ic": 0.05, "ir": 0.4, "n_obs": 80, "symbols": 2}):
+                summary = factory_pipeline.evolve_loop(
+                    rounds=15, test=True, poll_timeout=10.0,
+                    on_round=lambda i, info: round_logs.append(info),
+                )
+        self.assertEqual(summary["rounds"], 15)
+        self.assertEqual(len(round_logs), 15, "on_round 应被调 15 次")
+        outcomes = summary["outcomes"]
+        self.assertGreater(sum(outcomes.get(k, 0) for k in ("passed", "quarantine", "rejected")), 0)
+        self.assertGreater(summary["best_reward"], 0)
+        self.assertIsNotNone(summary["best_direction"])
+        self.assertGreaterEqual(summary["lineage_depth"], 1)
+
+    def test_evolve_loop_handles_factory_error(self):
+        """factory_task 抛错 → 记 factory_error,不崩,继续下一轮。"""
+        import importlib
+        import factory_pipeline
+        importlib.reload(factory_pipeline)
+
+        def flaky_task(kind, payload, budget_hint="std", trace_id=None):
+            raise factory_pipeline.FactoryGridError("stub 槽满")
+
+        with patch("factory_pipeline.factory_task", side_effect=flaky_task):
+            summary = factory_pipeline.evolve_loop(rounds=3, test=True, poll_timeout=5.0)
+        self.assertEqual(summary["outcomes"].get("factory_error"), 3)
+        self.assertEqual(summary["best_reward"], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
