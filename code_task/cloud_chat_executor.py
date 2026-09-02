@@ -188,12 +188,12 @@ async def execute_cloud_chat(
     parse_tool_calls, strip_tool_calls, _MAX_TOOL_CALLS = _load_store_tools()
     tool_rounds_done = 0
 
-    async def _one_post(client, ollama_messages, think, *, temp=None):
+    async def _one_post(client, ollama_messages, think, *, temp=None, predict_override=None):
         # 单次上游 POST → (content, done, upstream_model, raw_usage, thinking) 或抛
         r = await client.post(
             endpoint,
             json=chat_payload(
-                ollama_messages, model=model, max_tokens=predict,
+                ollama_messages, model=model, max_tokens=predict_override or predict,
                 temperature=float(temp if temp is not None else temperature), think=think,
             ),
         )
@@ -276,7 +276,10 @@ async def execute_cloud_chat(
                                     {"role": "user", "content": "\n\n".join(results) + "\n\n基于以上原文作答,别再发工具调用除非确实还需要查。"},
                                 ]
                                 try:
-                                    cur_content, done, upstream_model, thinking = await _one_post(client, cur_msgs, False)
+                                    # 工具循环=贴原文的长回复 → glm53 给 12288(聊天 8192 / 工具 12288)
+                                    tool_predict = 12288 if is_glm53_lane(substrate, model) else None
+                                    cur_content, done, upstream_model, thinking = await _one_post(
+                                        client, cur_msgs, False, predict_override=tool_predict)
                                     last_done, last_model = done, upstream_model
                                     last_meta = _thinking_meta(thinking)
                                 except Exception:
