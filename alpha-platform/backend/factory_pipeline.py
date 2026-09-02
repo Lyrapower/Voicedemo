@@ -11,6 +11,7 @@ import db
 import factor_dedup
 import factor_sandbox
 import factor_evolution
+import factor_lineage_v1_1 as FL
 import l0_runner
 from l0_runner import (
     CODE_SOURCE_GLM,
@@ -43,6 +44,14 @@ def _extract_name(code: str, hypothesis: str) -> str:
     if m:
         return m.group(1).strip()[:80]
     return (hypothesis or "factor")[:40].strip() or "factor"
+
+
+def _ensure_lineage_column(c) -> None:
+    """幂等加 factor_drafts.lineage_id(ALTER 非幂等,PRAGMA guard)。"""
+    cols = {r[1] for r in c.execute("PRAGMA table_info(factor_drafts)")}
+    if "lineage_id" not in cols:
+        c.execute("ALTER TABLE factor_drafts ADD COLUMN lineage_id INTEGER")
+        c.commit()
 
 
 def propose_factor(idea: str, *, test: bool = False, budget_hint: str = "std") -> dict[str, Any]:
@@ -86,6 +95,7 @@ def propose_factor(idea: str, *, test: bool = False, budget_hint: str = "std") -
     try:
         db.assert_db_writer("propose_factor")
         ensure_l0_schema(c)
+        _ensure_lineage_column(c)
         dup = factor_dedup.check_duplicate_or_none(c, code)
         if dup and dup.get("match_id"):
             draft_id = factor_dedup.record_dup_rejected(
@@ -140,6 +150,14 @@ def propose_factor(idea: str, *, test: bool = False, budget_hint: str = "std") -
             ),
         )
         draft_id = cur.lastrowid
+        _origin = _evolve_origin(meta_json) or "llm"
+        _parents = _evolve_parent(meta_json) or []
+        _proposer = resp.get("substrate") or "grid-extended"
+        if (hypothesis or "").strip():
+            lineage_id = FL.propose(code, name, _origin, _parents, _proposer, hypothesis, notes=f"draft_id={draft_id}")
+        else:
+            lineage_id = FL.record_dead_proposal(code, name, _origin, _proposer)
+        c.execute("UPDATE factor_drafts SET lineage_id=? WHERE id=?", (lineage_id, draft_id))
         c.commit()
     finally:
         c.close()
@@ -277,14 +295,15 @@ def _run_review_job(job_id: int, draft_id: int, *, code_source_override: str | N
     try:
         db.assert_db_writer("_run_review_job")
         ensure_l0_schema(c)
+        _ensure_lineage_column(c)
         row = c.execute(
-            "SELECT name, code, hypothesis, test, meta FROM factor_drafts WHERE id=?", (draft_id,)
+            "SELECT name, code, hypothesis, test, meta, lineage_id FROM factor_drafts WHERE id=?", (draft_id,)
         ).fetchone()
         if not row:
             db.job_event(c, job_id, 100.0, "error", {"detail": "draft not found"})
             c.commit()
             return
-        name, code, hypothesis, is_test, meta_raw = row
+        name, code, hypothesis, is_test, meta_raw, lineage_id = row
         code_source = code_source_override or resolve_code_source(code=code, meta_raw=meta_raw)
         lane = LANE_GLM if code_source == CODE_SOURCE_GLM else LANE_PIPELINE_SMOKE
         c.execute("UPDATE factor_drafts SET status='reviewing' WHERE id=?", (draft_id,))
@@ -307,7 +326,7 @@ def _run_review_job(job_id: int, draft_id: int, *, code_source_override: str | N
             err = str(exc)
             glm_original = l0_runner.glm_code_original(meta_raw) or code
             reject_detail = capture_sandbox_rejection(glm_original, db_path, watchlist)
-            write_rejection_record(
+            _p = write_rejection_record(
                 draft_id=draft_id,
                 review_id=None,
                 glm_code=glm_original,
@@ -315,6 +334,8 @@ def _run_review_job(job_id: int, draft_id: int, *, code_source_override: str | N
                 rejection_detail=reject_detail,
                 note="L0 sandbox rejection during review",
             )
+            if lineage_id is not None:
+                FL.record_sandbox(lineage_id, False, str(_p), err)
             now = int(time.time())
             # Track consecutive L0 fails on this draft (for escalate_intent on next propose).
             try:
@@ -423,6 +444,8 @@ def _run_review_job(job_id: int, draft_id: int, *, code_source_override: str | N
             ),
         )
         review_id = rev.lastrowid
+        if lineage_id is not None:
+            FL.record_sandbox(lineage_id, True, f"factor_reviews:{review_id}", "")
         record_glm_lane_stat(
             c,
             review_id=review_id,
