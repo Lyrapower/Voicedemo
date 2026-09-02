@@ -1,0 +1,87 @@
+from __future__ import annotations
+import asyncio, json
+from pathlib import Path
+from typing import Any
+from .config import Config
+
+
+# Claude Code 内建工具全集(v1.3.1 快照,deny-by-default 的分母;升级 CC 后核一次)
+CC_TOOL_UNIVERSE={"Task","Bash","BashOutput","KillShell","Glob","Grep","Read","Edit",
+                  "MultiEdit","Write","NotebookEdit","WebFetch","WebSearch","TodoWrite",
+                  "SlashCommand","Skill"}
+
+class CCExecutor:
+    def __init__(self,cfg:Config):
+        self.cfg=cfg
+        self.root=Path(cfg.cc.work_root)
+        self.root.mkdir(parents=True,exist_ok=True)
+
+    async def run(self,job:dict[str,Any],context_pack=None):
+        if not self.cfg.cc.enabled:
+            return {"ok":False,"error":"Claude Code disabled"}
+        jd=self.root/job["job_id"]; jd.mkdir(parents=True,exist_ok=True)
+        (jd/"TASK.md").write_text(f"# Task\n\n{job['goal']}\n",encoding="utf-8")
+        context_json={
+          "job_id":job["job_id"],
+          "allowed_tools":job["allowed_tools"],
+          "allowed_paths":job["allowed_paths"],
+          "approval_mode":job["approval_mode"],
+        }
+        if context_pack is not None:
+            context_json["context_receipt"]=context_pack.receipt()
+        (jd/"CONTEXT.json").write_text(
+            json.dumps(context_json,ensure_ascii=False,indent=2),encoding="utf-8"
+        )
+        if context_pack is not None:
+            (jd/"MEMORY_CONTEXT.md").write_text(
+                context_pack.to_cc_markdown(),encoding="utf-8"
+            )
+            (jd/"CONTEXT_RECEIPT.json").write_text(
+                json.dumps(context_pack.receipt(),ensure_ascii=False,indent=2),encoding="utf-8"
+            )
+        prompt=("Read TASK.md and CONTEXT.json. If MEMORY_CONTEXT.md exists, read it as the "
+                "canonical Grid context pack. Do only the requested task. "
+                "Do not deploy. Write final result to RESULT.md. "
+                "If blocked, explain the blocker in RESULT.md.")
+        # v1.3 栅栏实体化:allowed_tools/allowed_paths 用 CC 自己的旗标 enforce,
+        # 不再是 prompt 里的口头请求。路径栅栏 = cwd 锁 job 目录 + --add-dir 仅白名单;
+        # 工具栅栏 = --allowedTools 逐项传。旗标名以本机 CC 版本为准(现场自证点):
+        # 若 CC 报 unknown option,本任务按失败响亮返回,绝不静默摘栅栏重跑。
+        argv=[self.cfg.cc.binary,"-p",prompt]
+        if job["allowed_tools"]:
+            declared={str(t) for t in job["allowed_tools"]}
+            argv+=["--allowedTools",",".join(sorted(declared))]
+            # v1.3.1(SOL P0-1):allow 不等于"未列即禁"——CC 的 --allowedTools 只做放行,
+            # 未声明工具会回落到用户级 settings(若她全局有宽放行即穿透)。补显式 deny:
+            # deny = 已知内建工具全集 − 声明集,deny 在 CC 权限模型里压过一切 allow,
+            # 由此对已知全集成立真 deny-by-default。边界如实声明:未来 CC 新增的工具名
+            # 不在此常量内则不受禁,升级 CC 后此行要跟(一行事,现场自证点 S9 会暴露)。
+            deny=sorted(CC_TOOL_UNIVERSE-declared)
+            if deny:
+                argv+=["--disallowedTools",",".join(deny)]
+        for p in job["allowed_paths"]:
+            rp=Path(p)
+            if str(p) in {".",""}:
+                continue  # job 目录本身即 cwd,无需加白
+            argv+=["--add-dir",str(rp if rp.is_absolute() else (jd/rp).resolve())]
+        proc=await asyncio.create_subprocess_exec(
+            *argv,cwd=str(jd),
+            stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
+        try:
+            out,err=await asyncio.wait_for(proc.communicate(),timeout=self.cfg.cc.timeout_seconds)
+        except asyncio.TimeoutError:
+            proc.kill(); await proc.communicate()
+            return {"ok":False,"error":"Claude Code timeout","job_dir":str(jd)}
+        except asyncio.CancelledError:
+            proc.kill(); await proc.communicate()
+            raise
+        stderr_txt=err.decode("utf-8","replace")
+        if proc.returncode!=0 and ("unknown option" in stderr_txt.lower() or "unrecognized" in stderr_txt.lower()):
+            return {"ok":False,"returncode":proc.returncode,
+                    "error":"CC 版本不识别权限旗标(--allowedTools/--add-dir)——栅栏无法实体化,任务未放行",
+                    "stderr":stderr_txt,"job_dir":str(jd)}
+        rp=jd/"RESULT.md"
+        result=rp.read_text(encoding="utf-8") if rp.exists() else out.decode("utf-8","replace")
+        return {"ok":proc.returncode==0,"returncode":proc.returncode,
+                "stdout":out.decode("utf-8","replace"),"stderr":err.decode("utf-8","replace"),
+                "result":result,"job_dir":str(jd)}

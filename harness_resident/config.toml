@@ -1,0 +1,147 @@
+[core]
+db_path = "./state/harness.db"
+gateway_base = "http://127.0.0.1:8501"
+gateway_timeout_seconds = 120
+poll_interval_seconds = 1.0
+max_retries = 2
+max_concurrency = 4
+
+[models]
+local_route = "qwen/qwen3.5-9b"          # 本地 9B 快线;带斜杠走 /v1/chat/completions,禁 demo/aster
+fast_route  = "glm53"           # GLM 5.3 flash:短对话、工具调用、哨兵解释
+deep_route  = "glm52"           # GLM 5.2(侯):开放世界、终审复核
+full_route  = "glm53_full"      # GLM 5.3 全量:长链、dossier
+research_route = "deepseek_v4"  # DeepSeek V4 Pro:可校验研究/短战术,执行声明每步 GLM 验(8-22)
+# multimodal 不设 route:5.2/5.3 lane 内 MiniMax M3 旁路自动走
+
+[cc]
+enabled = true
+binary = "/Users/ciciwang/Projects/demo/aster_grid_v5/.tools/node_modules/.bin/claude"
+work_root = "./agent_jobs"
+timeout_seconds = 1800
+
+[harness]
+host = "127.0.0.1"
+port = 8630
+
+[voice]
+provider = "audio8_onnx"
+fallback_provider = "openai_realtime"
+fallback_enabled = false
+
+[voice.audio8]
+enabled = true
+host = "127.0.0.1"
+port = 8631
+model = "Audio8/Audio8-TTS-Preview-0.6B-ONNX-INT4"
+default_voice_en = "grid_en"
+default_voice_zh = "grid_zh"
+timeout_seconds = 120
+
+[relay]
+enabled = false
+url = "wss://YOUR-RELAY.example/ws/agent"
+device_id = "grid-mac"
+token_env = "GRID_RELAY_TOKEN"
+reconnect_seconds = 5
+
+[policy]
+cloud_default = false
+auto_resume_interrupted = true
+allow_deploy = false
+
+# ---------------------------------------------------------------------------
+# V1.2 Memory domains
+#
+# Keep local and cloud memory separate.
+# The harness does NOT merge them.
+#
+# context_owner:
+#   "shadow"  = build/receipt only, do not inject external memory yet
+#   "harness" = harness injects four layers; disable legacy duplicate injection
+#   "gateway" = keep gateway-owned legacy context while migrating
+# ---------------------------------------------------------------------------
+[memory]
+enabled = true
+subject_id = "aster"
+context_owner = "shadow"
+strict_domain_isolation = true
+emit_context_receipts = true
+
+# Qwen + CC use the local memory domain.
+[memory.local]
+kind = "http_json"
+base_url = "http://127.0.0.1:8501"
+stable_core_path = "/memory/local/stable_core"
+active_state_path = "/memory/local/active_state"
+recall_path = "/memory/local/recall"
+write_path = ""
+auth_env = "GRID_GATEWAY_TOKEN"
+timeout_seconds = 3
+required = false
+write_mode = "gateway_owned"
+
+# GLM + Kimi use the existing cloud memory domain.
+[memory.cloud]
+kind = "http_json"
+base_url = "http://127.0.0.1:8501"
+stable_core_path = "/memory/cloud/stable_core"
+active_state_path = "/memory/cloud/active_state"
+recall_path = "/memory/cloud/recall"
+write_path = ""
+auth_env = "GRID_GATEWAY_TOKEN"
+timeout_seconds = 3
+required = false
+write_mode = "gateway_owned"
+
+# ---------------------------------------------------------------------------
+# Four-layer context budgets.
+#
+# Token accounting is intentionally conservative: UTF-8 byte count is
+# used as an upper-bound estimator unless you wire a route-specific tokenizer.
+# No silent truncation of STABLE_CORE is allowed.
+# ---------------------------------------------------------------------------
+[context]
+recent_turns_cap = 120
+estimator = "utf8_bytes_upper_bound"
+framing_reserve_tokens = 2048
+
+[context.qwen]
+memory_domain = "local"
+max_context_tokens = 32768
+reserve_output_tokens = 8192
+stable_core_tokens = 3500
+active_state_tokens = 3500
+recent_turns_tokens = 10000
+recall_tokens = 6500
+recall_top_k = 12
+
+[context.cc]
+memory_domain = "local"
+max_context_tokens = 49152
+reserve_output_tokens = 8192
+stable_core_tokens = 4000
+active_state_tokens = 5000
+recent_turns_tokens = 14000
+recall_tokens = 10000
+recall_top_k = 16
+
+[context.glm]
+memory_domain = "cloud"
+max_context_tokens = 65536
+reserve_output_tokens = 8192
+stable_core_tokens = 4000
+active_state_tokens = 5000
+recent_turns_tokens = 18000
+recall_tokens = 14000
+recall_top_k = 20
+
+[context.kimi]
+memory_domain = "cloud"
+max_context_tokens = 65536
+reserve_output_tokens = 8192
+stable_core_tokens = 4000
+active_state_tokens = 5000
+recent_turns_tokens = 18000
+recall_tokens = 14000
+recall_top_k = 20

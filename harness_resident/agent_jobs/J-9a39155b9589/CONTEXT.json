@@ -1,0 +1,54 @@
+{
+  "job_id": "J-9a39155b9589",
+  "allowed_tools": [
+    "Read"
+  ],
+  "allowed_paths": [
+    "."
+  ],
+  "approval_mode": "auto",
+  "context_receipt": {
+    "worker": "cc",
+    "memory_domain": "local",
+    "session_domain": null,
+    "cross_domain_handoff": false,
+    "context_owner": "shadow",
+    "context_hash": "c5272bae6c77ec8993f1b7ba62b5ef46ccb201932cfc7222b51f5300049b4c7c",
+    "estimated_input_tokens": 595,
+    "max_context_tokens": 49152,
+    "reserve_output_tokens": 8192,
+    "framing_reserve_tokens": 2048,
+    "layers": {
+      "stable_core": {
+        "tokens": 0,
+        "memory_ids": [],
+        "source_ok": false,
+        "error": "HTTPStatusError(\"Client error '404 Not Found' for url 'http://127.0.0.1:8501/memory/local/stable_core?subject_id=aster'\\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404\")",
+        "truncated": false
+      },
+      "active_state": {
+        "tokens": 442,
+        "memory_ids": [],
+        "source_ok": false,
+        "error": "HTTPStatusError(\"Client error '404 Not Found' for url 'http://127.0.0.1:8501/memory/local/active_state?subject_id=aster'\\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404\")",
+        "truncated": false
+      },
+      "recent_turns": {
+        "tokens": 0,
+        "turns": 0
+      },
+      "recall": {
+        "tokens": 0,
+        "memory_ids": [],
+        "source_ok": false,
+        "error": "HTTPStatusError(\"Client error '404 Not Found' for url 'http://127.0.0.1:8501/memory/local/recall'\\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404\")",
+        "truncated": false
+      },
+      "current_turn": {
+        "tokens": 153
+      }
+    },
+    "external_memory_injected": false,
+    "shadow_only": true
+  }
+}

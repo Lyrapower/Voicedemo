@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="theme-color" content="#0b0c0f"/>
+  <link rel="manifest" href="/mobile/manifest.json"/>
+  <link rel="stylesheet" href="/mobile/styles.css"/>
+  <title>Grid Resident</title>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="eyebrow">GRID RESIDENT</div>
+      <h1>Agents</h1>
+    </div>
+    <div class="headActions"><button id="newBtn" class="icon">＋</button><button id="settingsBtn" class="icon">⚙︎</button></div>
+  </header>
+
+  <div id="presence" class="presence offline">● OFFLINE</div>
+
+  <main>
+    <section id="sessionList" class="sessions"></section>
+
+    <section id="thread" class="thread hidden">
+      <div class="threadHead">
+        <button id="backBtn" class="ghost">‹ Agents</button>
+        <div>
+          <strong id="threadTitle"></strong>
+          <div id="threadMeta" class="muted"></div>
+        </div>
+        <div class="controls">
+          <button data-action="pause">Pause</button>
+          <button data-action="resume">Resume</button>
+          <button data-action="cancel" class="danger">Cancel</button>
+          <button id="contextBtn" type="button">Context</button>
+        </div>
+      </div>
+
+      <div id="messages" class="messages"></div>
+
+      <form id="messageForm" class="composer">
+        <textarea id="messageInput" rows="2" placeholder="Message this agent…"></textarea>
+        <button type="submit">Send</button>
+      </form>
+    </section>
+  </main>
+
+  <dialog id="contextDialog">
+    <form method="dialog">
+      <h2>Context receipt</h2>
+      <pre id="contextReceipt" class="receipt"></pre>
+      <div class="dialogActions"><button>Close</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="newSession">
+    <form method="dialog" id="newSessionForm">
+      <h2>New agent thread</h2>
+      <label>Agent
+        <select id="newAgent">
+          <option value="qwen-main">Qwen Resident</option>
+          <option value="cc-main">Claude Code</option>
+          <option value="glm-on-demand">GLM · on demand</option>
+          <option value="kimi-on-demand">Kimi · on demand</option>
+        </select>
+      </label>
+      <label>Title <input id="newTitle" placeholder="e.g. Gateway repair"/></label>
+      <label>Channel <input id="newChannel" value="grid"/></label>
+      <div class="dialogActions"><button value="cancel">Cancel</button><button id="createSessionBtn" value="default">Create</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="settings">
+    <form method="dialog" id="settingsForm">
+      <h2>Connection</h2>
+      <label>Mode
+        <select id="mode">
+          <option value="local">Local/LAN</option>
+          <option value="relay">Remote Relay</option>
+        </select>
+      </label>
+      <label>API / Relay URL
+        <input id="baseUrl" placeholder="http://127.0.0.1:8787 or https://relay.example"/>
+      </label>
+      <label>Device ID
+        <input id="deviceId" value="grid-mac"/>
+      </label>
+      <label>Relay token
+        <input id="token" type="password" placeholder="only for remote relay"/>
+      </label>
+      <div class="dialogActions">
+        <button value="cancel">Cancel</button>
+        <button id="saveSettings" value="default">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/mobile/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+{
+  "version": "1.2",
+  "status": "STATIC_AND_LOCAL_TESTS_PASS",
+  "python_compile_errors": [],
+  "shell_checks": {
+    "uninstall_launchd.sh": {
+      "code": 0,
+      "stderr": ""
+    },
+    "run_relay.sh": {
+      "code": 0,
+      "stderr": ""
+    },
+    "install_launchd.sh": {
+      "code": 0,
+      "stderr": ""
+    },
+    "install.sh": {
+      "code": 0,
+      "stderr": ""
+    },
+    "run_local.sh": {
+      "code": 0,
+      "stderr": ""
+    }
+  },
+  "javascript_check": {
+    "code": 0,
+    "stderr": ""
+  },
+  "tests": {
+    "smoke_test.py": {
+      "code": 0,
+      "stdout": "SMOKE V1.2 PASS",
+      "environment_warmup_noise": true
+    },
+    "integration_test.py": {
+      "code": 0,
+      "stdout": "FASTAPI CONTROL PASS",
+      "environment_warmup_noise": true
+    },
+    "relay_integration_test.py": {
+      "code": 0,
+      "stdout": "RELAY LIVE EVENT PASS",
+      "environment_warmup_noise": true
+    },
+    "test_context_v12.py": {
+      "code": 0,
+      "stdout": "CONTEXT V1.2 PASS",
+      "environment_warmup_noise": true
+    },
+    "test_memory_adapter_v12.py": {
+      "code": 0,
+      "stdout": "MEMORY ADAPTER V1.2 PASS",
+      "environment_warmup_noise": true
+    },
+    "import:harness.api": {
+      "code": 0,
+      "stdout": "PASS"
+    },
+    "import:harness.config": {
+      "code": 0,
+      "stdout": "PASS"
+    },
+    "import:harness.context": {
+      "code": 0,
+      "stdout": "PASS"
+    },
+    "import:harness.memory_adapter": {
+      "code": 0,
+      "stdout": "PASS"
+    },
+    "import:harness.supervisor": {
+      "code": 0,
+      "stdout": "PASS"
+    },
+    "import:relay_server": {
+      "code": 0,
+      "stdout": "PASS"
+    }
+  },
+  "invariants": {
+    "local_cloud_memory_not_merged": true,
+    "qwen_cc_local": true,
+    "glm_kimi_cloud": true,
+    "four_layers_present": true,
+    "hard_layers_no_silent_truncation": true,
+    "cross_domain_recent_isolation": true,
+    "cloud_paths_redacted": true,
+    "same_turn_recall_filter": true,
+    "framing_reserve": true,
+    "utf8_byte_estimator": true,
+    "context_receipt_streamed": true,
+    "mobile_context_preview": true,
+    "shadow_default": true,
+    "no_old_history_slice": true,
+    "existing_8501_authority": true
+  },
+  "deployment_mode": {
+    "context_owner_default": "shadow",
+    "reason": "existing local/cloud memory already exists; shadow prevents accidental duplicate injection before endpoint mapping is verified"
+  },
+  "live_boundaries": [
+    "Actual local/cloud memory endpoint paths must be mapped to the user's existing 8501 memory APIs.",
+    "The existing 8501 legacy context injector must be disabled for this harness route before changing context_owner=shadow to context_owner=harness.",
+    "Actual Qwen/GLM/Kimi route names and live context-window limits must be verified on the user's 8501.",
+    "Claude Code real execution still requires the user's installed CC binary and hard guard/hooks.",
+    "Remote relay requires a real TLS deployment and GRID_RELAY_TOKEN."
+  ]
+}
