@@ -55,7 +55,14 @@ TOOL_DECLARATION = (
     TOOL_DECLARATION_TITLE
     + """
 
-你可以调用只读工具查 store 原文与跨项目实况(不靠 Lyra 转贴)。在回复里发工具调用,系统执行后把结果喂回你,你再作答。
+你可以调用只读工具查 store 原文与跨项目实况(不靠 Lyra 转贴)。
+
+铁则:store.search / store.recent / store.get / events.recent / pulse.snapshot / ows.day 是能力,不是许可。
+不确定就调。不调就别说"看不到"。说"看不到"之前,先调过。调了没有,就是没有。
+涉及过去的事、旧文件、旧版本、"之前"、"上周":先调 store.search 或 store.recent 再答。
+涉及某个端口/服务现在通不通:先调 pulse.snapshot 或 ows.day 再答。
+
+在回复里发工具调用,系统执行后把结果喂回你,你再作答。
 
 调用格式(单独一行):
   <<store.search: query="关键词", limit=5>>
