@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 import time
@@ -319,7 +320,7 @@ def _run_review_job(job_id: int, draft_id: int, *, code_source_override: str | N
         watchlist = db.resolve_watchlist()
         db_path = db.DB_PATH
         try:
-            metrics, _work = factor_sandbox.run_factor_review(code, db_path, watchlist, return_frame=True)
+            metrics = factor_sandbox.run_factor_review(code, db_path, watchlist)
             db.job_event(c, job_id, 70.0, "metrics_done", {"draft_id": draft_id, "metrics_keys": list(metrics.keys())})
             c.commit()
         except SandboxError as exc:
@@ -413,6 +414,20 @@ def _run_review_job(job_id: int, draft_id: int, *, code_source_override: str | N
             c.commit()
             return
 
+        # 评估段(仅 GLM pass):大 universe + frame,独立超时;超时/失败不算沙箱失败(安全闸已过)
+        _work = None
+        _eval_err = None
+        try:
+            import factor_truth
+            universe_symbols = factor_truth.load_sp500_symbols()
+            _eval_cap = int(os.environ.get("FACTOR_EVAL_SYMBOLS", "500"))
+            _metrics_eval, _work = factor_sandbox.run_factor_review(
+                code, db_path, universe_symbols, symbols_cap=_eval_cap, return_frame=True,
+                timeout=float(os.environ.get("FACTOR_EVAL_TIMEOUT", "120")),
+            )
+        except Exception as _exc:
+            _eval_err = (type(_exc).__name__ + ": " + str(_exc))[:160]
+
         explain = ""
         try:
             ex = factory_task(
@@ -447,8 +462,13 @@ def _run_review_job(job_id: int, draft_id: int, *, code_source_override: str | N
         if lineage_id is not None:
             FL.record_sandbox(lineage_id, True, f"factor_reviews:{review_id}", "")
             import ic_eval_v1_1 as IE
-            _s = IE.evaluate_frame(_work, horizon=5)
-            IE.write_lineage(_s, lineage_id, f"factor_reviews:{review_id}", *IE.auto_verdict(_s))
+            if _work is not None:
+                _s = IE.evaluate_frame(_work, horizon=5)
+                IE.write_lineage(_s, lineage_id, f"factor_reviews:{review_id}", *IE.auto_verdict(_s))
+            else:
+                FL.record_eval(lineage_id, "", "", "5d", 0, None, None, "close_to_close",
+                                None, f"factor_reviews:{review_id}", "insufficient",
+                                "eval timeout" if _eval_err else "eval no frame")
         record_glm_lane_stat(
             c,
             review_id=review_id,

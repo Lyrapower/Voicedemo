@@ -23,6 +23,13 @@ import factor_evolution as FE
 import factory_prompts as FP
 
 
+def _stub_run_factor_review(code, db_path, watchlist, return_frame=False, symbols_cap=8, timeout=None):
+    """沙箱 stub:return_frame=False 返回 metrics dict;True 返回 (metrics, None)。
+    evolve_factor draft lineage_id=NULL → _work 不进 IE,None 即可。"""
+    m = {"ic": 0.05, "ir": 0.4, "n_obs": 80, "symbols": 2}
+    return (m, None) if return_frame else m
+
+
 def _fresh_db() -> str:
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False, mode="w")
     tmp.close()
@@ -212,7 +219,7 @@ class EvolveSmokeTest(unittest.TestCase):
         importlib.reload(factory_pipeline)
         with patch("factory_pipeline.factory_task", side_effect=self._stub_factory_task):
             with patch("factory_pipeline.factor_sandbox.run_factor_review",
-                       return_value=({"ic": 0.05, "ir": 0.4, "n_obs": 80, "symbols": 2}, None)):
+                       side_effect=_stub_run_factor_review):
                 # 第一轮:无 trajectory → propose(bandit 选向)
                 res = factory_pipeline.evolve_factor(test=True)
                 self.assertEqual(res["status"], "draft")
@@ -341,7 +348,7 @@ class EvolveLoopTest(unittest.TestCase):
         round_logs = []
         with patch("factory_pipeline.factory_task", side_effect=self._stub_factory_task):
             with patch("factory_pipeline.factor_sandbox.run_factor_review",
-                       return_value=({"ic": 0.05, "ir": 0.4, "n_obs": 80, "symbols": 2}, None)):
+                       side_effect=_stub_run_factor_review):
                 summary = factory_pipeline.evolve_loop(
                     rounds=15, test=True, poll_timeout=10.0,
                     on_round=lambda i, info: round_logs.append(info),

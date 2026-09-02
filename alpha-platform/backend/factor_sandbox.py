@@ -233,7 +233,8 @@ def _classify_factor_exception(exc: BaseException, tb: str, df_head: str) -> San
     )
 
 
-def _worker_run(code: str, db_path: str, watchlist: list[str], q: mp.Queue, return_frame: bool = False) -> None:
+def _worker_run(code: str, db_path: str, watchlist: list[str], q: mp.Queue,
+                 return_frame: bool = False, symbols_cap: int = 8) -> None:
     tmpdir = None
     try:
         _apply_memory_limit()
@@ -248,14 +249,15 @@ def _worker_run(code: str, db_path: str, watchlist: list[str], q: mp.Queue, retu
 
         con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         try:
-            syms = watchlist[:8]
+            syms = watchlist[:symbols_cap]
             if not syms:
                 raise WorkerPipelineError("empty watchlist")
             placeholders = ",".join("?" * len(syms))
+            row_limit = max(8000, symbols_cap * 400)
             rows = con.execute(
                 f"SELECT ts, symbol, o, h, l, c, v FROM bars WHERE symbol IN ({placeholders}) "
-                "ORDER BY symbol, ts ASC LIMIT 8000",
-                syms,
+                "ORDER BY symbol, ts ASC LIMIT ?",
+                [*syms, row_limit],
             ).fetchall()
         finally:
             con.close()
@@ -371,20 +373,33 @@ def _worker_run(code: str, db_path: str, watchlist: list[str], q: mp.Queue, retu
                 pass
 
 
-def run_factor_review(code: str, db_path: str, watchlist: list[str], return_frame: bool = False) -> dict[str, Any] | tuple:
+def run_factor_review(code: str, db_path: str, watchlist: list[str], return_frame: bool = False,
+                       symbols_cap: int = 8, timeout: float | None = None) -> dict[str, Any] | tuple:
     _validate_ast(code)
     q: mp.Queue = mp.Queue()
     ctx = mp.get_context("spawn")
-    p = ctx.Process(target=_worker_run, args=(code, db_path, watchlist, q, return_frame))
+    p = ctx.Process(target=_worker_run, args=(code, db_path, watchlist, q, return_frame, symbols_cap))
     p.start()
-    p.join(SANDBOX_TIMEOUT)
-    if p.is_alive():
-        p.terminate()
-        p.join(5)
-        raise ResourceLimit(f"sandbox timeout ({SANDBOX_TIMEOUT}s)")
-    if q.empty():
+    # 并发排空 queue:worker q.put 大 DataFrame(return_frame=True)会撑爆 OS pipe 缓冲(~16-64KB)
+    # 若先 p.join 再 q.get → worker 阻塞在 q.put、parent 阻塞在 join → 死锁超时。
+    # 故先带超时地 get,拿到即返回;进程未活且队列空 = 进程异常退出。
+    import queue as _qmod
+    deadline = time.time() + (timeout if timeout is not None else SANDBOX_TIMEOUT)
+    result = None
+    while time.time() < deadline:
+        try:
+            result = q.get(timeout=0.5)
+            break
+        except _qmod.Empty:
+            if not p.is_alive() and q.empty():
+                break
+    if result is None:
+        if p.is_alive():
+            p.terminate()
+            p.join(5)
+            raise ResourceLimit(f"sandbox timeout ({timeout if timeout is not None else SANDBOX_TIMEOUT}s)")
         raise WorkerPipelineError("sandbox produced no result")
-    result = q.get()
+    p.join(5)
     if result.get("ok"):
         if return_frame:
             return result["metrics"], result.get("work")
