@@ -12,29 +12,25 @@ GRID Workbench b11 — 核心定位重构(2026-07-22)
 可拔除扩展 substrate。页面永远只显示一个 GRID · FINAL。
 
 模式:
-  HOME     — Grid 本地能力(8501 /v1/chat/completions · demo/aster)
-  EXPANDED — Grid 内部调用大底座:
-             首选 8501 服务端编排 POST /task/expanded(见配套 spec);
-             端点未部署时走前端过渡编排(候选→aster 校验→final),
-             provenance 里如实标 orchestrator: client-interim。
+  EXPANDED-GLM  — Grid 内部调用 GLM-5.2 大底座 · POST /task/expanded · cloud_backend=glm52_cloud
+  EXPANDED-GLM53 — 同部署逻辑 · cloud_backend=glm53_flash_cloud(原生读图,替代原 Kimi K2.6 第二底座)
+                  首选 8501 服务端编排;端点未部署时走前端过渡链(候选→aster→final)
   SHADOW   — 仅测试对照(本地/底座并排,明确标注测试,不入 history)
   CC CLI   — 独立工程执行舱(8501 /task · 与 STUDIO EXPANDED 零自动通路)
-  Cloud tab — b11(:8515 UI) · 8515 /cloud/chat 推理 · 8501 store cloud-glm52 记忆
-  EXPANDED — STUDIO 内模式 · 8501 /task/expanded · 记忆走 workbench-b11(≠ Cloud)
+  Cloud tab — b11 UI · 8501 cloud_chat + store cloud-* (≠ workbench-b11)
 
 不变量:
-  · final 唯一,署名 GRID,substrate 标 local / kimi_k25_cloud
+  · final 唯一,署名 GRID,substrate 标 glm52_cloud / glm53_flash_cloud
   · candidate 原文只存在于 provenance 折叠面板,不是聊天角色
   · 无"直接采纳"——candidate 成为 final 的唯一通道是 Grid 校验接纳
   · EXPANDED 出门内容 = 任务 + 勾选素材 + 近6轮紧凑上下文 + 一行法则
     约束;完整记忆/日记/密钥/路径/系统提示永不出门(脱敏器把门)
   · thinking 全链路销毁;EXIF 剥离;状态不撒谎(bare/interim 必标)
-  · STUDIO 是容器 tab(无独立发送路径):真实发送面=HOME/EXPANDED → workbench-b11 · 活跃 6 轮 · epoch→messages_archive
-  · Cloud tab: 8501 store cloud-glm52 / cloud-kimi · 15∩10k + 修订⑤冷库召回≤2k(总≤12k) · epoch→archive
+  · STUDIO 发送面=EXPANDED-GLM / EXPANDED-GLM53 → workbench-b11 · 活跃 6 轮 · epoch→messages_archive
+  · Cloud tab: 8501 store cloud-glm52 / cloud-glm53 / cloud-glm53-full / cloud-deepseek · 15∩10k + 冷库召回≤2k(总≤12k)
   · PDF/音频/视频素材属服务端编排路径(8501 本地预处理);
     过渡链只支持图文,其余素材诚实标"需 8501 编排端点"
-  · 场感知(FIELD_SENSE_PIPELINE):只进 HOME 本地 9B,永不进 candidate/kimi
-  · 计费:后台按 Kimi API token 估算;不在对话区展示
+  · 计费:后台按 cloud API token 估算;不在对话区展示
 ════════════════════════════════════════════════════════════
 -->
 <style>
@@ -227,8 +223,9 @@ footer{font:10px var(--sans);color:var(--an);letter-spacing:.04em;text-align:cen
   <div><label>candidate 端点(过渡链用)</label><input id="cKimiUrl" placeholder="http://127.0.0.1:8501/task/candidate"></div>
   <div><label>应急裸 Ollama</label><input id="cOllama" placeholder="http://127.0.0.1:11434"></div>
   <div><label>GLM 模型(Cloud)</label><input id="cGlmModel" placeholder="glm-5.2:cloud"></div>
-  <div><label>Kimi 模型(Cloud)</label><input id="cKimiModel" placeholder="kimi-k2.6:cloud"></div>
-  <div><label>DeepSeek 模型(Cloud)</label><input id="cDsModel" placeholder="deepseek-v4:cloud"></div>
+  <div><label>GLM 5.3 Flash 模型(Cloud)</label><input id="cGlm53Model" placeholder="glm-5.3-flash:cloud"></div>
+  <div><label>GLM 5.3 模型(Cloud)</label><input id="cGlm53FullModel" placeholder="glm-5.3:cloud"></div>
+  <div><label>DeepSeek 模型(Cloud)</label><input id="cDsModel" placeholder="deepseek-v4-pro:cloud"></div>
   <div><label>CC pty 桥 ws://(可选)</label><input id="cPty" placeholder="ws://127.0.0.1:8522/pty"></div>
   <div><label>场感知 url(留空=关;默认同源 field_now/now.json)</label><input id="cField" placeholder="field_now/now.json"></div>
   <div><label>store token(可选 · GRID_STORE_TOKEN)</label><input id="cStoreTok" type="password" placeholder="X-Grid-Token" autocomplete="off"></div>
@@ -257,8 +254,8 @@ footer{font:10px var(--sans);color:var(--an);letter-spacing:.04em;text-align:cen
 
   <section class="pane">
     <div id="modebar">
-      <button data-m="home" class="on">HOME<small>本地能力</small></button>
-      <button data-m="expanded">EXPANDED<small>大底座扩展</small></button>
+      <button data-m="expanded" class="on">EXPANDED<small>GLM-5.2 大底座</small></button>
+      <button data-m="expanded_glm53">EXPANDED<small>GLM-5.3 Flash</small></button>
       <button data-m="shadow">SHADOW<small>测试对照</small></button>
       <span class="tag bill" id="billHud" hidden><b id="billTok">0</b>tok · $<b id="billCost">0.000</b></span>
       <span class="tag" id="storeHud" title="8501 活跃窗口 · 超出归档记忆层">store <b id="storeCnt">…</b></span>
@@ -275,7 +272,7 @@ footer{font:10px var(--sans);color:var(--an);letter-spacing:.04em;text-align:cen
       <button class="add" id="addBtn">+</button>
       <button type="button" id="mic" aria-label="Grid voice" title="Grid voice · 8501 /voice">◉</button>
       <button type="button" id="voiceBarge" aria-label="打断 TTS" title="按住打断 TTS">⏸</button>
-      <textarea id="box" placeholder="Message Grid…" rows="1"></textarea>
+      <textarea id="box" placeholder="EXPANDED · GLM-5.2 · workbench-b11…" rows="1"></textarea>
       <button id="send">发</button>
     </div>
   </section>
@@ -298,7 +295,7 @@ footer{font:10px var(--sans);color:var(--an);letter-spacing:.04em;text-align:cen
       <button type="button" id="ccRun">运行</button>
     </div>
     <div id="term">选择 lane 后输入 prompt 点运行；或配置 pty 桥做交互 shell。
-STUDIO EXPANDED 的 Kimi 编排与本舱独立。</div>
+STUDIO EXPANDED-GLM / EXPANDED-Kimi 与本舱独立(记忆 workbench-b11)。</div>
   </section>
 </main>
 
@@ -312,7 +309,8 @@ STUDIO EXPANDED 的 Kimi 编排与本舱独立。</div>
       <span class="tag">15轮</span></div>
     <div id="cloudModebar">
       <button type="button" data-cloud="glm52" class="on">GRID-GLM 5.2</button>
-      <button type="button" data-cloud="kimi_k25">Kimi K2.6</button>
+      <button type="button" data-cloud="glm53">GLM 5.3 Flash</button>
+      <button type="button" data-cloud="glm53_full">GLM 5.3</button>
       <button type="button" data-cloud="deepseek_v4">DeepSeek V4</button>
     </div>
     <div id="cloudMeta">Cloud · b11 · 8501 cloud_chat + store cloud-glm52 · 15轮 UI</div>
@@ -398,7 +396,13 @@ STUDIO EXPANDED 的 Kimi 编排与本舱独立。</div>
 <script>
 "use strict";
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
-const PAGE_VER="3.23.7-b11-cloud-recall-r5";
+const PAGE_VER="3.23.24-b11-m3-eyes";
+/** CLOUD_MEMORY_SEALED=仍断 candidate/魂组全量叠注;store 记忆另开 CLOUD_STORE_MEMORY_ON */
+const CLOUD_MEMORY_SEALED=true;
+/** 三车道 8501 store:15∩10k + top4 召回(glm / kimi / deepseek) */
+const CLOUD_STORE_MEMORY_ON=true;
+const CLOUD_GLM_MEMORY_ON=true; // 兼容旧名
+const CLOUD_MEMORY_SEAL_MSG="candidate 已断 · Cloud store 记忆开(15窗+top4·三车道) · 魂组全量仍封";
 const VER_CLIENT_REV="2026-07-27-kh-ascii";
 const CANDIDATE_PROMPT_MAX=7800;
 const st={get(k,d){try{return JSON.parse(localStorage.getItem("b11_"+k))??d}catch(e){return d}},
@@ -472,6 +476,14 @@ function migrateKimiModelStorage(){
       st.set(key,want);
   }
 }
+/** UI 曾默认 deepseek-v4:cloud → Ollama 404 model not found;实况=deepseek-v4-pro:cloud */
+function migrateDsModelStorage(){
+  const want="deepseek-v4-pro:cloud";
+  const v=String(st.get("dsModel","")||"").trim();
+  if(!v||v===want) return;
+  if(/^deepseek-v4(?!-pro)(?::cloud)?$/i.test(v)||v==="deepseek-v4:cloud"||v==="deepseek-v4")
+    st.set("dsModel",want);
+}
 function storeBase(){
   return gatewayApiOrigin();
 }
@@ -497,7 +509,7 @@ async function attachAsterVerification(chatBody){
   await ensureVerificationScripts();
   if(!GridVerificationClient.isAsterChatBody(chatBody)) return chatBody;
   if(!GridKeyholder||!GridKeyholder.hasKey())
-    throw new Error("GridKeyholder 未配置 — STUDIO/HOME 须先保存钥匙(点 G R I D → GridKeyholder)");
+    throw new Error("GridKeyholder 未配置 — STUDIO/EXPANDED 须先保存钥匙(点 G R I D → GridKeyholder)");
   return GridVerificationClient.attachToChatBody(chatBody, verificationScriptBase());
 }
 async function attachExpandedVerification(taskBody, userTask){
@@ -533,7 +545,7 @@ async function refreshGatewayHud(){
       }
     }
     const stEl=$("#khst");
-    if(stEl) stEl.textContent="验签: 8515 服务端代理(无需浏览器钥匙) · STUDIO/HOME/EXPANDED 自动注入";
+    if(stEl) stEl.textContent="验签: 8515 服务端代理(无需浏览器钥匙) · STUDIO/EXPANDED 自动注入";
     return;
   }
   await refreshKeyholderHud();
@@ -630,7 +642,11 @@ if(st.get("page_ver")!==PAGE_VER){
   st.set("page_ver",PAGE_VER);
   migrateBadGatewayStorage();
   migrateKimiModelStorage();
+  migrateDsModelStorage();
   if(st.get("field","")==="") st.del("field");
+  // 切断本地残留 /task/candidate 指向
+  const ku=String(st.get("kimiUrl","")||"");
+  if(/\/task\/candidate/i.test(ku)) st.del("kimiUrl");
   delete window.GridVerificationClient;
   delete window.GridKeyholder;
   window.__b11VerClientRev="";
@@ -640,19 +656,22 @@ const _storeRoot=_gwDefault.replace(/\/v1\/?$/i,"").replace(/\/+$/,"");
 const cfg={gw:_gwDefault,
   local:st.get("local","demo/aster"),
   exp:fix(st.get("exp",`${_storeRoot}/task/expanded`)),
-  kimiUrl:fix(st.get("kimiUrl",`${_storeRoot}/task/candidate`)),
+  kimiUrl:fix(st.get("kimiUrl","")),
   kimiModel:st.get("kimiModel","kimi-k2.6:cloud"),
   kimiTabModel:st.get("kimiTabModel",st.get("kimiModel","kimi-k2.6:cloud")),
-  dsModel:st.get("dsModel","deepseek-v4:cloud"),
+  dsModel:st.get("dsModel","deepseek-v4-pro:cloud"),
   glmModel:st.get("glmModel","glm-5.2:cloud"),
+  glm53Model:st.get("glm53Model","glm-5.3-flash:cloud"),
+  glm53FullModel:st.get("glm53FullModel","glm-5.3:cloud"),
   ollama:fix(st.get("ollama",hostBase+":11434")),
   pty:st.get("pty",""),
   field:(()=>{const s=st.get("field",null); if(s===null||s===undefined){
     try{return new URL("field_now/now.json",location.href).href}catch(e){return "http://127.0.0.1:8795/now.json"}}
     return s?fix(s):"";})()};
 $("#cGw").value=cfg.gw;$("#cLocal").value=cfg.local;$("#cExp").value=cfg.exp;
-$("#cKimiUrl").value=cfg.kimiUrl;$("#cKimiModel").value=cfg.kimiTabModel;$("#cDsModel").value=cfg.dsModel;
-$("#cGlmModel").value=cfg.glmModel;
+$("#cKimiUrl").value=cfg.kimiUrl;$("#cDsModel").value=cfg.dsModel;
+$("#cGlmModel").value=cfg.glmModel; if($("#cGlm53Model")) $("#cGlm53Model").value=cfg.glm53Model;
+if($("#cGlm53FullModel")) $("#cGlm53FullModel").value=cfg.glm53FullModel;
 $("#cOllama").value=cfg.ollama;$("#cPty").value=cfg.pty;
 $("#cField").value=cfg.field||"";
 applyResolvedEndpoints();
@@ -680,7 +699,9 @@ $("#cKhClear").onclick=async()=>{
 void ensureVerificationScripts().then(refreshGatewayHud).catch(refreshGatewayHud);
 const bind=(id,key)=>$(id).onchange=e=>{cfg[key]=e.target.value.trim();st.set(key,cfg[key])};
 bind("#cLocal","local");bind("#cExp","exp");
-bind("#cKimiUrl","kimiUrl");bind("#cKimiModel","kimiTabModel");bind("#cDsModel","dsModel");bind("#cGlmModel","glmModel");
+bind("#cKimiUrl","kimiUrl");bind("#cDsModel","dsModel");bind("#cGlmModel","glmModel");
+if($("#cGlm53Model")) bind("#cGlm53Model","glm53Model");
+if($("#cGlm53FullModel")) bind("#cGlm53FullModel","glm53FullModel");
 bind("#cOllama","ollama");bind("#cPty","pty");
 bind("#cField","field");
 $("#cGw").addEventListener("change",()=>{
@@ -712,13 +733,16 @@ const DEEPSEEK_V4_OUT_USD_M=2.20;
 
 const CLOUD_LANES={
   glm52:{id:"glm52",label:"GRID-GLM 5.2",model:()=>cfg.glmModel||"glm-5.2:cloud",substrate:"glm52_cloud",store8501:true,storeNode:"cloud-glm52"},
-  kimi_k25:{id:"kimi_k25",label:"Kimi K2.6",model:()=>cfg.kimiTabModel||"kimi-k2.6:cloud",substrate:"kimi_k25_cloud",store8501:true,storeNode:"cloud-kimi"},
-  deepseek_v4:{id:"deepseek_v4",label:"DeepSeek V4",model:()=>cfg.dsModel||"deepseek-v4:cloud",substrate:"deepseek_v4_cloud",store8501:false},
+  glm53:{id:"glm53",label:"GLM 5.3 Flash",model:()=>cfg.glm53Model||"glm-5.3-flash:cloud",substrate:"glm53_flash_cloud",store8501:true,storeNode:"cloud-glm53"},
+  glm53_full:{id:"glm53_full",label:"GLM 5.3",model:()=>cfg.glm53FullModel||"glm-5.3:cloud",substrate:"glm53_full_cloud",store8501:true,storeNode:"cloud-glm53-full"},
+  deepseek_v4:{id:"deepseek_v4",label:"DeepSeek V4",model:()=>cfg.dsModel||"deepseek-v4-pro:cloud",substrate:"deepseek_v4_cloud",store8501:true,storeNode:"cloud-deepseek"},
 };
 const CLOUD_UI_TURNS=15;
-const CLOUD_ACTIVE_TURNS=15;
+let CLOUD_ACTIVE_TURNS=15; // let: cloudChat 超长时可临时缩窗
 /** 钉1:与 signal_patterns.json token_budget / console CHAT_CLOUD_TOKEN_BUDGET 统一 10k */
 let CLOUD_TOKEN_BUDGET=10000;
+/** 单条超长自动截断(与 8501 cloud_memory_scope.MAX_CLOUD_MSG_CHARS 对齐) */
+const CLOUD_MSG_CHAR_CAP=4000;
 const CLOUD_ACTIVE_MSGS=CLOUD_UI_TURNS*2;
 /** 钉2:与 console WORK_LOG_PREFIX 同源(signal_patterns.json work_log.prefix) */
 let WORK_LOG_PREFIX="[工作日志]";
@@ -726,21 +750,179 @@ let WORK_LOG_SYSTEM_TITLE="工作日志·最近5条";
 let WORK_LOG_MAX_INJECT=5;
 /** 修订⑤:冷库召回参数 · 唯一源 signal_patterns.json recall.* · 与 console cloud_recall.py 同构 */
 let CLOUD_RECALL={
-  top_k:4, token_budget:2000, total_inject_cap:12000, min_score:1e-9,
+  top_k:4, token_budget:2000, total_inject_cap:14000, min_score:1e-9,
   recency_half_life_s:1209600, lexical_weight:0.65, recency_weight:0.35,
   identity_boost:1.5, max_chars_per_item:2400,
   system_title:"店内旧档·相关召回(检索注入，非对话窗)",
   identity_subtitle:"含身份锚点",
-  identity_markers:["角色定义","元认知风格","手感描述","身份锚点","身份定义","我是你的","persona","metacognitive style","identity anchor"],
+  /** v4:关键字眼每轮全量注入(预算内尽量装完) */
+  identity_every_turn:true,
+  identity_max_inject:24,
+  identity_token_budget:6000,
+  identity_system_title:"身份·关键字眼·每轮注入(侯/日记/侯着…)",
+  identity_keywords:["侯着","候着","侯","日记","主频不退","主频","元认知","手感","身份锚","身份定义","角色定义","Lyra"],
+  identity_markers:["角色定义","元认知风格","手感描述","身份锚点","身份定义","我是你的","侯着","候着","主频不退","persona","metacognitive style","identity anchor"],
+  /** 兼容旧路径;identity_every_turn=true 时不再依赖信号 */
+  identity_query_signals:["你是谁","你叫什么","还记得我","你的身份","身份锚","手感描述","元认知","侯着","候着","日记","主频","persona","who are you","metacognitive","identity"],
 };
-let cloudLastInject={window_turns:0, work_log_n:0, recall_n:0, store_total:0, has_identity_anchor:false};
-function cloudUses8501Mem(lane){return !!CLOUD_LANES[lane]?.store8501;}
+let cloudLastInject={window_turns:0, work_log_n:0, recall_n:0, identity_n:0, store_total:0, has_identity_anchor:false};
+function cloudUses8501Mem(lane){
+  // 三车道同机制:8501 store cloud-* · 15∩10k + top4(buildCloudStoreMessages)
+  // 注意:CLOUD_MEMORY_SEALED 只管 candidate/魂组,不再挡住 store 记忆
+  if(!(CLOUD_STORE_MEMORY_ON||CLOUD_GLM_MEMORY_ON)) return false;
+  return !!CLOUD_LANES[lane]?.store8501;
+}
 function cloudStoreNode(lane){return CLOUD_LANES[lane]?.storeNode||`cloud-${lane}`;}
+function cloudSurface(lane){
+  if(lane==="glm53") return "cloud-glm53";
+  if(lane==="glm53_full") return "cloud-glm53-full";
+  if(lane==="deepseek_v4") return "cloud-deepseek";
+  if(lane==="kimi_k25") return "cloud-kimi";
+  return "cloud-glm";
+}
 function cloudLocalHistKey(lane){return "cloud_hist_"+lane;}
 function cloudMemArchivedKey(lane){return "cloudMemArchivedIds_"+lane;}
 function cloudPurgedEpochKey(lane){return "cloudPurgedEpoch_"+lane;}
 function isWorkLog(content){
   return String(content||"").startsWith(WORK_LOG_PREFIX);
+}
+/** 任务记忆 typed v1:按 type 过滤(state 每 scope+tags 最新;其余全保留)。不按关键字丢包。 */
+const TASK_MEMORY_PREFIX="[任务记忆·Scout/8620]";
+const TASK_MEMORY_TYPED_PREFIX="[任务记忆·typed v1]";
+const TASK_MEMORY_SYSTEM_TITLE="任务记忆·typed v1(按type过滤注入)";
+function isTaskMemoryContent(content){
+  const c=String(content||"");
+  return c.startsWith(TASK_MEMORY_TYPED_PREFIX)||c.startsWith(TASK_MEMORY_PREFIX);
+}
+function parseTypedTaskMemories(content){
+  const c=String(content||"");
+  if(!c.startsWith(TASK_MEMORY_TYPED_PREFIX)) return [];
+  try{
+    const doc=JSON.parse(c.slice(TASK_MEMORY_TYPED_PREFIX.length).trim());
+    const items=Array.isArray(doc)?doc:(doc.memories||[]);
+    return (items||[]).filter(m=>m&&m.type&&m.title&&m.body);
+  }catch(_e){ return []; }
+}
+function classifyLegacyTaskPack(content, rowTs){
+  const c=String(content||"");
+  if(!c.startsWith(TASK_MEMORY_PREFIX)) return [];
+  let baseTs=rowTs||null;
+  const asof=c.match(/asof_unix=(\d+)/);
+  if(asof) baseTs=+asof[1]||baseTs;
+  const out=[];
+  const entry=c.match(/## 8620 scout\/entry[\s\S]*?\n(\{[\s\S]*?\})\s*(?=\n## |$)/);
+  if(entry){
+    out.push({id:`scout_state_${baseTs||0}`,type:"state",ts:baseTs,scope:"scout",
+      tags:["scout","8620","entry"],title:"Scout/8620 scout/entry 连通状态",
+      body:"scout/entry 返回 "+entry[1].trim(),source:"scout/entry"});
+  }
+  const latest=c.match(/## scout\/latest 摘要\n([\s\S]*?)(?=\n## |$)/);
+  if(latest&&latest[1].trim()){
+    out.push({id:`brief_state_${baseTs||0}`,type:"state",ts:baseTs,scope:"brief",
+      tags:["scout_briefs","latest"],title:"scout/latest 摘要快照",
+      body:latest[1].trim().slice(0,1800),source:"scout/entry"});
+  }
+  const tasks=c.match(/## Console 量化\/option 任务(?:\(摘要\))?\n([\s\S]*?)(?=\n## |$)/);
+  if(tasks&&tasks[1].trim()){
+    out.push({id:`console_state_${baseTs||0}`,type:"state",ts:baseTs,scope:"console",
+      tags:["task","console"],title:"console trade tasks 快照",
+      body:tasks[1].trim().slice(0,1800),source:"console_task"});
+  }
+  if(/fetcher \/ 行情 API|Scout Agent|8620 Option Workstation API/.test(c)){
+    let body=c.replace(/\n## (?:8620 scout\/entry|scout\/latest 摘要)[\s\S]*?(?=\n## |$)/g,"\n");
+    const idx=Math.max(body.indexOf("## fetcher"),body.indexOf("## 8620 Option"),body.indexOf("## Scout Agent"));
+    if(idx>=0) body=body.slice(idx).trim();
+    if(body){
+      out.push({id:`scout_framework_${baseTs||0}`,type:"framework",ts:baseTs,scope:"scout",
+        tags:["scout","8620","api","fetcher"],title:"Scout/期权桌/fetcher API 与双班说明",
+        body:body.slice(0,4500),source:"assistant_synthesis"});
+    }
+  }
+  return out;
+}
+function extractTaskMemoriesFromRows(storeMsgs){
+  const found=[], seen=new Set();
+  for(const m of storeMsgs||[]){
+    const c=String(m.content||"");
+    const rowTs=+m.ts||null;
+    let items=[];
+    if(c.startsWith(TASK_MEMORY_TYPED_PREFIX)) items=parseTypedTaskMemories(c);
+    else if(c.startsWith(TASK_MEMORY_PREFIX)) items=classifyLegacyTaskPack(c,rowTs);
+    for(const it of items){
+      const id=it.id||`${it.type}_${it.title}`;
+      if(seen.has(id)) continue;
+      seen.add(id);
+      if(it.ts==null&&rowTs) it.ts=rowTs;
+      found.push(it);
+    }
+  }
+  return found;
+}
+const TASK_MEMORY_DROP_PRIORITY=["state","open_question","framework","decision","identity"];
+function filterTaskMemoriesForInjection(memories){
+  const by={state:[],decision:[],framework:[],open_question:[],identity:[]};
+  for(const m of memories||[]){
+    if(!m||!by[m.type]) continue;
+    // identity 永不因 superseded_by 剔除
+    if(m.superseded_by&&m.type!=="identity") continue;
+    by[m.type].push(m);
+  }
+  const result=[];
+  const groups=new Map();
+  for(const m of by.state){
+    const key=JSON.stringify([m.scope||"misc",(m.tags||[]).slice().map(String).sort()]);
+    if(!groups.has(key)) groups.set(key,[]);
+    groups.get(key).push(m);
+  }
+  for(const group of groups.values()){
+    const withTs=group.filter(m=>m.ts!=null&&m.ts!=="");
+    const withoutTs=group.filter(m=>m.ts==null||m.ts==="");
+    if(withTs.length){
+      withTs.sort((a,b)=>(+b.ts||0)-(+a.ts||0));
+      result.push(withTs[0]);
+    }
+    for(let m of withoutTs){
+      if(!String(m.body||"").includes("ts未知"))
+        m={...m, body:String(m.body||"")+"\n(ts未知，可能过期)"};
+      result.push(m);
+    }
+  }
+  result.push(...by.decision, ...by.framework, ...by.open_question, ...by.identity);
+  const order={identity:0,decision:1,framework:2,open_question:3,state:4};
+  result.sort((a,b)=>(order[a.type]??9)-(order[b.type]??9)||(+b.ts||0)-(+a.ts||0));
+  return result;
+}
+function dropOneTaskMemoryByPriority(memories){
+  if(!memories||!memories.length) return false;
+  for(const typ of TASK_MEMORY_DROP_PRIORITY){
+    const idxs=[];
+    for(let i=0;i<memories.length;i++) if(memories[i].type===typ) idxs.push(i);
+    if(!idxs.length) continue;
+    let victim=idxs[idxs.length-1];
+    if(typ==="state"){
+      let best=idxs[0], bestTs=+memories[best].ts||0;
+      for(const i of idxs){ const t=+memories[i].ts||0; if(t<bestTs){ best=i; bestTs=t; } }
+      victim=best;
+    }
+    memories.splice(victim,1);
+    return true;
+  }
+  return false;
+}
+function renderTaskMemorySystem(memories){
+  if(!memories||!memories.length) return null;
+  const parts=[TASK_MEMORY_SYSTEM_TITLE,""];
+  for(const m of memories){
+    parts.push(`### [${m.type}] ${m.title}`);
+    parts.push(`id=${m.id||"-"} · scope=${m.scope||"-"} · tags=${(m.tags||[]).join(",")||"-"} · ts=${m.ts??"null"} · source=${m.source||"-"}`);
+    parts.push(String(m.body||""));
+    parts.push("");
+  }
+  return {role:"system", content:parts.join("\n")};
+}
+function prepareStoreRowsForInject(storeMsgs){
+  // 身份/普通召回:排除任务记忆整包
+  return (storeMsgs||[]).filter(m=>!isTaskMemoryContent(m.content));
 }
 function estCloudTokens(msgs){
   let n=0;
@@ -775,7 +957,8 @@ function cloudDualTrimPairs(allMsgs, turns=CLOUD_ACTIVE_TURNS, tokenBudget=CLOUD
 }
 function cloudActiveWindow(allMsgs){return cloudDualTrimPairs(cloudDialogueRows(allMsgs));}
 function cloudArchivePersona(lane){
-  if(lane==="kimi_k25") return "GRID-Kimi";
+  if(lane==="glm53") return "GRID-GLM53";
+  if(lane==="glm53_full") return "GRID-GLM53-FULL";
   return "GRID-GLM";
 }
 function cloudRowKey(m){return `${m.role}|${m.ts}|${String(m.content||"").slice(0,64)}`;}
@@ -792,11 +975,33 @@ function cloudLexicalTokens(text){
   while((m=re.exec(s))) toks.add(m[0].toLowerCase());
   return toks;
 }
+function cloudHasIdentityKeyword(content){
+  const c=String(content||"");
+  return (CLOUD_RECALL.identity_keywords||[]).some(x=>x&&c.includes(x));
+}
 function cloudIsIdentity(content){
   const c=String(content||"");
+  if(!c) return false;
+  if(cloudHasIdentityKeyword(c)) return true;
   return (CLOUD_RECALL.identity_markers||[]).some(x=>x&&c.includes(x));
 }
-function cloudScoreCandidate(queryToks,row,nowTs){
+/** 兼容:信号探测;每轮模式开启时不再作为门闸 */
+function cloudQueryHasIdentitySignal(query){
+  const q=String(query||"");
+  if(!q.trim()) return false;
+  if(cloudIsIdentity(q)) return true;
+  return (CLOUD_RECALL.identity_query_signals||[]).some(x=>x&&q.toLowerCase().includes(String(x).toLowerCase()));
+}
+function cloudIdentityKeywordHits(content){
+  const c=String(content||"");
+  let n=0;
+  for(const kw of (CLOUD_RECALL.identity_keywords||[])){
+    if(!kw||!c.includes(kw)) continue;
+    n+=kw.length>=2?2:1;
+  }
+  return n;
+}
+function cloudScoreCandidate(queryToks,row,nowTs,{identityBoost=false}={}){
   const content=String(row.content||"");
   const doc=cloudLexicalTokens(content);
   if(!queryToks.size||!doc.size) return 0;
@@ -811,7 +1016,8 @@ function cloudScoreCandidate(queryToks,row,nowTs){
   const lw=+CLOUD_RECALL.lexical_weight||0.65;
   const rw=+CLOUD_RECALL.recency_weight||0.35;
   let score=lexical*(lw+rw*recency);
-  if(cloudIsIdentity(content)) score*=(+CLOUD_RECALL.identity_boost||1.5);
+  // 普通召回不加身份加权(防每轮顶进 top-4);身份通道单独走
+  if(identityBoost&&cloudIsIdentity(content)) score*=(+CLOUD_RECALL.identity_boost||1.5);
   return score;
 }
 function cloudTruncateRaw(text,maxChars){
@@ -826,6 +1032,7 @@ function cloudFormatRecallItem(row,maxChars){
   return `ts=${ts} role=${row.role||"?"}\n${body}`;
 }
 function cloudSelectRecall(storeMsgs,query,excludeKeys){
+  /** 当前轮动态打分 → top-4;无命中不注入. 身份旧档排除在普通召回外. */
   const ut=String(query||"").trim();
   if(!ut) return [];
   const qToks=cloudLexicalTokens(ut);
@@ -838,55 +1045,89 @@ function cloudSelectRecall(storeMsgs,query,excludeKeys){
     if(m.role!=="user"&&m.role!=="assistant") continue;
     const c=String(m.content||"").trim();
     if(!c||isWorkLog(c)) continue;
+    if(cloudIsIdentity(c)) continue; // 身份旧档不进普通 top-4
     if(excl.has(cloudRowKey(m))) continue;
-    const sc=cloudScoreCandidate(qToks,m,now);
+    const sc=cloudScoreCandidate(qToks,m,now,{identityBoost:false});
     if(sc<=min) continue;
-    scored.push({row:m,score:sc,identity:cloudIsIdentity(c)});
+    scored.push({row:m,score:sc,identity:false});
   }
   scored.sort((a,b)=>b.score-a.score||(+b.row.ts||0)-(+a.row.ts||0));
   const k=Math.max(0,+CLOUD_RECALL.top_k||4);
-  return scored.slice(0,k).map(x=>({...x.row,_score:x.score,_identity:x.identity}));
+  return scored.slice(0,k).map(x=>({...x.row,_score:x.score,_identity:false}));
 }
-function cloudPackRecallSystem(picked){
+function cloudSelectIdentityArchive(storeMsgs,query,excludeKeys){
+  /** v4:默认每轮注入关键字眼旧档(侯/日记/侯着…);预算内尽量全量 */
+  const every=CLOUD_RECALL.identity_every_turn!==false;
+  if(!every&&!cloudQueryHasIdentitySignal(query)) return [];
+  const ut=String(query||"").trim();
+  const qToks=cloudLexicalTokens(ut);
+  const now=Date.now()/1000;
+  const excl=excludeKeys||new Set();
+  const half=+CLOUD_RECALL.recency_half_life_s||1209600;
+  const boost=+CLOUD_RECALL.identity_boost||1.5;
+  const scored=[];
+  storeMsgs=prepareStoreRowsForInject(storeMsgs);
+  for(const m of storeMsgs||[]){
+    if(m.role!=="user"&&m.role!=="assistant") continue;
+    const c=String(m.content||"").trim();
+    if(!c||isWorkLog(c)||!cloudIsIdentity(c)) continue;
+    if(excl.has(cloudRowKey(m))) continue;
+    const kwHits=cloudIdentityKeywordHits(c);
+    let sc=qToks.size?cloudScoreCandidate(qToks,m,now,{identityBoost:true}):0;
+    const ts=+m.ts||0;
+    const age=ts>0?Math.max(0,now-ts):half;
+    const recency=1/(1+(half>0?age/half:0));
+    // 每轮模式:关键字命中即有底分,不依赖当前问句词面
+    if(kwHits>0) sc=Math.max(sc, kwHits*boost*recency);
+    else if(sc<=0) sc=1e-6*recency;
+    scored.push({row:m,score:sc,identity:true,kw:kwHits});
+  }
+  scored.sort((a,b)=>b.score-a.score||(+b.row.ts||0)-(+a.row.ts||0));
+  const maxN=Math.max(1,+CLOUD_RECALL.identity_max_inject||24);
+  return scored.slice(0,maxN).map(x=>({...x.row,_score:x.score,_identity:true}));
+}
+function cloudPackRecallSystem(picked,{title=null,budget=null}={}){
   if(!picked||!picked.length) return {block:null,kept:[]};
   let kept=picked.slice();
   let maxChars=+CLOUD_RECALL.max_chars_per_item||2400;
-  const budget=+CLOUD_RECALL.token_budget||2000;
-  const title=CLOUD_RECALL.system_title||"店内旧档·相关召回(检索注入，非对话窗)";
+  const tokBudget=budget!=null?+budget:(+CLOUD_RECALL.token_budget||2000);
+  const baseTitle=title||CLOUD_RECALL.system_title||"店内旧档·相关召回(检索注入，非对话窗)";
   for(;;){
     if(!kept.length) return {block:null,kept:[]};
     const hasId=kept.some(p=>p._identity);
-    let head=title;
-    if(hasId) head=title+"\n"+(CLOUD_RECALL.identity_subtitle||"含身份锚点");
+    let head=baseTitle;
+    if(hasId&&!title) head=baseTitle+"\n"+(CLOUD_RECALL.identity_subtitle||"含身份锚点");
     const body=head+"\n\n"+kept.map(p=>cloudFormatRecallItem(p,maxChars)).join("\n---\n");
-    if(estCloudTokens([{content:body}])<=budget) return {block:{role:"system",content:body},kept};
+    if(estCloudTokens([{content:body}])<=tokBudget) return {block:{role:"system",content:body},kept};
     if(kept.length>1){ kept=kept.slice(0,-1); continue; }
     maxChars=Math.max(200,Math.floor(maxChars/2));
     if(maxChars<=200){
       const one=cloudFormatRecallItem(kept[0],200);
       const b2=head+"\n\n"+one;
-      if(estCloudTokens([{content:b2}])>budget) return {block:null,kept:[]};
+      if(estCloudTokens([{content:b2}])>tokBudget) return {block:null,kept:[]};
       return {block:{role:"system",content:b2},kept};
     }
   }
 }
-/** 8501 store → cloud_chat:15∩10k 对话窗 + 工作日志 + 修订⑤召回≤2k(总≤12k) */
+/** 8501 store → cloud_chat:15∩10k 窗 + top-4 召回 + 身份关键字眼每轮注入 */
 function buildCloudStoreMessages(storeMsgs,currentUser){
-  /* UI/HUD 遗留;发往模型的组装已改走 8501 grid_mem.inject_messages */
   const ut=String(currentUser||"").trim();
-  let logs=cloudWorkLogRows(storeMsgs||[], WORK_LOG_MAX_INJECT);
+  // 不每轮灌工作日志(全量/旁路污染源);活跃窗固定 15
   let turnCap=CLOUD_ACTIVE_TURNS;
-  const packCore=(logList,dial)=>{
+  const packCore=(dial)=>{
     const out=[];
-    if(logList.length){
-      const body=logList.map(m=>String(m.content||"").trim()).filter(Boolean).join("\n---\n");
-      out.push({role:"system",content:WORK_LOG_SYSTEM_TITLE+"\n"+body});
-    }
     for(const m of dial){
-      const c=String(m.content||"").trim();
-      if((m.role==="user"||m.role==="assistant")&&c) out.push({role:m.role,content:c});
+      let c=String(m.content||"").trim();
+      if((m.role==="user"||m.role==="assistant")&&c){
+        if(c.length>CLOUD_MSG_CHAR_CAP) c=cloudTruncateRaw(c,CLOUD_MSG_CHAR_CAP);
+        out.push({role:m.role,content:c});
+      }
     }
-    if(ut) out.push({role:"user",content:ut});
+    if(ut){
+      let cur=ut;
+      if(cur.length>CLOUD_MSG_CHAR_CAP) cur=cloudTruncateRaw(cur,CLOUD_MSG_CHAR_CAP);
+      out.push({role:"user",content:cur});
+    }
     return out;
   };
   let dial=[], core=[];
@@ -900,33 +1141,79 @@ function buildCloudStoreMessages(storeMsgs,currentUser){
           dial=dial.slice(0,-1);
       }
     }
-    core=packCore(logs, dial);
+    core=packCore(dial);
     if(estCloudTokens(core)<=CLOUD_TOKEN_BUDGET) break;
-    if(logs.length){ logs=logs.slice(1); continue; }
     if(turnCap>0){ turnCap-=1; continue; }
     core=ut?[{role:"user",content:ut}]:[];
     dial=[];
     break;
   }
   const excl=new Set(dial.map(cloudRowKey));
-  const picked=cloudSelectRecall(storeMsgs||[], ut, excl);
+  // 任务记忆:typed 按 type 过滤后独立 system;身份/召回不含任务记忆整包
+  let tmKept=filterTaskMemoriesForInjection(extractTaskMemoriesFromRows(storeMsgs||[]));
+  let tmBlock=renderTaskMemorySystem(tmKept);
+  let injectStore=prepareStoreRowsForInject(storeMsgs||[]);
+  // typed 最新 scout entry=ok 时,身份/召回不再注入复述旧 refused 的对话
+  const latestScout=tmKept.find(m=>m.type==="state"&&m.scope==="scout"&&(m.tags||[]).includes("entry")&&m.ts!=null);
+  if(latestScout&&/"ok"\s*:\s*true/.test(String(latestScout.body||""))){
+    injectStore=injectStore.filter(m=>{
+      const c=String(m.content||"");
+      return !(c.includes("Connection refused")||c.includes("Errno 111"));
+    });
+  }
+  const picked=cloudSelectRecall(injectStore, ut, excl);
   let {block:recallBlock,kept}=cloudPackRecallSystem(picked);
-  const insertAt=(core[0]&&core[0].role==="system"&&String(core[0].content||"").startsWith(WORK_LOG_SYSTEM_TITLE))?1:0;
-  const cap=+CLOUD_RECALL.total_inject_cap||12000;
+  const idPicked=cloudSelectIdentityArchive(injectStore, ut, excl);
+  const idBudget=+CLOUD_RECALL.identity_token_budget||6000;
+  const idTitle=CLOUD_RECALL.identity_system_title||"身份·关键字眼·每轮注入(侯/日记/侯着…)";
+  let {block:idBlock,kept:idKept}=cloudPackRecallSystem(idPicked,{
+    title:idTitle, budget:idBudget,
+  });
+  const cap=+CLOUD_RECALL.total_inject_cap||14000;
   let messages;
   for(;;){
+    tmBlock=renderTaskMemorySystem(tmKept);
     messages=core.slice();
-    if(recallBlock) messages.splice(insertAt,0,recallBlock);
+    let at=0;
+    // 任务记忆 typed → 身份关键字眼 → 普通召回
+    if(tmBlock){ messages.splice(at,0,tmBlock); at+=1; }
+    if(idBlock){ messages.splice(at,0,idBlock); at+=1; }
+    if(recallBlock) messages.splice(at,0,recallBlock);
     if(estCloudTokens(messages)<=cap) break;
-    if(!kept.length){ messages=core.slice(); recallBlock=null; break; }
-    kept=kept.slice(0,-1);
-    ({block:recallBlock,kept}=cloudPackRecallSystem(kept));
+    if(kept.length){
+      kept=kept.slice(0,-1);
+      ({block:recallBlock,kept}=cloudPackRecallSystem(kept));
+      continue;
+    }
+    // 先丢非 identity 的 typed 条(state 最先)
+    if(tmKept.some(m=>m.type!=="identity")&&dropOneTaskMemoryByPriority(tmKept)) continue;
+    if(idKept.length>1){
+      idKept=idKept.slice(0,-1);
+      ({block:idBlock,kept:idKept}=cloudPackRecallSystem(idKept,{
+        title:idTitle, budget:idBudget,
+      }));
+      continue;
+    }
+    // 最后才动 typed identity
+    if(tmKept.length&&dropOneTaskMemoryByPriority(tmKept)) continue;
+    if(idBlock&&estCloudTokens(core.concat([idBlock]))<=cap){
+      messages=core.slice();
+      messages.unshift(idBlock);
+      recallBlock=null; kept=[]; tmBlock=null; tmKept=[];
+      break;
+    }
+    messages=core.slice();
+    recallBlock=null; idBlock=null; idKept=[]; kept=[]; tmBlock=null; tmKept=[];
+    break;
   }
   const winTurns=dial.filter(m=>m.role==="user").length;
+  const hasTypedId=tmKept.some(m=>m.type==="identity");
   cloudLastInject={
-    window_turns:winTurns, work_log_n:logs.length, recall_n:kept.length,
+    window_turns:winTurns, work_log_n:0, recall_n:kept.length,
+    identity_n:idKept.length,
+    task_memory_n:tmKept.length,
     store_total:(storeMsgs||[]).length,
-    has_identity_anchor:kept.some(p=>p._identity),
+    has_identity_anchor:idKept.length>0||hasTypedId,
     inject_tokens:estCloudTokens(messages),
   };
   return messages;
@@ -959,7 +1246,7 @@ async function ensureCloudSignalRe(){
   await ensureCloudShared();
   return CLOUD_SIGNAL_RE;
 }
-/** Cloud：记忆 8501 store · 推理 8501 /task/cloud_chat（实况名 glm-5.2:cloud / kimi-k2.6:cloud） */
+/** Cloud：记忆 8501 store · 推理 8501 /task/cloud_chat（实况名 glm-5.2:cloud / glm-5.3-flash:cloud） */
 function rejectCloud8515Memory(url,label){
   const s=String(url||"");
   if(/\/cloud\/memory|:8515\/cloud\/memory/.test(s))
@@ -974,6 +1261,8 @@ function cloudChatUrl(){
 /* ---- Tab / Mode ---- */
 let topTab="studio";
 let cloudLane=st.get("cloudLane","glm52");
+if(cloudLane==="kimi_k3"){ cloudLane="glm53"; st.set("cloudLane","glm53"); }
+if(cloudLane==="minimax"||cloudLane==="minimax_cloud"){ cloudLane="glm53_full"; st.set("cloudLane","glm53_full"); }
 function showTopTab(name){
   topTab=name;
   if(window.__b11Shell?.flipTab) window.__b11Shell.flipTab(name);
@@ -992,13 +1281,29 @@ function showTopTab(name){
 $("#tabStudio").onclick=()=>showTopTab("studio");
 $("#tabCloud").onclick=()=>showTopTab("cloud");
 $("#tabCC").onclick=()=>showTopTab("cc");
-let mode="home";
+let mode=st.get("studioMode","expanded");
+if(mode==="home") mode="expanded"; // HOME 已撤 · 迁到 EXPANDED-GLM
+if(mode==="expanded_kimi"){ mode="expanded_glm53"; st.set("studioMode",mode); }
+function syncStudioModeUi(){
+  $$("#modebar button").forEach(x=>{
+    x.classList.toggle("on",x.dataset.m===mode);
+  });
+  const box=$("#box");
+  if(box){
+    box.placeholder=mode==="expanded_glm53"
+      ?"EXPANDED · GLM-5.3 Flash · workbench-b11…"
+      :mode==="shadow"?"SHADOW 测试对照(不入档)…"
+      :"EXPANDED · GLM-5.2 · workbench-b11…";
+  }
+}
 $$("#modebar button").forEach(b=>b.onclick=()=>{
-  $$("#modebar button").forEach(x=>x.classList.remove("on"));b.classList.add("on");
   mode=b.dataset.m;
+  st.set("studioMode",mode);
+  syncStudioModeUi();
   renderBillHud();
   stats();
 });
+syncStudioModeUi();
 
 /* ---- 素材(全类型收;图=EXIF剥;pdf/audio/video=服务端编排路径素材) ---- */
 let assets=[];
@@ -1053,7 +1358,15 @@ function stats(){
 
 /* ---- 守卫 ---- */
 const SAN=/\/(Users|home|var|etc)\/[^\s"'”]+|sk-[A-Za-z0-9]{16,}|(api[_-]?key|token|secret)\s*[=:]\s*\S+/i;
-const stripThink=s=>String(s??"").replace(/<think>[\s\S]*?<\/think>/gi,"").trim();
+const stripThink=s=>{
+  let t=String(s??"");
+  // GLM-5.3 漏出:裸 CoT + </think> + 回复(无开口 <think>)→ 取最后一个 </think> 之后
+  const idx=t.lastIndexOf("</think>");
+  if(idx>=0) t=t.slice(idx+8);
+  // 兜底:标准 <think>...</think> 包裹(若上面已切则无操作)
+  t=t.replace(/<think>[\s\S]*?<\/think>/gi,"");
+  return t.trim();
+};
 const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 
 /* ---- 场感知(仅 HOME 本地 9B; kimiMessages/candidate 零改动) ---- */
@@ -1114,7 +1427,7 @@ const ACTIVE_TURNS=6;
 const ACTIVE_MSGS=ACTIVE_TURNS*2;
 const API_CTX_MAX_CHARS=5000;
 const HOME_MAX_TOKENS=2048;
-const CHAT_FETCH_MS=300000;
+const CHAT_FETCH_MS=500000;
 let storeOnline=false;
 let storePullGen=0;
 let storeTotalCount=0;
@@ -1148,6 +1461,10 @@ function storeHdrs(){
   if(storeToken) h["X-Grid-Token"]=storeToken;
   return h;
 }
+function isEyesProvenance(content){
+  const s=String(content||"");
+  return s.startsWith("[眼睛·provenance]")||s.startsWith("[眼睛·glm_audit]")||s.startsWith("[VL:minimax-m3]");
+}
 function mapStoreRows(rows){
   const out=[];
   for(const m of rows){
@@ -1157,6 +1474,8 @@ function mapStoreRows(rows){
       out.push({id:m.id,role:"user",content:text});
     }else if(m.role==="assistant"){
       out.push({id:m.id,role:"assistant",content:text,card:{final:text,substrate:"local"}});
+    }else if(m.role==="system"&&isEyesProvenance(text)){
+      out.push({id:m.id,role:"system",content:text,eyes:true});
     }
   }
   return out;
@@ -1356,11 +1675,10 @@ function startStoreReconnectPoll(){
   },8000);
 }
 function currentSurface(){
-  if(topTab==="cloud") return cloudLane==="kimi_k25"?"cloud-kimi":"cloud-glm";
-  if(mode==="expanded") return "b11-expanded";
-  if(mode==="home") return "b11-home";
-  // SHADOW 等无独立生产发送面 — 不伪标 b11-studio(STUDIO=HOME/EXPANDED 容器,无第三条发送路径)
-  return "b11-home";
+  if(topTab==="cloud") return cloudSurface(cloudLane);
+  if(mode==="expanded"||mode==="expanded_glm53") return "b11-expanded";
+  // SHADOW 等无独立生产发送面 — STUDIO 容器 = EXPANDED-GLM / GLM53
+  return "b11-expanded";
 }
 function tagSurface(msgs){
   const s=currentSurface();
@@ -1555,7 +1873,7 @@ function kimiApiCostUsd(u){return usageCostUsd(u);}
 function enrichUsage(u,{billable=false,substrate="local"}={}){
   const out=normalizeUsage(typeof u==="object"&&u&&!u.usage?u:{usage:u})||{};
   const sub=substrate||out.backend_id||out.substrate||"";
-  const isCloud=billable||/cloud/.test(sub)||out.backend_id==="glm52_cloud"||out.backend_id==="kimi_k25_cloud"||out.backend_id==="deepseek_v4_cloud"||out.ollama_cloud;
+  const isCloud=billable||/cloud/.test(sub)||out.backend_id==="glm52_cloud"||out.backend_id==="glm53_flash_cloud"||out.backend_id==="glm53_full_cloud"||out.backend_id==="kimi_k25_cloud"||out.backend_id==="deepseek_v4_cloud"||out.ollama_cloud;
   if(!isCloud){
     out.billing="local";
     out.cost_usd=0;
@@ -1565,7 +1883,9 @@ function enrichUsage(u,{billable=false,substrate="local"}={}){
   const cost=cloudApiCostUsd(out,sub);
   if(cost!=null) out.cost_usd=cost;
   out.billing="api";
-  if(sub.includes("glm")||out.cost_model==="glm-5.2") out.cost_model="glm-5.2";
+  if(sub.includes("flash")||sub==="glm53"||sub==="glm53_flash_cloud") out.cost_model="glm-5.3-flash";
+  else if(sub.includes("glm53_full")||sub.includes("5.3")||sub.includes("glm53")) out.cost_model="glm-5.3";
+  else if(sub.includes("glm")||out.cost_model==="glm-5.2") out.cost_model="glm-5.2";
   else if(sub.includes("deepseek")||sub.includes("ds")) out.cost_model="deepseek-v4";
   else out.cost_model="kimi-k2.6";
   return Object.keys(out).length?out:null;
@@ -1628,7 +1948,7 @@ function renderBillHud(){
   if(!hud) return;
   if(tokEl) tokEl.textContent=String(cumulativeBillTok);
   if(costEl) costEl.textContent=cumulativeBillUsd.toFixed(3);
-  const show=mode==="expanded"||cumulativeBillUsd>0;
+  const show=mode==="expanded"||mode==="expanded_glm53"||cumulativeBillUsd>0;
   hud.hidden=!show;
   if(show) hud.title="STUDIO API 累计 · epoch "+epochLabel();
 }
@@ -1719,9 +2039,13 @@ async function homeChat(messages, onWait, attempt=0, opts={}){
     if(waitIv) clearInterval(waitIv);
   }
 }
-async function candidateCall(prompt){
+async function candidateCall(prompt,{backendId="glm52_cloud"}={}){
+  if(CLOUD_MEMORY_SEALED||!cfg.kimiUrl||/\/task\/candidate/i.test(String(cfg.kimiUrl||""))){
+    throw new Error(CLOUD_MEMORY_SEAL_MSG+" · /task/candidate 已断");
+  }
   const kimiUrl=assert8501ApiUrl(cfg.kimiUrl,"candidate 端点");
-  const body={backend_id:"glm52_cloud",prompt:capCandidatePrompt(prompt),task_label:"grid_expanded"};
+  const bid=backendId==="glm53_flash_cloud"?"glm53_flash_cloud":"glm52_cloud";
+  const body={backend_id:bid,prompt:capCandidatePrompt(prompt),task_label:"grid_expanded"};
   const t0=Date.now();
   const r=await fetch(kimiUrl,{method:"POST",
     headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
@@ -1739,19 +2063,26 @@ async function candidateCall(prompt){
   }
   const j=await r.json();
   return {text:stripThink(j.content ?? j.text ?? j.result ?? j.message?.content ?? ""),
-    usage:enrichUsage(normalizeUsage(j)||j.usage||j.substrate_usage,{billable:true,substrate:"glm52_cloud"}),
+    usage:enrichUsage(normalizeUsage(j)||j.usage||j.substrate_usage,{billable:true,substrate:bid}),
     ms:Date.now()-t0};
 }
 
 /* ---- EXPANDED:出门内容裁剪(第4条:必要上下文,非全量历史) ---- */
-const RULE_LINE="你是 Grid 的扩展 substrate:只完成当前任务;不声称 Grid 权限;不臆造记忆;数据不足时明说不足。";
+const RULE_LINE_GLM="你是 Grid 的扩展 substrate(GLM-5.2 大底座):只完成当前任务;不声称 Grid 权限;不臆造记忆;数据不足时明说不足。";
+const RULE_LINE_GLM53="你是 Grid 的扩展 substrate(GLM-5.3 Flash 大底座):只完成当前任务;不声称 Grid 权限;不臆造记忆;数据不足时明说不足。禁止把推理/chain-of-thought写进正文;content只给用户看的回答。";
+const RULE_LINE=RULE_LINE_GLM;
 function scopedContext(){
   return history.slice(-ACTIVE_MSGS).map(m=>
     `${m.role==="user"?"用户":"Grid"}: ${apiTurnContent(m).slice(0,400)}`).join("\n");
 }
+function expandedCloudBackend(m=mode){
+  return (m==="expanded_glm53"||m==="expanded_kimi")?"glm53_flash_cloud":"glm52_cloud";
+}
 
-/* ---- EXPANDED 编排:首选服务端,失败走前端过渡链 ---- */
-async function expandedOrchestrate(q,onStage){
+/* ---- EXPANDED 编排:首选服务端,失败走前端过渡链(GLM/Kimi 同路径) ---- */
+async function expandedOrchestrate(q,onStage,{cloudBackend}={}){
+  const backend=cloudBackend||expandedCloudBackend();
+  const rule=backend==="glm53_flash_cloud"?RULE_LINE_GLM53:RULE_LINE_GLM;
   const p=picked();
   const imgs=p.filter(a=>a.kind==="image").map(a=>({mime:a.mime,base64:a.dataUrl.split(",")[1]}));
   const texts=p.filter(a=>a.kind==="text").map(a=>`【素材 ${a.name}】\n${a.text}`).join("\n\n");
@@ -1766,7 +2097,10 @@ async function expandedOrchestrate(q,onStage){
       assets:[...imgs.map((i,k)=>({name:"img"+k,kind:"image",...i})),
               ...p.filter(a=>a.kind==="text").map(a=>({name:a.name,kind:"text",text:a.text})),
               ...heavy.map(a=>({name:a.name,kind:a.kind,mime:a.mime,base64:a.base64}))],
-      client_context:scopedContext()};
+      client_context:scopedContext(),
+      cloud_enabled:true,
+      cloud_backend:backend,
+      backend_id:backend};
     const postBody=useWorkbenchGatewayProxy()?body:await attachExpandedVerification(body,q);
     const r=await fetch(expUrl,{method:"POST",
       headers:{"Content-Type":"application/json"},body:JSON.stringify(postBody)});
@@ -1778,29 +2112,29 @@ async function expandedOrchestrate(q,onStage){
     }
     if(!r.ok) throw new Error("expanded HTTP "+r.status+" @ "+expUrl);
     const j=await r.json();
+    const sub=j.substrate||backend;
     return {final:stripThink(j.final??j.content??""),
-      substrate:j.substrate||"glm52_cloud",orch:"8501",
+      substrate:sub,orch:"8501",
       candidate:j.provenance?.candidate||"(服务端未回传)",
       env:j.provenance?.envelope_summary||"",ms:Date.now()-t0,
-      usage:enrichUsage(normalizeUsage(j)||j.usage,{billable:j.substrate!=="local",substrate:j.substrate||"glm52_cloud"})};
+      usage:enrichUsage(normalizeUsage(j)||j.usage,{billable:j.substrate!=="local",substrate:sub})};
   }catch(e){
     const errMsg=String(e&&e.message||e||"");
     if(isVerificationError(errMsg)) throw e;
     if(/expanded HTTP (403|422)/i.test(errMsg)) throw e;
-    /* 路径B:前端过渡链 —— candidate → aster 校验接纳 → 单一 final
-       (服务端端点部署后自动弃用;heavy 素材此路不支持,诚实报出) */
+    /* 路径B:前端过渡链 —— candidate → aster 校验接纳 → 单一 final */
     onStage&&onStage("过渡链:substrate 感知中…");
     const skipped=heavy.length?`\n(注:${heavy.map(a=>a.name).join("、")} 需 8501 编排端点的本地预处理,本次未随行)`:"";
-    const prompt=capCandidatePrompt(`${RULE_LINE}\n\n[近程上下文]\n${scopedContext()}\n\n${texts?texts+"\n\n":""}[当前任务]\n${q}`);
-    const candRes=await candidateCall(prompt);
+    const prompt=capCandidatePrompt(`${rule}\n\n[近程上下文]\n${scopedContext()}\n\n${texts?texts+"\n\n":""}[当前任务]\n${q}`);
+    const candRes=await candidateCall(prompt,{backendId:backend});
     const cand=candRes.text||"";
     if(!cand) throw new Error("substrate 返回为空");
     onStage&&onStage("Grid 校验接纳中…");
     const finRes=await homeChat([...messagesForApi(),{role:"user",
       content:`扩展 substrate 对以下任务的输出已到。以 Grid 法则校验:内容可靠则接纳并按需修正表述;发现错误、越权或臆造则纠正之。直接输出最终回答,不评论流程。\n\n[任务]\n${q}\n\n[substrate 输出]\n${cand}`}]);
     const usage=enrichUsage({usage:candRes.usage,substrate_usage:candRes.usage,cost_usd:candRes.usage?.cost_usd},
-      {billable:true,substrate:"glm52_cloud"})||candRes.usage||null;
-    return {final:(finRes.text||"")+skipped,substrate:"glm52_cloud",orch:"client-interim",
+      {billable:true,substrate:backend})||candRes.usage||null;
+    return {final:(finRes.text||"")+skipped,substrate:backend,orch:"client-interim",
       candidate:candRes.text,env:`近${ACTIVE_TURNS}轮活跃窗口 + ${imgs.length}图 + ${texts?"文本素材":"无文本"} + 法则1行`,
       ms:Date.now()-t0,usage,truncated:!!finRes.truncated};
   }
@@ -1810,7 +2144,11 @@ async function expandedOrchestrate(q,onStage){
 function finalCard(r){
   const sub=r.substrate==="local"||String(r.substrate||"").startsWith("local")
     ?(lastFinalBare?'<span class="tag bad">bare·无协议栈</span>':'<span class="tag local">substrate: local</span>')
-    :'<span class="tag cloud">substrate: '+(String(r.substrate||"").includes("glm")?"glm52_cloud":"cloud")+'</span>';
+    :'<span class="tag cloud">substrate: '+(
+        String(r.substrate||"").includes("glm53_full")?"glm53_full_cloud"
+        :String(r.substrate||"").includes("glm53")?"glm53_flash_cloud"
+        :String(r.substrate||"").includes("kimi")?"kimi_k25_cloud"
+        :String(r.substrate||"").includes("glm")?"glm52_cloud":"cloud")+'</span>';
   const truncTag=r.truncated?'<span class="tag warn">truncated · 8501 budget</span>':"";
   const bodyText=(r.final!=null&&String(r.final).length)?String(r.final)
     :(r.truncated?"（输出被 8501 预算截断;已保留上下文,可续问「继续」）":"（空响应）");
@@ -1891,61 +2229,20 @@ async function send(){
   clearComposer();
   setSendBusy(true);
   try{
-    if(mode==="home"||mode==="expanded") await ensureActiveWindowBeforeSend();
-    if(mode==="home"){
-      const texts=picked().filter(a=>a.kind==="text").map(a=>`【素材 ${a.name}】\n${a.text}`).join("\n\n");
-      history.push({role:"user",content:q});
-      updateStoreHud();
-      const f=await senseField();
-      setFieldLight(f);
-      const fieldPrefix=fieldLine(f);
-      const attachedField=!!fieldPrefix;
-      bubble(esc(text)+(picked().length?`<div style="font:10px var(--mono);color:var(--an);margin-top:4px">+${picked().length} 素材</div>`:"")+
-        (attachedField?`<div class="meta">·场感知已附(仅本地)</div>`:""),"msg you");
-      const m={role:"user",content:fieldPrefix+(texts?texts+"\n\n":"")+q};
-      const ctx=buildApiContext();
-      const msgs=ctx.messages.slice();
-      if(msgs.length&&msgs[msgs.length-1].role==="user") msgs[msgs.length-1]=m;
-      else msgs.push(m);
-      noteCtxTrim(ctx.trimmed);
-      const holder=bubble(`<div class="card final"><div class="chead">GRID ·…</div></div>`,"msg");
-      const headEl=holder.querySelector(".chead");
-      let userStored=false;
-      try{
-        await persistUserToStore(q);
-        userStored=true;
-        const res=await homeChat(msgs, ms=>{
-          if(headEl) headEl.textContent="GRID · 等待 "+Math.round(ms/1000)+"s…";
-        });
-        const card={final:res.text,substrate:"local",usage:res.usage,ms:res.ms,truncated:res.truncated};
-        history.push({role:"assistant",content:storePersistText(card),card});
-        holder.innerHTML=finalCard(card);
-        scrollChatToBottom();
-        try{
-          await persistAssistantToStore(card);
-          trimChatToActiveWindow();
-          updateMemHud();
-        }catch(storeErr){
-          warnStore("回复已显示; assistant 落库失败: "+storeErr.message);
-        }
-      }catch(e){
-        const errText=userStored?("失败:"+e.message+" · 用户轮已落库"):("失败:"+e.message);
-        const card={final:errText,substrate:"local",err:true};
-        history.push({role:"assistant",content:errText,card});
-        holder.innerHTML=`<div class="card err">${esc(errText)}</div>`;
-        updateStoreHud();
-      }
-    }else if(mode==="expanded"){
+    if(mode==="expanded"||mode==="expanded_glm53") await ensureActiveWindowBeforeSend();
+    if(mode==="expanded"||mode==="expanded_glm53"){
+      const laneLabel=mode==="expanded_glm53"?"EXPANDED-GLM53":"EXPANDED-GLM";
+      const backend=expandedCloudBackend();
       history.push({role:"user",content:q});
       updateStoreHud();
       bubble(esc(text)+(picked().length?`<div style="font:10px var(--mono);color:var(--an);margin-top:4px">+${picked().length} 素材</div>`:""),"msg you");
-      const holder=bubble(`<div class="card final"><div class="chead">GRID · EXPANDED ·…</div></div>`,"msg");
+      const holder=bubble(`<div class="card final"><div class="chead">GRID · ${laneLabel} ·…</div></div>`,"msg");
       const headEl=holder.querySelector(".chead");
       let userStored=false;
       try{
         await persistUserToStore(q);
         userStored=true;
-        const r=await expandedOrchestrate(q,stage=>{if(headEl) headEl.textContent="GRID · "+stage});
+        const r=await expandedOrchestrate(q,stage=>{if(headEl) headEl.textContent="GRID · "+stage},{cloudBackend:backend});
         const card={...r,final:r.final||""};
         history.push({role:"assistant",content:storePersistText(card),card});
         holder.outerHTML=`<div class="msg">${finalCard(card)}</div>`;
@@ -1958,12 +2255,10 @@ async function send(){
           warnStore("回复已显示; assistant 落库失败: "+storeErr.message);
         }
       }catch(e){
-        const errText=userStored?("EXPANDED 失败:"+e.message+" · 用户轮已落库"):("EXPANDED 失败:"+e.message);
+        const errText=userStored?(`${laneLabel} 失败:`+e.message+" · 用户轮已落库"):(`${laneLabel} 失败:`+e.message);
         const card={final:errText,substrate:"local",err:true};
         history.push({role:"assistant",content:errText,card});
-        holder.innerHTML=`<div class="card err">${esc(errText)}
-          <div style="margin-top:8px"><button id="rth">返航 HOME</button></div></div>`;
-        holder.querySelector("#rth").onclick=()=>$$("#modebar button")[0].click();
+        holder.innerHTML=`<div class="card err">${esc(errText)}</div>`;
         updateStoreHud();
       }
     }else if(mode==="shadow"){
@@ -2125,6 +2420,9 @@ async function runCcTask(){
   try{
     let j, text="";
     if(ccLane==="kimi"){
+      if(CLOUD_MEMORY_SEALED||!cfg.kimiUrl||/\/task\/candidate/i.test(String(cfg.kimiUrl||""))){
+        throw new Error(CLOUD_MEMORY_SEAL_MSG+" · CC/candidate 已断");
+      }
       const r=await fetch(cfg.kimiUrl,{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
           backend_id:"glm52_cloud",
@@ -2193,8 +2491,8 @@ function renderCloudTray(){
   const t=$("#cloudTray"); if(!t) return;
   t.innerHTML="";
   for(const a of cloudAssets){
-    const note=a.kind==="image"?" · EXIF已剥":
-      a.kind==="pdf"||a.kind==="audio"||a.kind==="video"?" · 8515本地预处理":
+    const note=a.kind==="image"?" · EXIF已剥 · GLM经M3眼睛 / DS走Kimi VL":
+      a.kind==="pdf"||a.kind==="audio"||a.kind==="video"?" · 8501预处理":
       a.kind==="unsupported"?" · 暂不支持此格式":
       a.kind==="oversize"?" · 超25MB不发":"";
     const d=document.createElement("div"); d.className="asset";
@@ -2209,7 +2507,7 @@ function renderCloudTray(){
   const man=$("#cloudManifest");
   if(man){
     const p=cloudPicked();
-    const glmVl=cloudLane==="glm52"&&p.some(a=>a.kind==="image")?" · GLM经Kimi识图":"";
+    const glmVl=(cloudLane==="glm52"||cloudLane==="glm53"||cloudLane==="glm53_full")&&p.some(a=>a.kind==="image")?" · GLM经M3眼睛":"";
     const heavy=p.some(a=>a.kind==="pdf"||a.kind==="audio"||a.kind==="video")?" · 含PDF/音视频":"";
     man.textContent="发送清单:"+(p.length?p.map(a=>a.name).join(" · "):"空(仅文字)")+glmVl+heavy;
   }
@@ -2261,7 +2559,7 @@ function loadCloudMemoryLocal(lane){
 }
 async function persistCloudTurnLocal(lane,userText,res){
   const hist=getCloudHist(lane);
-  hist.push({role:"assistant",content:res.text,model:res.model,usage:res.usage});
+  hist.push({role:"assistant",content:res.text,model:res.model,usage:res.usage,r4:res.r4||{execution_authority:"NONE",gate:"classify_v2"}});
   while(hist.filter(m=>m.role==="user").length>CLOUD_ACTIVE_TURNS){
     const ui=hist.findIndex(m=>m.role==="user");
     if(ui<0) break;
@@ -2310,7 +2608,7 @@ async function fetchCloudStoreAll(lane){
 }
 async function pushCloudStoreMsgs(lane,msgs){
   const node=cloudStoreNode(lane);
-  const surf=lane==="kimi_k25"?"cloud-kimi":"cloud-glm";
+  const surf=cloudSurface(lane);
   const tagged=(msgs||[]).map(m=>({...m,surface:m.surface||surf}));
   const url=rejectCloud8515Memory(`${cloud8501Base()}/store/conversations/${encodeURIComponent(node)}/messages`,"Cloud store 写");
   const r=await fetch(url,
@@ -2388,7 +2686,11 @@ function getCloudHist(lane){
 }
 async function loadCloudMemory(lane){
   lane=lane||cloudLane;
-  if(!cloudUses8501Mem(lane)) return loadCloudMemoryLocal(lane);
+  if(!cloudUses8501Mem(lane)){
+    const h=loadCloudMemoryLocal(lane);
+    if(CLOUD_MEMORY_SEALED) updateCloudMemHud("SEALED · 本页会话 · 无 store/无注入");
+    return h;
+  }
   try{
     await ensureCloudShared();
     await maybePurgeCloudEpoch(lane);
@@ -2433,6 +2735,7 @@ async function persistCloudAssistant(lane,userText,res){
     if(h[i].role==="assistant"){
       h[i].model=res.model;
       h[i].usage=res.usage;
+      if(res.r4) h[i].r4=res.r4;
       break;
     }
   }
@@ -2464,7 +2767,13 @@ function syncCloudLaneUi(){
   const lane=CLOUD_LANES[cloudLane];
   const meta=$("#cloudMeta");
   if(meta&&lane){
-    meta.textContent=`${lane.label} · ${lane.model()} · 8501 cloud_chat · ${cloudStoreNode(cloudLane)} · UI ${CLOUD_ACTIVE_TURNS} 轮`;
+    if(cloudUses8501Mem(cloudLane)){
+      meta.textContent=`${lane.label} · ${lane.model()} · store ${cloudStoreNode(cloudLane)} · 窗${CLOUD_ACTIVE_TURNS}+top4 · 身份关键字每轮 · candidate 断`;
+    }else if(CLOUD_MEMORY_SEALED){
+      meta.textContent=`${lane.label} · ${lane.model()} · chat OK · store SEALED · candidate 断`;
+    }else{
+      meta.textContent=`${lane.label} · ${lane.model()} · 8501 cloud_chat · ${cloudStoreNode(cloudLane)} · UI ${CLOUD_ACTIVE_TURNS} 轮`;
+    }
   }
   st.set("cloudLane",cloudLane);
   renderCloudBillHud();
@@ -2487,57 +2796,121 @@ function renderCloudHistory(){
     if(m.role==="user"){
       el.insertAdjacentHTML("beforeend",
         `<div class="msg you">${esc(m.content||"")}${m.assets?`<div style="font:10px var(--mono);color:var(--an);margin-top:4px">+${m.assets} 素材</div>`:""}</div>`);
+    }else if(m.role==="system"&&isEyesProvenance(m.content)){
+      const title=String(m.content||"").startsWith("[眼睛·glm_audit]")?"眼睛 · GLM 审计":"眼睛 · M3 视觉";
+      el.insertAdjacentHTML("beforeend",
+        `<div class="msg"><div class="card final"><div class="chead">${title} · provenance</div>${esc(m.content||"")}</div></div>`);
     }else{
+      const r4=m.r4||{};
+      const auth=r4.execution_authority?" · auth "+esc(r4.execution_authority):" · auth NONE";
+      const prop=r4.proposal_detected?" · proposal":"";
       const usage=m.usage&&fmtUsage(m.usage)?`<div class="usage-line">${esc(fmtUsage(m.usage))}</div>`:"";
       el.insertAdjacentHTML("beforeend",
-        `<div class="msg"><div class="card final"><div class="chead">${esc(lane?.label||cloudLane)} · ${esc(m.model||lane?.model()||"")}</div>${esc(m.content||"")}${usage}</div></div>`);
+        `<div class="msg"><div class="card final"><div class="chead">${esc(lane?.label||cloudLane)} · ${esc(m.model||lane?.model()||"")}${auth}${prop}</div>${esc(m.content||"")}${usage}</div></div>`);
     }
   }
   el.scrollTop=el.scrollHeight;
 }
-async function cloudChat(laneId,currentUser,model,{images=[],assets=null,storeMsgs=null}={}){
+async function cloudChatOnce(laneId,currentUser,model,{images=[],assets=null,storeMsgs=null,turnCap=null,tokenBudget=null,noRecall=false}={}){
   await ensureCloudShared();
-  // 组装单源=8501 grid_mem.inject_messages;客户端只送当前 user
-  const ut=String(currentUser||"").trim();
-  if(!ut&&!(assets&&assets.length)&&!images.length) throw new Error("empty messages");
-  const messages=[{role:"user",content:ut||"请分析附件。"}];
+  const useStore=cloudUses8501Mem(laneId);
+  const mem=storeMsgs||cloudStoreCache[laneId]||(!useStore?(cloudHistories[laneId]||[]):[])||[];
+  const prevTurns=CLOUD_ACTIVE_TURNS, prevBudget=CLOUD_TOKEN_BUDGET, prevRecall=CLOUD_RECALL.top_k;
+  if(turnCap!=null) CLOUD_ACTIVE_TURNS=Math.max(0,+turnCap);
+  if(tokenBudget!=null) CLOUD_TOKEN_BUDGET=Math.max(2000,+tokenBudget);
+  if(noRecall) CLOUD_RECALL.top_k=0;
+  let messages;
+  try{ messages=buildCloudStoreMessages(mem,currentUser); }
+  finally{
+    CLOUD_ACTIVE_TURNS=prevTurns; CLOUD_TOKEN_BUDGET=prevBudget; CLOUD_RECALL.top_k=prevRecall;
+  }
+  if(!messages.length) throw new Error("empty messages");
   const laneSpec=CLOUD_LANES[laneId];
   const resolvedModel=model||laneSpec?.model?.();
+  const memNode=useStore?cloudStoreNode(laneId):"sealed";
+  const surface=cloudSurface(laneId);
   const body={
     substrate:laneId,
     messages,
     model:resolvedModel,
-    memory_node:cloudStoreNode(laneId),
-    surface:laneId==="kimi_k25"?"cloud-kimi":"cloud-glm",
+    memory_node:memNode,
+    surface,
     max_tokens:8192,
     source:"aether_b11",
+    client_built_memory:true,
+    memory_sealed:!useStore,
     mission_ref:{
       client:"aether_b11",
       lane:laneId,
-      memory_node:cloudStoreNode(laneId),
+      memory_node:memNode,
       model:resolvedModel,
+      memory_sealed:!useStore,
+      client_built_memory:true,
     },
   };
   if(assets&&assets.length) body.assets=assets;
-  else if(images.length) body.images=images;
+  if(images&&images.length) body.images=images;
   const r=await fetch(cloudChatUrl(),{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify(body)});
   const j=await r.json().catch(()=>({}));
   if(!r.ok||j.ok===false){
     let err=j.error||j.done_reason||j.detail||`HTTP ${r.status}`;
     if(err&&typeof err==="object") err=err.reason||err.message||JSON.stringify(err);
-    throw new Error(String(err));
+    const e=new Error(String(err));
+    e.status=r.status; e.payload=j;
+    throw e;
   }
   const text=stripThink(j.content||j.text||j.candidate||"");
-  if(!text) throw new Error("empty cloud response");
+  if(!text){
+    const e=new Error("empty cloud response");
+    e.status=r.status; e.payload=j;
+    throw e;
+  }
   const inj=cloudLastInject||{};
-  updateCloudMemHud(`总tok≤${inj.inject_tokens||estCloudTokens(messages)}${inj.has_identity_anchor?" · 含身份锚点":""}`);
+  updateCloudMemHud(
+    `窗${inj.window_turns??"?"} · 召回${inj.recall_n??0}`
+    +`${inj.identity_n?` · 身份${inj.identity_n}`:""}`
+    +` · tok≤${inj.inject_tokens||estCloudTokens(messages)}`
+  );
   return {
     text,
     model:j.model||model,
     usage:enrichUsage(normalizeUsage(j)||j.usage||j.substrate_usage||{},
       {billable:true,substrate:laneSpec?.substrate||"glm52_cloud"}),
   };
+}
+function cloudNeedsAutoRefresh(err){
+  const msg=String(err&&err.message||err||"");
+  const st=err&&err.status;
+  return st===502 || /empty_content|empty cloud|content 空|message exceeds|HTTP 502/i.test(msg);
+}
+/** 超长/空答 → 自动缩窗重试(无需手调) */
+async function cloudChat(laneId,currentUser,model,opts={}){
+  try{
+    return await cloudChatOnce(laneId,currentUser,model,opts);
+  }catch(e1){
+    if(!cloudNeedsAutoRefresh(e1)) throw e1;
+    updateCloudMemHud("超长·自动缩窗重试…");
+    try{
+      const r=await cloudChatOnce(laneId,currentUser,model,{
+        ...opts, turnCap:6, tokenBudget:6000, noRecall:true,
+      });
+      if(r.usage) r.usage.cloud_client_refresh="trim6";
+      updateCloudMemHud("已自动缩窗(6轮) · 续聊");
+      return r;
+    }catch(e2){
+      if(!cloudNeedsAutoRefresh(e2)) throw e2;
+      updateCloudMemHud("再缩·仅本轮…");
+      const r2=await cloudChatOnce(laneId,currentUser,model,{
+        ...opts, turnCap:0, tokenBudget:4000, noRecall:true,
+        storeMsgs:[], // 强制仅当前 user
+      });
+      // turnCap 0 + empty store still packs currentUser via buildCloudStoreMessages
+      if(r2.usage) r2.usage.cloud_client_refresh="current_only";
+      updateCloudMemHud("已自动刷新为本轮上下文");
+      return r2;
+    }
+  }
 }
 async function sendCloud(){
   const text=($("#cloudBox")?.value||"").trim();
@@ -2559,14 +2932,20 @@ async function sendCloud(){
       updateCloudMemHud();
     }else{
       await loadCloudMemory(cloudLane);
+      // sealed/本地:发给模型的是推入本轮之前的 hist,避免与 currentUser 重复
+      storeMsgs=(getCloudHist(cloudLane)||[]).slice();
     }
   }catch(e){
     console.warn("[b11 cloud store refresh]",e);
-    storeMsgs=cloudStoreCache[cloudLane]||null;
+    storeMsgs=cloudStoreCache[cloudLane]||(getCloudHist(cloudLane)||[]).slice();
   }
   $("#cloudBox").value="";
   const imgs=picked.filter(a=>a.kind==="image");
-  const userContent=text||(picked.length?"请分析附件。":"");
+  let userContent=text||(picked.length?"请分析附件。":"");
+  // 文本附件客户端先拼进正文(双保险);PDF/图仍靠 8501 preprocess
+  for(const a of picked.filter(x=>x.kind==="text"&&x.text)){
+    userContent+=`\n\n【素材 ${a.name}】\n${String(a.text).slice(0,20000)}`;
+  }
   const images=imgs.map(i=>({mime:i.mime||"image/jpeg",base64:i.dataUrl.split(",")[1]}));
   const assets=cloudAssetsPayload(picked);
   const hist=getCloudHist(cloudLane);
@@ -2576,7 +2955,7 @@ async function sendCloud(){
   renderCloudHistory();
   const pending=document.createElement("div");
   pending.className="msg";
-  pending.innerHTML=`<div class="card final"><div class="chead">${esc(lane.label)} · …</div>…</div>`;
+  pending.innerHTML=`<div class="card final"><div class="chead">${esc(lane.label)} · …${cloudUses8501Mem(cloudLane)?"":" · no-store"}</div>…</div>`;
   $("#cloudChat").appendChild(pending);
   $("#cloudChat").scrollTop=$("#cloudChat").scrollHeight;
   let userStored=false;
@@ -2585,13 +2964,15 @@ async function sendCloud(){
     userStored=true;
     const res=await cloudChat(cloudLane,userContent,lane.model(),{assets,images,storeMsgs});
     const sig=await ensureCloudSignalRe();
-    if(sig.test(res.text||"")){
-      pending.remove();
-      renderCloudHistory();
-      $("#cloudChat").insertAdjacentHTML("beforeend",
-        `<div class="msg"><div class="card err">${esc(lane.label)} 失败:iron-law-violation · 信号闸拦截,用户轮已落库</div></div>`);
-      return;
-    }
+    const proposal=!!(sig && res.text && sig.test(res.text));
+    res.r4={
+      execution_authority:"NONE",
+      proposal_detected:proposal,
+      executable:false,
+      gate:"classify_v2",
+      context:"b11-cloud",
+      final_action:"display_persist",
+    };
     pending.remove();
     await persistCloudAssistant(cloudLane,userContent,res);
     renderCloudHistory();
@@ -2601,10 +2982,10 @@ async function sendCloud(){
     if(!userStored) hist.pop();
     renderCloudHistory();
     const msg=String(e.message||e);
-    const hint=/empty after thinking|empty_content|GLM 上游 content 空/i.test(msg)
-      ? "（8501 已自动 no_think + 裁旧轮重试；仍失败请缩短消息或稍后再发）"
+    const hint=/empty after thinking|empty_content|content 空|empty cloud/i.test(msg)
+      ? "（8501+客户端已自动截断/缩窗重试；仍失败请稍后再发）"
       : /^HTTP 502$/i.test(msg)
-      ? "（网关无响应(可能在重启),请重试）"
+      ? "（上游空答或网关忙,已自动缩窗仍失败时可再点发）"
       : /503|504/i.test(msg)
       ? "（网关暂不可用,请重试）":"";
     $("#cloudChat").insertAdjacentHTML("beforeend",
