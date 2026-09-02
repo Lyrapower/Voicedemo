@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import sys
@@ -49,6 +50,19 @@ SEL_DECIMALS = "0x313ce567"
 SEL_TOTAL_SUPPLY = "0x18160ddd"
 
 CHAINS = {1: "ETH", 56: "BSC"}     # chain_id → env 前缀
+
+# §八 证据等级梯映射(契约 v1.3):reader 的 confidence 描述 supply 双源状态,映射到全系统等级梯。
+# 注意:Alchemy/QuickNode 是商业 RPC,非"自建节点",所以 dual(双商业源同区块一致)= witnesses_agree,不是 attested。
+# attested 留给真正自建节点直读(契约 §八 原文:"链上自建 RPC"= attested)。
+CONFIDENCE_TO_GRADE: dict[str, str] = {
+    "dual": "witnesses_agree",    # ≥2 独立商业 RPC 同区块一致
+    "single": "witness_only",     # 单一第三方 RPC 源
+    "unverified": "unverified",   # 不一致/第二源故障/读不到
+}
+GRADE_ORDER: dict[str, int] = {
+    "attested": 0, "witnesses_agree": 1, "witness_only": 2,
+    "issuer_claim": 3, "secondhand": 4, "unverified": 5,
+}
 
 DEFAULT_REGISTRY = [
     # USYC(Circle/Hashnote)—— 官方:https://developers.circle.com/tokenized/usyc/smart-contracts(2026-08-26 实读)
@@ -122,7 +136,7 @@ def read_token(url: str, entry: dict, block: str = "latest", url2: str | None = 
             "supply_units": None, "supply_usd_at_par": None, "nav_usd": None, "supply_usd_at_nav": None,
             "nav_oracle": None, "error": None, "block": block,
             "second_source": {"status": "absent" if not url2 else "pending", "total_supply": None, "match": None},
-            "confidence": None,
+            "confidence": "unverified", "evidence_grade": "unverified",
             "read_ts": datetime.datetime.now(datetime.timezone.utc).isoformat()}
     if not entry.get("address"):
         card["error"] = "注册表无地址(待官方文档核实),拒读不猜"
@@ -165,6 +179,7 @@ def read_token(url: str, entry: dict, block: str = "latest", url2: str | None = 
     except Exception as exc:
         card["error"] = "rpc 读取失败:%s" % str(exc)[:160]
     card["confidence"] = _confidence(card, policy)
+    card["evidence_grade"] = CONFIDENCE_TO_GRADE.get(card["confidence"], "unverified")
     if card["confidence"] == "single" and not card["error"]:
         card["error"] = None
         card["note"] = "单源读数(该链无第二源,policy=optional):可看,不算已核实"
@@ -197,7 +212,35 @@ def run_chain(url: str, entries: list, url2: str | None = None, policy: str = "r
     return {"chain_id": chain_id, "block": block_n, "rpc2_status": rpc2_status, "policy": policy, "cards": cards, "skipped": skipped}
 
 
-def run(url: str, registry: list, out_dir: str | None, url2: str | None = None, rpc_env: dict | None = None) -> dict:
+def _emit_provenance_receipt(doc: dict) -> dict | None:
+    """Phase 1+2:把 reader 的链上读数接进 harness provenance 链(补 G1)。
+    产一条 FactualReceipt,metadata 带 evidence_grade(= 所有卡里等级最低的,保守聚合)+ per-card 明细,
+    写 provenance.jsonl。mission_id/action_id 由读数内容哈希得来(确定性、可重放)。"""
+    try:
+        from app.harness.action_envelope import FactualReceipt
+        from app.harness import provenance
+    except Exception as exc:
+        sys.stderr.write("rwa_onchain_reader: provenance 模块不可用,跳过 emit:%s\n" % str(exc)[:120])
+        return None
+    cards_meta = [{"symbol": c["symbol"], "chain": c["chain"], "confidence": c["confidence"],
+                   "evidence_grade": c.get("evidence_grade")} for c in doc.get("cards", [])]
+    grades = [c.get("evidence_grade") for c in cards_meta if c.get("evidence_grade") in GRADE_ORDER]
+    aggregate = max(grades, key=lambda g: GRADE_ORDER[g]) if grades else "unverified"  # 最低可信 = ladder index 最大
+    body = json.dumps({k: doc.get(k) for k in ("kind", "version", "read_ts", "n_dual", "n_single", "n_unverified")},
+                      sort_keys=True, ensure_ascii=False, default=str)
+    action_id = "rwa-" + hashlib.sha256(body.encode()).hexdigest()[:12]
+    mission_id = "rwa-onchain-" + (doc.get("read_ts", "")[:10] or "unknown")
+    receipt = FactualReceipt(
+        mission_id=mission_id, action_id=action_id, status="EXECUTED", executed=True,
+        result=doc.get("summary"), evidence_pointer=doc.get("path", ""),
+        observed_value={"n_dual": doc.get("n_dual"), "n_single": doc.get("n_single"), "n_unverified": doc.get("n_unverified")},
+        metadata={"evidence_grade": aggregate, "cards": cards_meta, "reader": "rwa_onchain_reader.py"},
+    )
+    return provenance.record_receipt(receipt)
+
+
+def run(url: str, registry: list, out_dir: str | None, url2: str | None = None, rpc_env: dict | None = None,
+        emit_provenance: bool = False) -> dict:
     """多链:注册表按 chain_id 分组;rpc_env[chain_id] = (primary, second) 或 (primary, second, policy)。
     policy 默认 required;BSC 现状 optional(Lyra 2026-08-26:免费档只有 Ankr)。兼容旧签名:url/url2 = chain_id 1。"""
     rpc_env = dict(rpc_env or {})
@@ -271,6 +314,8 @@ def run(url: str, registry: list, out_dir: str | None, url2: str | None = None, 
            "n_dual": sum(1 for c in cards if c["confidence"] == "dual"),
            "n_single": sum(1 for c in cards if c["confidence"] == "single"),
            "n_unverified": sum(1 for c in cards if c["confidence"] == "unverified")}
+    if emit_provenance:
+        _emit_provenance_receipt(doc)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
         p = os.path.join(out_dir, "rwa-onchain-%s.json" % datetime.date.today().isoformat())
@@ -283,6 +328,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--registry", default=None)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--provenance", action="store_true",
+                    help="把读数接进 harness provenance.jsonl(Phase 1,补 G1;需 HARNESS_PROVENANCE_LOG 或默认 state/provenance.jsonl)")
     a = ap.parse_args()
     rpc_env = {}
     for cid, pre in CHAINS.items():
@@ -293,7 +340,7 @@ def main():
     if not rpc_env:
         sys.exit("未设任何 *_RPC_URL(ETH_RPC_URL / BSC_RPC_URL):出网 RPC 端点由 Lyra 指定,本脚本不内置")
     registry = json.load(open(a.registry, encoding="utf-8")) if a.registry else DEFAULT_REGISTRY
-    doc = run(None, registry, a.out, None, rpc_env)
+    doc = run(None, registry, a.out, None, rpc_env, emit_provenance=a.provenance)
     mark = {"dual": "✓✓", "single": "✓ ", "unverified": "✗ "}
     for c in doc["cards"]:
         print("%-5s %-8s %s supply=%s nav=%s usd@nav=%s %s" % (c["symbol"], c["chain"], mark.get(c["confidence"], "? "),

@@ -20,6 +20,16 @@ from app.harness.action_envelope import ActionEnvelope, FactualReceipt
 LOG_PATH_ENV = "HARNESS_PROVENANCE_LOG"
 _RECORDING = False
 
+# §八 证据等级梯(契约 v1.3):index 越小 = 等级越高(越可信)。"只降不升" = 新 receipt 的 index 不得小于同 action 前序 receipt 的 index。
+GRADE_ORDER: dict[str, int] = {
+    "attested": 0,
+    "witnesses_agree": 1,
+    "witness_only": 2,
+    "issuer_claim": 3,
+    "secondhand": 4,
+    "unverified": 5,
+}
+
 
 def _path() -> str:
     return os.getenv(LOG_PATH_ENV, os.path.join("state", "provenance.jsonl"))
@@ -65,19 +75,50 @@ def record_action(envelope: ActionEnvelope) -> dict[str, Any]:
         _RECORDING = False
 
 
+def _enforce_monotone_descent(mission_id: str, action_id: str, grade: str, is_reconcile: bool) -> None:
+    """§八 只降不升:同一 (mission_id, action_id) 的 receipt 等级只能往 unverified 方向降,不能升。
+    处决案②一般 receipt:ascending(新 index < 旧 index)→ 拒;相同允许。
+    处决案③对账层 receipt(metadata.reconcile=True):≥ 原级(新 index <= 旧 index,即相同或升)→ 拒;只能严格降。"""
+    new_idx = GRADE_ORDER[grade]
+    for e in read_events(mission_id):
+        if e.get("kind") != "receipt" or e.get("event_id") != action_id:
+            continue
+        prior = e.get("evidence_grade")
+        if not prior or prior not in GRADE_ORDER:
+            continue
+        prior_idx = GRADE_ORDER[prior]
+        if is_reconcile:
+            if new_idx <= prior_idx:
+                raise ValueError(
+                    f"对账层等级只能严格降(§八 ③):prior={prior}(idx {prior_idx}) new={grade}(idx {new_idx})"
+                )
+        else:
+            if new_idx < prior_idx:
+                raise ValueError(
+                    f"证据等级只降不升(§八 ②):prior={prior}(idx {prior_idx}) new={grade}(idx {new_idx})"
+                )
+
+
 def record_receipt(receipt: FactualReceipt) -> dict[str, Any]:
     global _RECORDING
     if receipt.status == "VERIFIED" and not (receipt.metadata or {}).get("verifier_predicate"):
         raise ValueError("VERIFIED receipts may only be produced by mark_verified()")
+    meta = receipt.metadata or {}
+    grade = meta.get("evidence_grade")
+    if grade and grade in GRADE_ORDER:
+        _enforce_monotone_descent(receipt.mission_id, receipt.action_id, grade, bool(meta.get("reconcile")))
     _RECORDING = True
     try:
         d = receipt.to_dict()
     finally:
         _RECORDING = False
-    return _write({"ts": _now(), "kind": "receipt", "mission_id": d["mission_id"], "event_id": d["action_id"],
-                   "actor": "TOOL" if d["executed"] else "HARNESS", "action": "receipt", "target": "",
-                   "status": d["status"], "evidence_pointer": d.get("evidence_pointer") or "",
-                   "receipt_hash": d.get("receipt_hash") or hashlib.sha256(json.dumps(d, sort_keys=True, default=str).encode()).hexdigest()[:16]})
+    ev = {"ts": _now(), "kind": "receipt", "mission_id": d["mission_id"], "event_id": d["action_id"],
+          "actor": "TOOL" if d["executed"] else "HARNESS", "action": "receipt", "target": "",
+          "status": d["status"], "evidence_pointer": d.get("evidence_pointer") or "",
+          "receipt_hash": d.get("receipt_hash") or hashlib.sha256(json.dumps(d, sort_keys=True, default=str).encode()).hexdigest()[:16]}
+    if grade and grade in GRADE_ORDER:
+        ev["evidence_grade"] = grade
+    return _write(ev)
 
 
 def mark_verified(receipt: FactualReceipt, predicate: Callable[[FactualReceipt], bool], predicate_name: str) -> FactualReceipt:
