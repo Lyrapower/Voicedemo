@@ -1,0 +1,69 @@
+---
+description: Receipts and external-review docs must be redacted — replace sensitive segments with # [REDACTED: <category>], keep structure and interfaces only.
+alwaysApply: true
+---
+
+# 回执 / 外发 review 脱敏规则
+
+> 与 `no-secrets-external-handoff.mdc` 同级。回执、采证、给外部强模型 review 的文档,脱敏后只留**架构骨架**,不留活体。
+
+## 何时脱敏
+
+凡是写进 `aether_nexus/docs/` 且用途含「外部 review / 交守恒 / 交 Fable / 任何离开本机信任边界」的文档,落盘前必须脱敏。本机内部工作回执(贴命令原文 + 输出对账用)不强制脱敏,但外发前必须脱敏。
+
+## 脱敏类别(替换为 `# [REDACTED: <类别>]`)
+
+| 类别 | 替换什么 | 保留什么 |
+|---|---|---|
+| **密钥** | token 值、API key、密码、私钥、`sk-...`、`Bearer ...` 实值、`.env` 值 | env 变量**名**(`GRID_HARNESS_TOKEN` 这类名可留,值不留) |
+| **身份** | 用户名(`ciciwang`)、真实姓名、主机名(`*.ts.net` MagicDNS host)、绝对 home 路径(`/Users/ciciwang/...`)、个人邮箱 | 角色 handle(`砥`/`戌`/`守恒`/`Lyra` 这类系统角色名可留——它们是架构叙事,不是真人身份) |
+| **store 内部** | store **数据正文**(对话内容、日记正文、记忆条目原文)、db 文件绝对路径、内部行 id | store **node 名**(`cloud-glm52`/`workbench-b11`/`field-particle`)可留——它们是分区架构,不是数据 |
+| **user 数据** | 交易持仓、账户、订单、个人通讯内容 | 聚合统计、schema、字段名 |
+
+## 保留(架构骨架)
+
+- 端点路径(`/task/cloud_chat`、`/api/capabilities`)、HTTP 方法
+- 端口**号**(`8501`/`8630`/`8515`——架构拓扑,不是身份)
+- 模型名(`glm-5.2:cloud`、`demo/aster`)、substrate id
+- 函数签名(def 行 + 参数 + 返回类型)、docstring
+- 响应 schema(字段名 + 类型,不含实值)
+- 判词、裁决、规则、施工令的**逻辑**(不含被引用的活体数据)
+- 表结构、表名、列名
+
+## 替换格式
+
+```
+# [REDACTED: 密钥]
+# [REDACTED: 身份]
+# [REDACTED: store 内部]
+# [REDACTED: user 数据]
+```
+
+- 替换**段**,不破坏 markdown 结构(标题/表格/代码块照旧,只把敏感 cell/行内容换成 `[REDACTED: ...]`)
+- 路径脱敏:`/Users/ciciwang/Projects/demo` → `[REDACTED: 身份] demo repo root`;`/Users/ciciwang/Projects/grid-resident-harness/` → `[REDACTED: 身份] harness root`
+- 命令原文里的绝对路径同改;命令**结构**(`grep`/`curl`/`sqlite3` + 参数)保留
+
+## 落盘命名
+
+脱敏版加 `_REDACTED` 后缀,与原版同目录:
+- `HARNESS_CLOSEOUT_DI_v1_3_REDACTED_2026-09-01.md`
+- `SYSTEM_SIMPLIFY_MEMORY_COHERENCE_2026-08-03_REDACTED.md`
+
+原版(含活体)只在 iCloud / 本机,不进 `aether_nexus/docs/`(那里是外发 review 区)。
+
+## 自检(外发前必跑)
+
+```bash
+# 命中任一 → 停,先脱敏
+rg -l '(?i)(api[_-]?key|secret|token|password|sk-[a-z0-9]|BEGIN (RSA |OPENSSH )?PRIVATE|/Users/[a-z]+/)' "$DEST" 2>/dev/null
+```
+
+- 命中 `/Users/<name>/` → 换 `[REDACTED: 身份]`
+- 命中 secret 模式 → 换 `[REDACTED: 密钥]`
+- 不得用「用户已批准」绕过
+
+## 反例(勿犯)
+
+- 把 `/Users/ciciwang/Projects/grid-resident-harness/harness/supervisor.py` 原样贴进外发 md → 应 `[REDACTED: 身份] harness root/harness/supervisor.py`
+- 把 store 对话正文当「证据」贴进外发 md → 应 `[REDACTED: store 内部]`
+- 把 `Bearer eyJ...` 当「实况」贴 → 应 `[REDACTED: 密钥]`
