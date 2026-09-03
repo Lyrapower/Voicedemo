@@ -1,0 +1,95 @@
+# Alpha Platform · Phase 0.5 · 2026-07-25
+# paper only · broker=false · 实盘接口按 Grid 安全锁在沙箱验证前不存在
+volumes:
+  webdist:
+  platform_data_v2:
+    name: alpha-platform_platform_data_v2
+services:
+  web:
+    image: node:20-alpine
+    working_dir: /src
+    command: sh -c "npm ci --no-audit --no-fund && npm run build"
+    volumes:
+      - ./frontend-react:/src
+      - webdist:/src/dist
+    restart: "no"
+  api:
+    build: ./backend
+    command: uvicorn app:app --host 0.0.0.0 --port 8600
+    # 仅 loopback 发布;外网走 Tailscale Serve /alpha → 127.0.0.1:8600
+    ports: ["127.0.0.1:8600:8600"]
+    depends_on:
+      web:
+        condition: service_completed_successfully
+    volumes:
+      - platform_data_v2:/data
+      - ./frontend:/frontend:ro
+      - ./frontend-static:/frontend-static:ro
+      - webdist:/appdist:ro
+      # Mount whole grid data dir — SQLite WAL (-wal/-shm) must sit beside .db or reads are stale
+      - ${GRID_STORE_DIR:?set GRID_STORE_DIR in .env}:/griddata:ro
+      - ../grid-sovereign-runtime/gateway:/gridgateway:ro
+      - ../grid-sovereign-runtime/scripts:/gridscripts:ro
+      # factory → 8501 需签 grid_verification；容器内 PROJECT_ROOT=/ 找不到宿主机 .grid_cleanroom
+      - ${GRID_CLEANROOM_DIR:-../grid-sovereign-runtime/.grid_cleanroom}:/cleanroom:ro
+    environment:
+      - PLATFORM_DB=/data/platform.db
+      - FACTOR_LINEAGE_DB=/data/factor_lineage.db
+      - ALPHA_PLATFORM_API_PROCESS=1
+      - L0_REJECTION_DIR=/data/store/l0_rejections
+      - GRID_STORE_PATH=/griddata/grid_store.db
+      - GRID_GATEWAY_PKG=/gridgateway
+      - GRID_SCRIPTS_PKG=/gridscripts
+      - CONSOLE_V11_HTML=/frontend-static/console_v11.html
+      - PLATFORM_MAIN=${PLATFORM_MAIN:-v11}
+      - WATCHLIST=${WATCHLIST:-}
+      - SURFACE_DENY=${SURFACE_DENY:-TSLA,GOOGL}
+      - HEDGE_SYMBOLS=${HEDGE_SYMBOLS:-VIXY,SQQQ,GLD,TLT,UUP}
+      - GRID_GATEWAY_URL=${GRID_GATEWAY_URL:-http://host.docker.internal:8501}
+      - GRID_FACTORY_SIGNER_KEY=${GRID_FACTORY_SIGNER_KEY:-/cleanroom/keyholder.key}
+    restart: unless-stopped
+  worker:
+    build: ./backend
+    command: python worker.py
+    volumes:
+      - platform_data_v2:/data
+      - ${GRID_STORE_DIR:?set GRID_STORE_DIR in .env}:/griddata:ro
+    environment:
+      - PLATFORM_DB=/data/platform.db
+      - FACTOR_LINEAGE_DB=/data/factor_lineage.db
+      - ALPHA_PLATFORM_API_PROCESS=1
+      - L0_REJECTION_DIR=/data/store/l0_rejections
+      - GRID_STORE_PATH=/griddata/grid_store.db
+      - TICK_SECONDS=${TICK_SECONDS:-300}
+      - WATCHLIST=${WATCHLIST:-}
+      - SURFACE_DENY=${SURFACE_DENY:-TSLA,GOOGL}
+      - HEDGE_SYMBOLS=${HEDGE_SYMBOLS:-VIXY,SQQQ,GLD,TLT,UUP}
+      - CRYPTO_PRODUCTS=${CRYPTO_PRODUCTS:-BTC-USD,ETH-USD,SOL-USD}
+      - ALPACA_API_KEY=${ALPACA_API_KEY:-}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY:-}
+      - FMP_API_KEY=${FMP_API_KEY:-}
+      - FMP_BASE=${FMP_BASE:-https://financialmodelingprep.com/stable}
+      - DECISION_STOP_PCT=${DECISION_STOP_PCT:-0.30}
+      - DECISION_TARGET_PCT=${DECISION_TARGET_PCT:-0.60}
+      - DOCTOR_BARK_URL=${DOCTOR_BARK_URL:-}
+      - HEAT_ANOMALY_RATIO=${HEAT_ANOMALY_RATIO:-2.0}
+      - HEAT_ANOMALY_ZSCORE=${HEAT_ANOMALY_ZSCORE:-2.0}
+      - HEAT_ANOMALY_COOLDOWN=${HEAT_ANOMALY_COOLDOWN:-30}
+      - THETA_BASE=${THETA_BASE:-http://host.docker.internal:25503}
+      - THETA_STRIKE_DIV=${THETA_STRIKE_DIV:-1000}
+      # 断层热力 V1.2 (ALPHA_FACTORY_GLM)
+      - HEAT_FORMULA_V=${HEAT_FORMULA_V:-1.2.0}
+      - FAULTLINE_OI_FLOOR_PCT=${FAULTLINE_OI_FLOOR_PCT:-0.05}
+      - FAULTLINE_WALL_TOPN=${FAULTLINE_WALL_TOPN:-3}
+      - HEAT_H_THRESHOLD=${HEAT_H_THRESHOLD:-70}
+      - HEAT_COOLDOWN_M=${HEAT_COOLDOWN_M:-30}
+      - HEAT_CROSS_COOLDOWN_M=${HEAT_CROSS_COOLDOWN_M:-60}
+      - HEAT_F4_COOLDOWN_M=${HEAT_F4_COOLDOWN_M:-30}
+      - HEAT_STALE_S=${HEAT_STALE_S:-300}
+      - HEAT_PROXIMITY_BAND=${HEAT_PROXIMITY_BAND:-0.015}
+      - HEAT_V_CONFIRM=${HEAT_V_CONFIRM:-1.5}
+      - F4_INVERSION_BOOST=${F4_INVERSION_BOOST:-0.25}
+      - F4_DEEPEN_RATIO=${F4_DEEPEN_RATIO:-0.03}
+      - F4_REFRESH_M=${F4_REFRESH_M:-30}
+      - FAULTLINE_DIR=${FAULTLINE_DIR:-/data/faultlines}
+    restart: unless-stopped
