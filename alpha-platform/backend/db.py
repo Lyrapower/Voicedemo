@@ -69,10 +69,11 @@ def conn() -> sqlite3.Connection:
 
 
 def _configure_sqlite(c: sqlite3.Connection) -> None:
-    """Bind-mounted SQLite on macOS Docker: avoid WAL (corrupts with dual access)."""
-    c.execute("PRAGMA journal_mode=DELETE")
+    """Named volume, single side (VM only). WAL: readers never block the writer.
+    connect(timeout=30) is sqlite3_busy_timeout — set before the first PRAGMA so journal_mode itself can wait.
+    Bind-mount era forbade WAL: see platform-db-concurrent-write-redline v3 rule 3."""
+    c.execute("PRAGMA journal_mode=WAL")
     c.execute("PRAGMA synchronous=NORMAL")
-    c.execute("PRAGMA busy_timeout=30000")
     c.execute("PRAGMA foreign_keys=ON")
 
 

@@ -15,7 +15,7 @@ CLI:
 ts 列:unix 秒(REAL/INTEGER)或 'YYYY-MM-DD' 文本都认。
 """
 from __future__ import annotations
-import argparse, math, os, random, sqlite3, sys, time
+import argparse, json, math, os, random, sqlite3, sys, time
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Callable
@@ -34,6 +34,13 @@ def _to_date(ts) -> str:
         return datetime.fromtimestamp(float(ts), tz=timezone.utc).strftime("%Y-%m-%d")
     s = str(ts)
     return s[:10]
+
+
+def _load_universe(path: str) -> list[str]:
+    """读 universe json({symbols:[...]} 或 [...])→ 大写 symbol 列表。"""
+    data = json.load(open(path))
+    syms = data.get("symbols", data) if isinstance(data, dict) else data
+    return [str(s).strip().upper() for s in syms if str(s).strip()]
 
 
 def load_bars(db_path: str, start: str | None = None, end: str | None = None,
@@ -323,6 +330,7 @@ def _main(argv: list[str]) -> int:
     ap.add_argument("--db"); ap.add_argument("--factor"); ap.add_argument("--horizon", type=int, default=5)
     ap.add_argument("--start"); ap.add_argument("--end"); ap.add_argument("--lineage-id", type=int)
     ap.add_argument("--receipt", default="")
+    ap.add_argument("--universe", default=None, help="json 文件 {symbols:[...]} 或 [...];run 必填,不默认全表")
     a = ap.parse_args(argv[1:])
     if a.cmd == "selftest":
         return selftest()
@@ -332,8 +340,11 @@ def _main(argv: list[str]) -> int:
         print("需要 --db 与 --factor(见 list-factors)"); return 2
     if a.factor.startswith("oracle"):
         print("oracle_* 是处决案专用因子,禁用于生产评估"); return 2
+    if not a.universe:
+        print("--universe required (json 文件,不默认全表)"); return 2
+    symbols = _load_universe(a.universe)
     t0 = time.time()
-    bars = load_bars(a.db, a.start, a.end)
+    bars = load_bars(a.db, a.start, a.end, symbols=symbols)
     s = evaluate(bars, FACTORS[a.factor], a.horizon)
     v, reason = auto_verdict(s)
     print(f"factor={a.factor} h={a.horizon} symbols={len(bars)} days={s['n_obs']} window={s.get('first')}..{s.get('last')}")
