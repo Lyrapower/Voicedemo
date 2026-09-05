@@ -107,6 +107,13 @@ def record_receipt(receipt: FactualReceipt) -> dict[str, Any]:
     grade = meta.get("evidence_grade")
     if grade and grade in GRADE_ORDER:
         _enforce_monotone_descent(receipt.mission_id, receipt.action_id, grade, bool(meta.get("reconcile")))
+        derived = meta.get("derived_from")
+        if isinstance(derived, dict):
+            parent_grade = derived.get("evidence_grade")
+            if parent_grade in GRADE_ORDER and GRADE_ORDER[grade] < GRADE_ORDER[parent_grade]:
+                raise ValueError(
+                    f"derived fact exceeds parent grade: child={grade} parent={parent_grade}"
+                )
     _RECORDING = True
     try:
         d = receipt.to_dict()

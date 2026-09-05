@@ -329,8 +329,30 @@ def main():
     ap.add_argument("--registry", default=None)
     ap.add_argument("--out", default=None)
     ap.add_argument("--provenance", action="store_true",
-                    help="把读数接进 harness provenance.jsonl(Phase 1,补 G1;需 HARNESS_PROVENANCE_LOG 或默认 state/provenance.jsonl)")
+                    help="DIAGNOSTIC: legacy aggregate emit (invented mission hash). Production path is --connect or POST /api/rwa/onchain.")
+    ap.add_argument("--connect", action="store_true",
+                    help="Production adapter: gate → per-asset FactualReceipt → publish. Requires --mission and --origin.")
+    ap.add_argument("--mission", default=None)
+    ap.add_argument("--origin", default=None, help="decision_origin (USER or GRID_LOCAL); never invented")
+    ap.add_argument("--run-id", default=None)
     a = ap.parse_args()
+    if a.connect:
+        if not a.mission or not a.origin:
+            sys.exit("--connect requires --mission and --origin from authenticated context")
+        from app.crypto_rwa.rwa_chain_connect import connect_run
+        pub = connect_run(
+            {"mission_id": a.mission, "action_id": "rwa.onchain_read", "decision_origin": a.origin},
+            run_id=a.run_id,
+        )
+        print(json.dumps({"run_id": pub.get("run_id"), "connected": pub.get("connected"),
+                          "asof": pub.get("asof"),
+                          "receipts": [{"symbol": r.get("symbol"), "chain": r.get("chain"),
+                                        "receipt_id": r.get("receipt_id"), "status": r.get("status"),
+                                        "grade": r.get("evidence_grade")} for r in pub.get("receipts") or []]},
+                         ensure_ascii=False, indent=1))
+        return
+    if a.provenance:
+        sys.stderr.write("DIAGNOSTIC --provenance: legacy aggregate receipt; not the production connect path.\n")
     rpc_env = {}
     for cid, pre in CHAINS.items():
         u1, u2 = os.getenv(pre + "_RPC_URL"), os.getenv(pre + "_RPC_URL_2")

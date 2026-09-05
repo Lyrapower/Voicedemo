@@ -681,9 +681,32 @@ def _load_crypto_evidence_cards() -> list[dict[str, Any]]:
             {
                 **data,
                 "file_path": str(path.relative_to(ROOT)),
+                "source_kind": data.get("source_kind") or "webpage_archive",
             }
         )
     return cards
+
+
+def _load_onchain_live() -> dict[str, Any]:
+    """Receipt-backed on-chain facts only. Old webpage cards are not a fallback."""
+    try:
+        from app.crypto_rwa.rwa_chain_connect import load_published
+        pub = load_published()
+    except Exception as exc:
+        return {
+            "connected": False,
+            "stale": True,
+            "error": str(exc)[:160],
+            "receipts": [],
+            "asof": None,
+        }
+    if pub.get("status") == "empty":
+        return {**pub, "label": "no on-chain receipt yet"}
+    return {
+        **pub,
+        "label": "last_success" if pub.get("stale") else "asof",
+        "webpage_cards_are_reference": True,
+    }
 
 
 def _load_crypto_rwa_registry() -> dict[str, Any]:
@@ -812,6 +835,7 @@ def _collect_crypto_context(
         {"key": "rwa_proof_pack_candidate", "label": "rwa_proof_pack_candidate.md", "done": pack_status.get("rwa_proof_pack_candidate", False)},
     ]
     crypto_intake = load_crypto_intake()
+    onchain_live = _load_onchain_live()
 
     return {
         "title": "Crypto / RWA Sovereignty",
@@ -822,6 +846,7 @@ def _collect_crypto_context(
         "rwa_sections": rwa_sections,
         "evidence_cards": evidence_cards,
         "evidence_count": len(evidence_cards),
+        "onchain_live": onchain_live,
         "review_queue": review_queue,
         "proof_candidates": proof_candidates,
         "artifacts": artifacts,
@@ -1502,6 +1527,11 @@ async def aether_nexus_ui(request: Request):
     return templates.TemplateResponse(
         request, "workspace.html", _collect_aether_nexus_context() | {"request": request}
     )
+
+
+@app.get("/ui/crypto/onchain.json")
+async def crypto_onchain_json() -> JSONResponse:
+    return JSONResponse(_load_onchain_live())
 
 
 @app.get("/ui/crypto", response_class=HTMLResponse)

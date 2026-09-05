@@ -411,7 +411,31 @@
   </div>
 
   <div class="jv-card jv-card-soft">
-    <div class="jv-label-mute">Evidence cards (from {{ evidence_dir }}/*.json)</div>
+    <div class="jv-label-mute">On-chain facts (receipt-backed)</div>
+    {% if onchain_live and onchain_live.receipts %}
+    <p class="jv-note-tiny">as-of {{ onchain_live.asof or '—' }} · run {{ onchain_live.run_id or '—' }} · {% if onchain_live.connected %}connected{% else %}not connected{% endif %} · cache={{ onchain_live.stale_label or 'last_success' }} (not now)</p>
+    {% if onchain_live.error %}
+    <p class="jv-note" style="color:#b45309;">This read failed: {{ onchain_live.error }}{% if onchain_live.last_success_asof %} · last success {{ onchain_live.last_success_asof }} · receipt {{ onchain_live.last_success_receipt_id }}{% endif %}</p>
+    {% endif %}
+    <table class="jv-kv jv-kv-tight"><tbody>
+      {% for row in onchain_live.receipts %}
+      <tr>
+        <th scope="row">{{ row.symbol }} · {{ row.chain }}</th>
+        <td>
+          <div>{{ row.status }} · grade {{ row.evidence_grade or row.factual_payload.supply_grade }} · receipt {{ row.receipt_id }}</div>
+          <div class="jv-note-tiny" style="margin-top:4px;">supply={{ row.factual_payload.supply_units }} · nav={{ row.factual_payload.nav_usd }} · block={{ row.factual_payload.block }} · {{ row.observed_at or row.factual_payload.observed_at }}</div>
+          {% if row.factual_payload.error %}<div class="jv-note-tiny" style="margin-top:4px;color:#b45309;">{{ row.factual_payload.error }}</div>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody></table>
+    {% else %}
+    <p class="jv-note">No receipt-backed on-chain payload. Webpage cards below are archive reference only.</p>
+    {% endif %}
+  </div>
+
+  <div class="jv-card jv-card-soft">
+    <div class="jv-label-mute">Webpage archive (reference only · not on-chain fallback) · {{ evidence_dir }}/*.json</div>
     {% if evidence_cards %}
     <table class="jv-kv jv-kv-tight">
       <tbody>
@@ -419,7 +443,7 @@
         <tr>
           <th scope="row">{{ card.id }} · {{ card.title }}</th>
           <td>
-            <div>Section: {{ card.section }} · Risk: {{ card.risk_level }}{% if card.scan and card.scan.scanned_at %} · scanned {{ card.scan.scanned_at }}{% endif %}</div>
+            <div>Section: {{ card.section }} · Risk: {{ card.risk_level }} · {{ card.source_kind or 'webpage_archive' }}{% if card.scan and card.scan.scanned_at %} · scanned {{ card.scan.scanned_at }}{% endif %}</div>
             <div class="jv-note-tiny" style="margin-top:4px;">{{ card.summary }}</div>
             {% if card.source_url %}
             <div class="jv-note-tiny" style="margin-top:4px;"><a class="jv-link-quiet" href="{{ card.source_url }}" target="_blank" rel="noopener noreferrer">{{ card.source_url }}</a></div>
