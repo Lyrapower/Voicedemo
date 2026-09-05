@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.grid.scout-land-watchdog</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/ciciwang/Projects/demo/scripts/scout_land_watchdog.sh</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>600</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/ciciwang/Library/Logs/demo-grid/scout-land-watchdog.launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/ciciwang/Library/Logs/demo-grid/scout-land-watchdog.launchd.err.log</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/ciciwang/Projects/demo/grid-scout</string>
+</dict>
+</plist>

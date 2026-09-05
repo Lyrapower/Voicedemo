@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#06070E">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+<meta http-equiv="Pragma" content="no-cache">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="GRID MM">
+<link rel="apple-touch-icon" sizes="180x180" href="/app/grid_multimodal_touch_icon.png">
+<link rel="icon" href="/app/grid_multimodal_touch_icon.png">
+<title>GRID · 全模态工作台</title>
+<!-- PAGE_VER=2026-07-21-mm-v2.4-kimi-auto deploy=/app/grid_multimodal.html -->
+<!--
+GRID Multimodal Workbench — 单文件前端 v1
+不变量(改动视为架构违规):
+  · 9B 本地 = 意图归属与最终回答;Kimi = candidate,authority=none
+  · Kimi 只收到:当前一条用户输入 + manifest 勾选的素材。不发历史/记忆/密钥/路径
+  · Kimi 路由:candidate 经 demo/aster 自动整合为 final
+  · Shadow 路由:candidate 仅并排展示,整合/采纳须手动
+  · thinking/<think> 原文进不了 DOM/日志/localStorage
+  · 图片经 canvas 重编码发送(EXIF/GPS 剥离)
+  · 脱敏器命中(绝对路径/密钥形态)→ 拦发标红
+  · Kimi 失败:结构化报错,一键返航 Local,草稿不丢;连续3次自动降回 Local
+  · CC CLI tab 与 Kimi 零自动通路;pty 桥未连时诚实显示未连,不做假终端
+接口:直连 Ollama /api/chat(本地 9B 与 kimi 模型同走此口,模型名可配)。
+      经 8501 envelope 的模式留了配置位(envelope url),填了才启用。
+-->
+<style>
+:root{
+  --mo:#06070E; --wen:#E3E5F2; --hui:#6E7190; --an:#43465F;
+  --jie:rgba(140,138,200,.14); --zi:#9B9ED0;
+  --ok:#5AD19A; --warn:#E0B453; --bad:#CF6B6B; --cloud:#B08A45;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --sans:-apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--mo);color:var(--wen);
+  font:14.5px/1.7 var(--sans);-webkit-font-smoothing:antialiased}
+body{background-image:radial-gradient(120% 36% at 50% -6%,#12132E 0%,rgba(18,19,46,0) 60%)}
+button{font:inherit;color:inherit;background:none;border:1px solid var(--jie);
+  border-radius:8px;padding:5px 12px;cursor:pointer}
+button:hover{border-color:var(--zi)}
+button.pri{background:#23244A;border-color:#3A3C6E}
+input,textarea,select{font:inherit;color:var(--wen);background:rgba(18,19,40,.6);
+  border:1px solid var(--jie);border-radius:8px;padding:6px 10px;outline:none}
+textarea{resize:none;width:100%}
+.tag{display:inline-block;font:9.5px var(--mono);border:1px solid var(--jie);
+  border-radius:4px;padding:0 5px;margin-left:6px;color:var(--an);letter-spacing:.05em;vertical-align:1px}
+.tag.cloud{color:var(--warn);border-color:rgba(224,180,83,.4)}
+.tag.local{color:var(--ok);border-color:rgba(90,209,154,.35)}
+.tag.bad{color:var(--bad);border-color:rgba(207,107,107,.4)}
+
+/* ---- 框架 ---- */
+#app{max-width:1280px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;
+  padding:calc(10px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom))}
+header{display:flex;align-items:baseline;gap:18px;padding:2px 4px 10px}
+#mark{font:600 13px var(--mono);letter-spacing:.42em;color:var(--zi);
+  text-shadow:0 0 16px rgba(155,158,208,.45);cursor:pointer}
+nav{display:flex;gap:2px;margin-left:auto}
+nav button{border:none;border-bottom:2px solid transparent;border-radius:0;
+  font:11.5px var(--mono);letter-spacing:.12em;color:var(--an);padding:4px 10px}
+nav button.on{color:var(--wen);border-bottom-color:var(--zi)}
+#conn{max-height:0;overflow:hidden;transition:max-height .25s}
+#conn.open{max-height:300px}
+#conn .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;padding:8px 4px}
+#conn label{font:10px var(--mono);color:var(--an);display:block;letter-spacing:.08em}
+#conn input{width:100%;font-size:12px}
+
+main{flex:1;display:grid;grid-template-columns:230px 1fr 250px;gap:14px;min-height:0}
+.pane{border:1px solid var(--jie);border-radius:14px;padding:12px;
+  display:flex;flex-direction:column;min-height:0;background:rgba(10,11,24,.45)}
+.ptitle{font:10.5px var(--mono);color:var(--an);letter-spacing:.16em;margin-bottom:8px}
+
+/* ---- 素材托盘 ---- */
+#tray{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px}
+.asset{border:1px solid var(--jie);border-radius:10px;padding:8px;font-size:12px;position:relative}
+.asset img{max-width:100%;border-radius:6px;display:block;margin-bottom:5px}
+.asset .meta{font:10px var(--mono);color:var(--hui)}
+.asset .rm{position:absolute;top:4px;right:6px;border:none;color:var(--an);padding:0 4px}
+.asset.off{opacity:.4}
+.asset .pick{margin-right:6px}
+#manifest{font:10px var(--mono);color:var(--hui);border-top:1px solid var(--jie);
+  padding-top:8px;margin-top:8px;letter-spacing:.03em}
+
+/* ---- 对话流 ---- */
+#chat{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:2px}
+.msg{max-width:92%}
+.msg.you{align-self:flex-end;background:#1B1C38;border-radius:12px 12px 3px 12px;padding:8px 12px}
+.card{border:1px solid var(--jie);border-radius:12px;padding:10px 12px;white-space:pre-wrap;word-break:break-word}
+.card.final{border-left:2px solid rgba(90,209,154,.5)}
+.card.cand{border-left:2px solid rgba(224,180,83,.45)}
+.card.err{border-left:2px solid rgba(207,107,107,.5);color:#D8A9A9}
+.chead{font:10px var(--mono);color:var(--an);letter-spacing:.08em;margin-bottom:6px}
+.cand .chead{color:var(--cloud)}
+details.cand-wrap summary{cursor:pointer;list-style:none;font:10.5px var(--mono);
+  color:var(--cloud);letter-spacing:.1em;padding:4px 0}
+details.cand-wrap summary::-webkit-details-marker{display:none}
+.acts{display:flex;gap:8px;margin-top:8px}
+.acts button{font-size:11.5px;padding:3px 10px}
+.shadow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media(max-width:920px){.shadow{grid-template-columns:1fr}}
+
+/* ---- 输入 ---- */
+#composer{display:flex;gap:8px;align-items:flex-end;padding-top:10px}
+#composer textarea{flex:1;min-height:44px;max-height:140px}
+#composer .add{width:38px;height:38px;border-radius:50%;font-size:17px;flex:none}
+#send{width:46px;height:46px;border-radius:50%;flex:none;background:#CBCDF3;color:#14152E;
+  border:none;font-weight:600}
+#sanwarn{display:none;font:11px var(--mono);color:var(--bad);padding:4px 2px}
+#netHud{font:10px var(--mono);color:var(--hui);letter-spacing:.06em;padding:0 4px 8px;min-height:1.2em}
+#netHud.bad{color:var(--bad)}#netHud.warn{color:var(--warn)}#netHud.ok{color:var(--ok)}
+
+/* ---- Route & Boundary ---- */
+.route{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.route button{text-align:left;font-size:12.5px;padding:8px 10px;border-radius:10px}
+.route button.on{border-color:var(--zi);background:rgba(35,36,74,.5)}
+.route small{display:block;color:var(--an);font-size:10px}
+.lights{display:grid;grid-template-columns:1fr 1fr;gap:5px;font:10px var(--mono);color:var(--hui)}
+.lights span b{font-weight:500}
+.lights .off b{color:var(--ok)} .lights .risk b{color:var(--warn)}
+.stat{font:10.5px var(--mono);color:var(--hui);margin-top:10px;line-height:1.9}
+.stat b{color:var(--zi);font-weight:500}
+#ctxbar{height:4px;border-radius:2px;background:rgba(140,138,200,.15);margin-top:3px;overflow:hidden}
+#ctxfill{height:100%;width:0%;background:var(--zi);transition:width .3s}
+#ctxfill.hot{background:var(--warn)}
+
+/* ---- CC CLI tab ---- */
+#cc{display:none;flex:1;flex-direction:column}
+#cc.on{display:flex}
+#studio.offv{display:none}
+#term{flex:1;border:1px solid var(--jie);border-radius:12px;padding:12px;
+  font:12px var(--mono);color:var(--hui);overflow-y:auto;background:rgba(8,9,20,.6)}
+#term .ok{color:var(--ok)}
+
+footer{font:9.5px var(--mono);color:var(--an);letter-spacing:.06em;
+  text-align:center;padding-top:10px}
+@media(max-width:920px){
+  main{grid-template-columns:1fr}
+  .pane.side{max-height:230px}
+}
+
+/* ===== Luminous Field Layer v2 ===== */
+:root{--mo:#04050A;--wen:#F0F2FF;--hui:#8B8FAE;--an:#555A78;--jie:rgba(155,158,208,.16);--zi:#A9ACF6;--ok:#73D9AE;--warn:#E8BE68;--bad:#D77B88;--cloud:#D3A85C}
+html,body{background:radial-gradient(1200px 680px at 50% -15%,rgba(79,83,170,.18),transparent 62%),radial-gradient(900px 650px at 15% 45%,rgba(35,95,132,.10),transparent 70%),radial-gradient(1000px 700px at 85% 50%,rgba(134,91,38,.08),transparent 72%),#04050A}body{overflow-x:hidden}
+.field-layer{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.96;filter:saturate(1.12) contrast(1.06);transform:translateZ(0);will-change:transform}
+#fieldCanvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.zero-axis{position:fixed;top:-6vh;bottom:-6vh;left:50%;width:1px;transform:translateX(-50%);pointer-events:none;z-index:1;background:linear-gradient(to bottom,transparent,rgba(183,190,255,.15) 12%,rgba(225,228,255,.42) 45%,rgba(246,218,160,.35) 52%,rgba(183,190,255,.18) 78%,transparent);box-shadow:0 0 18px rgba(157,165,255,.18),0 0 42px rgba(228,192,112,.10)}
+.field-vignette{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(circle at center,transparent 0 45%,rgba(2,3,8,.20) 74%,rgba(2,3,8,.72) 100%)}
+#app{position:relative;z-index:2;max-width:1480px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top)) 22px calc(14px + env(safe-area-inset-bottom))}
+header{min-height:58px;align-items:center;padding:8px 6px 14px;border-bottom:1px solid rgba(164,169,232,.08);backdrop-filter:blur(10px)}
+#mark{font-size:15px;color:#D6D8FF;text-shadow:0 0 12px rgba(155,158,208,.65),0 0 38px rgba(106,116,255,.28)}
+nav{padding:3px;border:1px solid rgba(157,162,220,.10);background:rgba(9,11,27,.52);border-radius:12px}
+nav button{border-bottom:none;border-radius:9px;padding:7px 14px;transition:.22s ease}nav button.on{border-bottom:none;color:#F4F5FF;background:linear-gradient(180deg,rgba(84,89,174,.40),rgba(44,47,101,.28));box-shadow:inset 0 0 0 1px rgba(167,171,255,.18),0 0 18px rgba(95,101,220,.10)}
+main{grid-template-columns:260px minmax(420px,1fr) 280px;gap:16px}
+.pane{background:linear-gradient(180deg,rgba(15,18,41,.76),rgba(7,9,22,.66));border:1px solid rgba(164,169,232,.14);box-shadow:inset 0 1px 0 rgba(255,255,255,.025),0 20px 60px rgba(0,0,0,.20);backdrop-filter:blur(18px) saturate(1.05);border-radius:18px;padding:14px;position:relative;overflow:hidden}.pane::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(110deg,transparent 0 34%,rgba(169,172,246,.025) 48%,transparent 62%),radial-gradient(500px 100px at 50% 0%,rgba(119,126,255,.045),transparent 70%)}.pane:hover{border-color:rgba(175,180,255,.24);box-shadow:inset 0 1px 0 rgba(255,255,255,.035),0 22px 70px rgba(0,0,0,.26),0 0 30px rgba(88,96,200,.06)}
+.asset{background:linear-gradient(180deg,rgba(22,25,54,.58),rgba(10,12,29,.54));border-color:rgba(153,160,225,.12);transition:.2s ease}.asset:hover{transform:translateY(-1px);border-color:rgba(171,178,250,.26);background:linear-gradient(180deg,rgba(28,32,66,.70),rgba(12,14,34,.64))}
+.msg.you{background:linear-gradient(135deg,rgba(58,62,130,.46),rgba(27,30,72,.50));border:1px solid rgba(162,168,241,.15);box-shadow:0 10px 34px rgba(0,0,0,.16)}
+.card{background:linear-gradient(180deg,rgba(17,20,46,.62),rgba(9,11,28,.58));backdrop-filter:blur(12px)}.card.final{border-left:2px solid rgba(101,215,167,.76);box-shadow:inset 12px 0 28px rgba(55,158,119,.035)}.card.cand{border-left:2px solid rgba(232,190,104,.74);box-shadow:inset 12px 0 28px rgba(206,157,66,.035)}
+.route button{background:rgba(12,14,32,.46);border-color:rgba(151,157,219,.11);transition:.2s ease}.route button.on{background:linear-gradient(135deg,rgba(68,72,151,.34),rgba(24,27,66,.42));border-color:rgba(175,180,255,.34);box-shadow:inset 0 0 0 1px rgba(170,175,255,.07),0 0 22px rgba(88,95,215,.07)}
+.lights span{border:1px solid rgba(153,159,220,.09);border-radius:7px;padding:5px 6px;background:rgba(8,10,24,.38)}
+#ctxbar{height:6px;border-radius:999px}#ctxfill{border-radius:999px;background:linear-gradient(90deg,#777FE7,#B5B8FF);box-shadow:0 0 14px rgba(145,151,255,.46)}
+input,textarea,select{background:rgba(8,10,26,.72);border-color:rgba(159,165,228,.14)}textarea:focus,input:focus,select:focus{border-color:rgba(181,186,255,.38);box-shadow:0 0 0 3px rgba(109,117,238,.08),0 0 24px rgba(83,91,209,.06)}
+#send{background:linear-gradient(145deg,#EEEFFF,#AEB2F4);color:#0A0B16;box-shadow:0 0 0 1px rgba(255,255,255,.2),0 0 24px rgba(149,155,255,.34);transition:.2s ease}#send:hover{transform:translateY(-1px) scale(1.015);box-shadow:0 0 0 1px rgba(255,255,255,.28),0 0 34px rgba(149,155,255,.46)}
+#term{background:radial-gradient(700px 220px at 50% 0%,rgba(78,84,168,.08),transparent 70%),rgba(5,7,17,.78)}
+@media(max-width:920px){#app{padding-left:10px;padding-right:10px}header>span:nth-child(2){display:none}nav button{padding:6px 9px}main{grid-template-columns:1fr}.pane.side{max-height:none}.zero-axis{opacity:.72}}
+
+</style>
+</head>
+<body>
+<div class="field-layer" aria-hidden="true"><canvas id="fieldCanvas"></canvas></div>
+<div class="zero-axis" aria-hidden="true"></div>
+<div class="field-vignette" aria-hidden="true"></div>
+<script>
+/* Particle field runs first — Safari/WebKit breaks 2D canvas when filter is on the canvas itself. */
+(()=>{const canvas=document.getElementById("fieldCanvas"),ctx=canvas&&canvas.getContext("2d",{alpha:true});
+if(!ctx)return;
+const RM=matchMedia("(prefers-reduced-motion: reduce)").matches;
+let w=0,h=0,dpr=1,t=0,particles=[],running=true;
+const mkSprite=(inner,outer)=>{const S=32,c=document.createElement("canvas");c.width=c.height=S;
+  const g=c.getContext("2d").createRadialGradient(S/2,S/2,0,S/2,S/2,S/2);
+  g.addColorStop(0,inner);g.addColorStop(.28,outer);g.addColorStop(1,"rgba(0,0,0,0)");
+  const q=c.getContext("2d");q.fillStyle=g;q.fillRect(0,0,S,S);return c};
+const spWarm=mkSprite("rgba(255,238,205,1)","rgba(244,203,121,.78)");
+const spCool=mkSprite("rgba(225,238,255,1)","rgba(117,176,255,.72)");
+const seed=()=>{const n=Math.max(320,Math.min(980,Math.floor((w*h)/2200)));particles=Array.from({length:n},(_,i)=>({arm:i%4,radius:18+Math.pow(Math.random(),.68)*Math.min(w,h)*.74,angle:Math.random()*Math.PI*2,speed:.00055+Math.random()*.00125,size:.45+Math.random()*1.85,depth:.25+Math.random()*.75,phase:Math.random()*Math.PI*2,warm:Math.random()>.38,alpha:.18+Math.random()*.58}))};
+const resize=()=>{dpr=Math.min(devicePixelRatio||1,2);w=innerWidth;h=innerHeight;canvas.width=Math.floor(w*dpr);canvas.height=Math.floor(h*dpr);canvas.style.width=w+"px";canvas.style.height=h+"px";ctx.setTransform(dpr,0,0,dpr,0,0);seed()};
+const draw=()=>{t++;ctx.clearRect(0,0,w,h);const cx=w*.5,cy=h*.46,dx=Math.sin(t*.00055)*w*.025,dy=Math.cos(t*.00042)*h*.018;
+for(const p of particles){const spin=t*p.speed*(p.arm%2?1:-1),a=p.angle+spin+p.arm*Math.PI/2,wave=Math.sin(a*2.2+p.phase+t*.0014)*22*p.depth,r=p.radius+wave,x=cx+dx+Math.cos(a)*r,y=cy+dy+Math.sin(a)*r*(.34+.18*p.depth)+Math.sin(a*3+p.phase)*8;if(x<-24||x>w+24||y<-24||y>h+24)continue;
+const pulse=.74+.26*Math.sin(t*.008+p.phase),alpha=p.alpha*pulse*(.52+.48*p.depth),rr=p.size*(.72+.82*p.depth);
+const sp=p.warm?spWarm:spCool,d=rr*8.2;
+ctx.globalAlpha=alpha;ctx.drawImage(sp,x-d/2,y-d/2,d,d)}
+ctx.globalAlpha=1;
+if(running&&!RM)requestAnimationFrame(draw)};
+document.addEventListener("visibilitychange",()=>{const was=running;running=!document.hidden;if(running&&!was&&!RM)requestAnimationFrame(draw)});
+addEventListener("resize",resize,{passive:true});resize();draw()})();
+</script>
+<div id="app">
+<header>
+  <span id="mark" title="点击展开连接配置">G R I D</span>
+  <span style="font:10px var(--mono);color:var(--an);letter-spacing:.14em">全模态工作台</span>
+  <nav>
+    <button id="tabStudio" class="on">STUDIO</button>
+    <button id="tabCC">CC CLI</button>
+  </nav>
+</header>
+<div id="netHud" aria-live="polite"></div>
+
+<div id="conn"><div class="grid">
+  <div><label>家 · 8501 网关(final 归属)</label><input id="cGw" placeholder="http://127.0.0.1:8501"></div>
+  <div><label>家模型</label><input id="cLocal" placeholder="demo/aster"></div>
+  <div><label>Kimi candidate 端点(8501 网关)</label><input id="cKimiUrl" placeholder="http://127.0.0.1:8501/task/candidate"></div>
+  <div><label>Kimi 模型名</label><input id="cKimi" placeholder="kimi-k2.6"></div>
+  <div><label>应急直连 Ollama(裸基底,8501 挂了才用)</label><input id="cOllama" placeholder="http://127.0.0.1:11434"></div>
+  <div><label>应急模型</label><input id="cEmergency" placeholder="qwen3:9b"></div>
+  <div><label>Kimi 价格 $/1K tok(费用估算)</label><input id="cPrice" placeholder="0"></div>
+  <div><label>CC pty 桥 ws://(可选)</label><input id="cPty" placeholder="ws://127.0.0.1:8522/pty"></div>
+</div></div>
+
+<main id="studio">
+  <!-- 素材托盘 -->
+  <section class="pane side">
+    <div class="ptitle">素材托盘</div>
+    <div id="tray"></div>
+    <div id="manifest">发送清单:空</div>
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <button id="addFile" style="flex:1">+ 添加素材</button>
+      <input type="file" id="fileIn" multiple accept="image/*,.pdf,.txt,.md,.csv,audio/*,video/*" hidden>
+    </div>
+  </section>
+
+  <!-- 对话 -->
+  <section class="pane">
+    <div class="ptitle">对话 · <span id="routeLabel">GRID · demo/aster</span></div>
+    <div id="chat"></div>
+    <div id="sanwarn"></div>
+    <div id="composer">
+      <button class="add" id="addBtn">+</button>
+      <textarea id="box" placeholder="Message Grid…" rows="1"></textarea>
+      <button id="send">发</button>
+    </div>
+  </section>
+
+  <!-- Route & Boundary -->
+  <section class="pane side">
+    <div class="ptitle">ROUTE &amp; BOUNDARY</div>
+    <div class="route">
+      <button data-r="local" class="on">Grid · demo/aster <small>默认家 · final 归属</small></button>
+      <button data-r="kimi">Kimi Assist <small>candidate → demo/aster 自动整合</small></button>
+      <button data-r="shadow">Shadow Compare <small>并排对照 · 手动整合</small></button>
+    </div>
+    <div class="lights">
+      <span class="off">Thinking <b>blackboxed</b></span>
+      <span class="off">Memory <b>off</b></span>
+      <span class="off">Tools <b>off</b></span>
+      <span class="off">Agent <b>off</b></span>
+      <span class="off">EXIF <b>strip</b></span>
+      <span class="risk">Egress <b id="egLight">local</b></span>
+    </div>
+    <div class="stat">
+      本次发送 <b id="sCount">0</b> 项 · <b id="sSize">0KB</b><br>
+      预估 <b id="sTok">0</b> tok · 费用 <b id="sCost">$0.000</b><br>
+      Kimi 上下文水位(256K)
+      <div id="ctxbar"><div id="ctxfill"></div></div>
+      <span id="failNote" style="color:var(--warn)"></span>
+    </div>
+  </section>
+</main>
+
+<!-- CC CLI -->
+<main id="cc">
+  <section class="pane" style="grid-column:1/-1">
+    <div class="ptitle">CC CLI · 本地工程执行触手
+      <span class="tag local">Repo scoped</span><span class="tag">Egress 8503 only</span>
+      <span class="tag cloud">Kimi access: none</span></div>
+    <div id="term">pty 桥未连接。
+本页不做假终端 —— 连接后此处才是真实 shell。
+部署:配置面板填入 pty 桥地址(ws://127.0.0.1:8522/pty),桥脚本经 8503 出网、
+工作目录白名单限 Grid 项目、危险命令弹确认。
+Kimi candidate 与本 tab 零自动通路:candidate 内容要进这里,须经 Grid final 采纳 + 你手动粘贴。</div>
+  </section>
+</main>
+
+<footer>final 归属 demo/aster · candidate authority=none · thinking 不落地 · 素材经勾选才出门</footer>
+</div>
+
+<script>
+"use strict";
+const PAGE_VER="2026-07-21-mm-v2.4-kimi-auto";
+const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+const st={get(k,d){try{const v=JSON.parse(localStorage.getItem("mmwb_"+k));return v??d}catch(e){return d}},
+          set(k,v){try{localStorage.setItem("mmwb_"+k,JSON.stringify(v))}catch(e){}},
+          del(k){try{localStorage.removeItem("mmwb_"+k)}catch(e){}}};
+if(st.get("page_ver")!==PAGE_VER){
+  st.set("page_ver",PAGE_VER);
+  st.del("gw"); st.del("kimiUrl");
+}
+
+function isLocalHost(h){
+  return !h||h==="127.0.0.1"||h==="localhost"||h==="::1";
+}
+function isMobileClient(){
+  return location.hostname.endsWith(".ts.net")||/iPhone|iPad/i.test(navigator.userAgent||"");
+}
+function hostBase(){
+  return location.protocol.startsWith("http")&&location.hostname
+    ?`${location.protocol}//${location.hostname}`:"http://127.0.0.1";
+}
+function defaultGwBase(){
+  return hostBase()+":8501";
+}
+function defaultKimiUrl(){
+  return defaultGwBase()+"/task/candidate";
+}
+function resolveCfgUrl(key, defFn){
+  const def=defFn();
+  if(location.hostname.endsWith(".ts.net")) return def;
+  const saved=st.get(key);
+  if(!saved) return def;
+  try{
+    const u=new URL(saved, location.href);
+    if(isLocalHost(u.hostname)&&!isLocalHost(location.hostname)) return def;
+    return saved;
+  }catch(e){ return def; }
+}
+function syncCfgFromHost(force){
+  const gw=resolveCfgUrl("gw", defaultGwBase);
+  const kimiUrl=resolveCfgUrl("kimiUrl", defaultKimiUrl);
+  if(force||cfg.gw!==gw){ cfg.gw=gw; st.set("gw",gw); $("#cGw").value=gw; }
+  if(force||cfg.kimiUrl!==kimiUrl){ cfg.kimiUrl=kimiUrl; st.set("kimiUrl",kimiUrl); $("#cKimiUrl").value=kimiUrl; }
+}
+
+/* ---- 配置(分层:家=8501 OpenAI兼容口 / Kimi=/task/candidate / 裸Ollama=应急) ---- */
+const cfg={gw:resolveCfgUrl("gw", defaultGwBase),
+  local:st.get("local","demo/aster"),
+  kimiUrl:resolveCfgUrl("kimiUrl", defaultKimiUrl),
+  kimi:st.get("kimi","kimi-k2.6:cloud"),
+  emergency:st.get("emergency","qwen3:9b"),
+  ollama:st.get("ollama","http://127.0.0.1:11434"),
+  price:st.get("price",0), pty:st.get("pty","")};
+$("#cGw").value=cfg.gw; $("#cOllama").value=cfg.ollama; $("#cLocal").value=cfg.local;
+$("#cKimiUrl").value=cfg.kimiUrl; $("#cKimi").value=cfg.kimi;
+$("#cEmergency").value=cfg.emergency; $("#cPrice").value=cfg.price; $("#cPty").value=cfg.pty;
+$("#mark").onclick=()=>$("#conn").classList.toggle("open");
+const bind=(id,key)=>$(id).onchange=e=>{cfg[key]=e.target.value.trim();st.set(key,cfg[key])};
+bind("#cGw","gw");bind("#cOllama","ollama");bind("#cLocal","local");
+bind("#cKimiUrl","kimiUrl");bind("#cKimi","kimi");bind("#cEmergency","emergency");
+bind("#cPty","pty");
+$("#cPrice").onchange=e=>{cfg.price=parseFloat(e.target.value)||0;st.set("price",cfg.price)};
+
+let netOnline=null, pendingAborts=[];
+function setNetHud(text, cls){
+  const el=$("#netHud"); if(!el) return;
+  el.textContent=text||"";
+  el.className=cls||"";
+}
+function trackAbort(ac){
+  pendingAborts.push(ac);
+  return ()=>{ pendingAborts=pendingAborts.filter(x=>x!==ac); };
+}
+function abortPending(reason){
+  for(const ac of pendingAborts){
+    try{ ac.abort(reason||"background"); }catch(e){}
+  }
+}
+function formatConnError(e, which){
+  const msg=String(e?.message||e||"");
+  if(e?.name==="AbortError"||/abort/i.test(msg)){
+    return document.hidden||msg==="background"
+      ? "切后台，请求已中断 — 回前台后请重发"
+      : "请求已取消";
+  }
+  const base=which||cfg.gw;
+  const badLocal=isLocalHost(new URL(base,location.href).hostname)&&!isLocalHost(location.hostname);
+  if(badLocal){
+    syncCfgFromHost(true);
+    return `不能连 127.0.0.1（手机连不到 Mac）— 已改为 ${cfg.gw}，请重发`;
+  }
+  if(msg.startsWith("HTTP 429")) return msg;
+  if(msg.startsWith("HTTP ")) return `${msg} · ${base}`;
+  return `连不上 ${base} — 确认 Tailscale 已开，点 G R I D 核对地址`;
+}
+async function bootHealth(){
+  try{
+    const r=await fetch(cfg.gw.replace(/\/+$/,"")+"/health",{cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    await r.json();
+    if(location.hostname.endsWith(".ts.net")) syncCfgFromHost(false);
+    netOnline=true;
+    setNetHud(isMobileClient()?"gateway · online · "+location.host:"gateway · online","ok");
+  }catch(e){
+    if(location.hostname.endsWith(".ts.net")) syncCfgFromHost(true);
+    netOnline=false;
+    setNetHud(formatConnError(e, cfg.gw),"bad");
+  }
+}
+bootHealth();
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden){
+    abortPending("background");
+    setNetHud("后台 — 进行中的请求已中断","warn");
+  }else{
+    syncCfgFromHost(false);
+    bootHealth();
+  }
+});
+window.addEventListener("online",()=>bootHealth());
+window.addEventListener("offline",()=>{
+  netOnline=false;
+  setNetHud("网络离线 — 回前台后重试","bad");
+});
+
+/* ---- Tab ---- */
+$("#tabStudio").onclick=()=>{$("#tabStudio").classList.add("on");$("#tabCC").classList.remove("on");
+  $("#studio").classList.remove("offv");$("#cc").classList.remove("on")};
+$("#tabCC").onclick=()=>{$("#tabCC").classList.add("on");$("#tabStudio").classList.remove("on");
+  $("#studio").classList.add("offv");$("#cc").classList.add("on");ptyTry()};
+
+/* ---- 路由 ---- */
+let route="local", kimiFails=0;
+$$(".route button").forEach(b=>b.onclick=()=>{
+  $$(".route button").forEach(x=>x.classList.remove("on"));b.classList.add("on");
+  route=b.dataset.r;
+  $("#routeLabel").textContent=route==="local"?"GRID · demo/aster":route==="kimi"?"KIMI ASSIST":"SHADOW";
+  $("#egLight").textContent=route==="local"?"local":"cloud";
+});
+
+/* ---- 素材:图片 canvas 重编码剥 EXIF;非图片诚实标注可发/不可发 ---- */
+let assets=[]; // {id,name,kind,size,dataUrl?,text?,sendable,picked}
+$("#addFile").onclick=$("#addBtn").onclick=()=>$("#fileIn").click();
+$("#fileIn").onchange=async e=>{
+  for(const f of e.target.files){
+    const id=Date.now()+"_"+Math.random().toString(36).slice(2,6);
+    if(f.type.startsWith("image/")){
+      const dataUrl=await stripExif(f);
+      assets.push({id,name:f.name,kind:"image",size:f.size,dataUrl,sendable:true,picked:true});
+    }else if(/\.(txt|md|csv)$/i.test(f.name)){
+      const text=await f.text();
+      assets.push({id,name:f.name,kind:"text",size:f.size,text:text.slice(0,20000),sendable:true,picked:true});
+    }else{
+      assets.push({id,name:f.name,kind:f.type.split("/")[0]||"file",size:f.size,
+        sendable:false,picked:false}); // pdf/audio/video:本地预处理未接,不发
+    }
+  }
+  e.target.value=""; renderTray();
+};
+function stripExif(file){return new Promise(res=>{
+  const img=new Image(); const url=URL.createObjectURL(file);
+  img.onload=()=>{
+    const mx=1568, sc=Math.min(1,mx/Math.max(img.width,img.height));
+    const c=document.createElement("canvas");
+    c.width=img.width*sc|0; c.height=img.height*sc|0;
+    c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+    URL.revokeObjectURL(url); res(c.toDataURL("image/jpeg",.9)); // 重编码=元数据全剥
+  };
+  img.src=url;
+})}
+function renderTray(){
+  const t=$("#tray"); t.innerHTML="";
+  for(const a of assets){
+    const d=document.createElement("div");
+    d.className="asset"+(a.sendable?"":" off");
+    d.innerHTML=(a.kind==="image"?`<img src="${a.dataUrl}">`:"")+
+      `<label><input type="checkbox" class="pick" ${a.picked?"checked":""} ${a.sendable?"":"disabled"}>${esc(a.name)}</label>
+       <div class="meta">${a.kind} · ${(a.size/1024).toFixed(0)}KB${a.kind==="image"?" · EXIF已剥":""}${a.sendable?"":" · 预处理未接·不发送"}</div>
+       <button class="rm">×</button>`;
+    d.querySelector(".pick")?.addEventListener("change",ev=>{a.picked=ev.target.checked;stats()});
+    d.querySelector(".rm").onclick=()=>{assets=assets.filter(x=>x.id!==a.id);renderTray()};
+    t.appendChild(d);
+  }
+  stats();
+}
+function picked(){return assets.filter(a=>a.picked&&a.sendable)}
+function stats(){
+  const p=picked(), text=$("#box").value;
+  const tok=Math.ceil(text.length/3.5)+p.reduce((s,a)=>s+(a.kind==="image"?900:Math.ceil((a.text||"").length/3.5)),0);
+  $("#sCount").textContent=p.length;
+  $("#sSize").textContent=(p.reduce((s,a)=>s+a.size,0)/1024).toFixed(0)+"KB";
+  $("#sTok").textContent=tok;
+  $("#sCost").textContent="$"+(tok/1000*cfg.price).toFixed(3);
+  const pct=Math.min(100,tok/256000*100);
+  $("#ctxfill").style.width=pct+"%";
+  $("#ctxfill").classList.toggle("hot",pct>80);
+  const nimg=p.filter(a=>a.kind==="image").length;
+  $("#manifest").textContent="发送清单:"+(p.length?p.map(a=>a.name).join(" · "):"空(仅文字)")
+    +(nimg>6?" ·⚠ candidate限6图,超出部分不发":"");
+}
+$("#box").addEventListener("input",stats);
+
+/* ---- 脱敏器:绝对路径/密钥形态 → 拦发 ---- */
+const SAN=/\/(Users|home|var|etc)\/[^\s"'”]+|sk-[A-Za-z0-9]{16,}|(api[_-]?key|token|secret)\s*[=:]\s*\S+/i;
+/* ---- thinking 剥离 ---- */
+const stripThink=s=>String(s??"").replace(/<think>[\s\S]*?<\/think>/gi,"").trim();
+
+/* ---- 对话 ---- */
+const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+let history=[]; // 仅供 Local;Kimi 永不读取
+function bubble(html,cls){const d=document.createElement("div");
+  d.className=cls;d.innerHTML=html;$("#chat").appendChild(d);
+  $("#chat").scrollTop=1e9;return d}
+
+/* ---- 三通道调用(Cursor 定的分层) ----
+   家:   8501 /v1/chat/completions + demo/aster(OpenAI 兼容)
+   Kimi: /task/candidate(自定义 candidate 口,失败回落裸 Ollama /api/chat)
+   应急: 裸 Ollama —— 仅家不可达时降级,回复标 bare               */
+let lastFinalBare=false;
+function ollamaFromGridMessages(messages){
+  return messages.map(m=>{
+    if(typeof m.content==="string") return {role:m.role,content:m.content};
+    const text=(m.content||[]).find(p=>p.type==="text")?.text||" ";
+    const imgs=(m.content||[]).filter(p=>p.type==="image_url")
+      .map(p=>String(p.image_url?.url||"").split(",")[1]).filter(Boolean);
+    const out={role:m.role,content:text};
+    if(imgs.length) out.images=imgs;
+    return out;
+  });
+}
+async function homeChat(messages, signal, extra={}){
+  try{
+    const r=await fetch(cfg.gw.replace(/\/+$/,"")+"/v1/chat/completions",{method:"POST",
+      signal,
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:cfg.local,messages,stream:false,max_tokens:8192,...extra})});
+    if(!r.ok){
+      let detail="";
+      try{const j=await r.json();detail=j.error?.reason||j.error?.message||""}catch(e){}
+      throw new Error(detail||("HTTP "+r.status));
+    }
+    const j=await r.json();
+    const raw=j.choices?.[0]?.message?.content||"";
+    lastFinalBare=false;
+    return stripThink(typeof raw==="string"?raw:JSON.stringify(raw));
+  }catch(e){
+    if(signal?.aborted||e?.name==="AbortError") throw e;
+    const r=await fetch(cfg.ollama.replace(/\/+$/,"")+"/api/chat",{method:"POST",
+      signal,
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:cfg.emergency,messages:ollamaFromGridMessages(messages),stream:false})});
+    if(!r.ok) throw new Error(formatConnError(e, cfg.gw));
+    const j=await r.json();
+    lastFinalBare=true;
+    return stripThink(j.message?.content);
+  }
+}
+async function kimiChat(prompt,imgs, signal){
+  const body={backend_id:"kimi_k25_cloud",prompt,max_tokens:2048,
+    task_label:"grid_candidate"};
+  if(imgs&&imgs.length)
+    body.images=imgs.slice(0,6).map(i=>({mime:i.mime,base64:i.base64}));
+  const r=await fetch(cfg.kimiUrl.replace(/\/+$/,""),{method:"POST",
+    signal,
+    headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json();
+  if(!r.ok||!j.ok) throw new Error(j.error?.reason||j.reason||("HTTP "+r.status));
+  if(j.role!=="candidate") throw new Error("response is not candidate");
+  return stripThink(j.content||"");
+}
+function buildUserContent(text){
+  const texts=picked().filter(a=>a.kind==="text").map(a=>`【素材 ${a.name}】\n${a.text}`).join("\n\n");
+  return (texts?texts+"\n\n":"")+text;
+}
+function gridUserMessage(text){
+  const content=buildUserContent(text);
+  const imgs=picked().filter(a=>a.kind==="image");
+  if(!imgs.length) return {role:"user",content};
+  return {role:"user",content:[
+    {type:"text",text:content||" "},
+    ...imgs.map(a=>({type:"image_url",image_url:{url:a.dataUrl}}))
+  ]};
+}
+function gridMessages(text){
+  return [...history.map(m=>({role:m.role,content:m.content})),gridUserMessage(text)];
+}
+function kimiPayload(text){
+  const imgs=picked().filter(a=>a.kind==="image").map(a=>({
+    mime:(a.dataUrl.match(/^data:([^;]+)/)||[])[1]||"image/jpeg",
+    base64:a.dataUrl.split(",")[1]}));
+  const texts=picked().filter(a=>a.kind==="text").map(a=>`【素材 ${a.name}】\n${a.text}`).join("\n\n");
+  return {prompt:(texts?texts+"\n\n":"")+text, imgs};
+}
+
+function integrateCandidate(content,q,signal){
+  return homeChat([...history,
+    {role:"user",content:`问题:${q}\n\n云端 candidate(仅参考,可修正或拒绝):\n${content}\n\n请给出你的最终回答。`}], signal,
+    {task_label:"grid_candidate_integrate"});
+}
+function finalCardHtml(out){
+  const homeTag=lastFinalBare
+    ?`<span class="tag bad">bare·无协议栈</span>`
+    :`<span class="tag local">aster</span>`;
+  return `<div class="card final"><div class="chead">GRID · FINAL ${homeTag}</div>${esc(out)}</div>`;
+}
+
+function candCard(content,q,{manual=true}={}){
+  const wrap=bubble(`<details class="cand-wrap" open><summary>KIMI K2.6 · CANDIDATE
+    <span class="tag cloud">cloud</span><span class="tag">authority=none</span><span class="tag">memory off</span></summary>
+    <div class="card cand">${esc(content)}</div>
+    <div class="acts"><button class="adopt">demo/aster 整合为 final</button><button class="take">直接采纳</button><button class="rej">拒绝</button></div>
+    </details>`,"msg");
+  if(!manual) return wrap;
+  wrap.querySelector(".adopt").onclick=async ev=>{
+    ev.target.disabled=true;
+    const fin=bubble(`<div class="card final"><div class="chead">GRID · demo/aster · 整合中…</div></div>`,"msg");
+    const ac=new AbortController(), untrack=trackAbort(ac);
+    try{
+      const out=await integrateCandidate(content,q,ac.signal);
+      fin.outerHTML=finalCardHtml(out);
+      history.push({role:"user",content:q},{role:"assistant",content:out});
+    }catch(e){fin.innerHTML=`<div class="card err">${esc(formatConnError(e, cfg.gw))}</div>`}
+    finally{ untrack(); }
+  };
+  wrap.querySelector(".take").onclick=()=>{
+    bubble(`<div class="card final"><div class="chead">FINAL(人工采纳自 candidate)<span class="tag cloud">origin:cloud</span></div>${esc(content)}</div>`,"msg");
+    history.push({role:"user",content:q},{role:"assistant",content:content});
+  };
+  wrap.querySelector(".rej").onclick=()=>wrap.remove();
+  return wrap;
+}
+
+async function kimiAutoIntegrate(content,q,signal){
+  bubble(`<details class="cand-wrap"><summary>KIMI K2.6 · CANDIDATE
+    <span class="tag cloud">cloud</span><span class="tag">auto→aster</span></summary>
+    <div class="card cand">${esc(content)}</div></details>`,"msg");
+  const fin=bubble(`<div class="card final"><div class="chead">GRID · demo/aster · 整合中…</div></div>`,"msg");
+  const out=await integrateCandidate(content,q,signal);
+  fin.outerHTML=finalCardHtml(out);
+  history.push({role:"user",content:q},{role:"assistant",content:out});
+}
+
+async function send(){
+  const text=$("#box").value.trim();
+  if(!text&&!picked().length) return;
+  const hit=text.match(SAN)||picked().filter(a=>a.text&&SAN.test(a.text));
+  if(hit&&(hit.length===undefined?hit:hit.length)){
+    $("#sanwarn").style.display="block";
+    $("#sanwarn").textContent="⛔ 脱敏器拦截:检测到本地路径或密钥形态,已阻止发送。请清理后重试。";
+    return;
+  }
+  $("#sanwarn").style.display="none";
+  bubble(esc(text)+(picked().length?`<div style="font:10px var(--mono);color:var(--an);margin-top:4px">+${picked().length} 素材</div>`:""),"msg you");
+  const q=text; $("#box").value=""; stats();
+  const ac=new AbortController(), untrack=trackAbort(ac);
+  $("#send").disabled=true;
+  let pending=0;
+  const done=()=>{ if(--pending<=0){ untrack(); $("#send").disabled=false; } };
+
+  if(route==="local"||route==="shadow"){
+    pending++;
+    const holder=bubble(`<div class="card final"><div class="chead">GRID · demo/aster ·…</div></div>`,"msg");
+    homeChat(gridMessages(q), ac.signal).then(out=>{
+      const homeTag=lastFinalBare
+        ?`<span class="tag bad">bare·无协议栈</span>`
+        :`<span class="tag local">aster</span>`;
+      holder.innerHTML=`<div class="card final"><div class="chead">GRID · FINAL ${homeTag}</div>${esc(out)}</div>`;
+      if(route==="local"){history.push({role:"user",content:q},{role:"assistant",content:out})}
+    }).catch(e=>{
+      holder.innerHTML=`<div class="card err">${esc(formatConnError(e, cfg.gw))}</div>`;
+      if(e?.name!=="AbortError") setNetHud(formatConnError(e, cfg.gw),"bad");
+    }).finally(done);
+  }
+  if(route==="kimi"){
+    pending++;
+    const holder=bubble(`<div class="card cand"><div class="chead">KIMI K2.6 ·…</div></div>`,"msg");
+    (async ()=>{
+      try{
+        const p=kimiPayload(q);
+        const out=await kimiChat(p.prompt,p.imgs,ac.signal);
+        kimiFails=0; $("#failNote").textContent="";
+        if(!out) throw new Error("content 为空");
+        holder.remove();
+        try{
+          await kimiAutoIntegrate(out,q,ac.signal);
+        }catch(e){
+          if(e?.name!=="AbortError"){
+            bubble(`<div class="card err">${esc(formatConnError(e, cfg.gw))} · candidate 已展示</div>`,"msg");
+            setNetHud(formatConnError(e, cfg.gw),"bad");
+          }
+        }
+      }catch(e){
+        kimiFails++;
+        if(holder.isConnected){
+          holder.innerHTML=`<div class="card err">${esc(formatConnError(e, cfg.kimiUrl))} · 草稿与素材未丢
+            <div class="acts"><button id="rth">一键返航 Grid</button></div></div>`;
+          holder.querySelector("#rth").onclick=()=>{$$(".route button")[0].click()};
+        }
+        if(kimiFails>=3){$$(".route button")[0].click();
+          $("#failNote").textContent="Kimi 连续3次失败 · 已自动降回 Grid";}
+        if(e?.name!=="AbortError") setNetHud(formatConnError(e, cfg.kimiUrl),"bad");
+      }finally{ done(); }
+    })();
+  }
+  if(route==="shadow"){
+    pending++;
+    const holder=bubble(`<div class="card cand"><div class="chead">KIMI K2.6 ·…</div></div>`,"msg");
+    (p=>kimiChat(p.prompt,p.imgs, ac.signal))(kimiPayload(q)).then(out=>{
+      kimiFails=0; $("#failNote").textContent="";
+      if(!out) throw new Error("content 为空");
+      holder.remove();
+      candCard(out,q,{manual:true});
+    }).catch(e=>{
+      kimiFails++;
+      holder.innerHTML=`<div class="card err">${esc(formatConnError(e, cfg.kimiUrl))} · 草稿与素材未丢
+        <div class="acts"><button id="rth">一键返航 Grid</button></div></div>`;
+      holder.querySelector("#rth").onclick=()=>{$$(".route button")[0].click()};
+      if(kimiFails>=3){$$(".route button")[0].click();
+        $("#failNote").textContent="Kimi 连续3次失败 · 已自动降回 Grid";}
+      if(e?.name!=="AbortError") setNetHud(formatConnError(e, cfg.kimiUrl),"bad");
+    }).finally(done);
+  }
+  if(!pending){ untrack(); $("#send").disabled=false; }
+}
+$("#send").onclick=send;
+$("#box").addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&!e.shiftKey&&innerWidth>920){e.preventDefault();send()}});
+
+/* ---- CC pty(真连才显示终端,不做假的) ---- */
+function ptyTry(){
+  if(!cfg.pty) return;
+  try{
+    const ws=new WebSocket(cfg.pty);
+    ws.onopen=()=>{$("#term").innerHTML='<span class="ok">pty 桥已连接。</span>\n';
+      const inp=document.createElement("input");
+      inp.style.cssText="width:100%;margin-top:8px;font:12px var(--mono)";
+      inp.placeholder="$ 命令(经白名单与确认闸)";
+      inp.onkeydown=e=>{if(e.key==="Enter"){ws.send(inp.value);inp.value=""}};
+      $("#term").appendChild(inp);
+      ws.onmessage=m=>{const pre=document.createElement("div");
+        pre.textContent=m.data;$("#term").insertBefore(pre,inp)};
+    };
+    ws.onerror=()=>{$("#term").firstChild&&($("#term").childNodes[0].textContent="pty 桥连接失败 — 检查桥进程与地址。")};
+  }catch(e){}
+}
+renderTray();
+
+</script>
+</body>
+</html>

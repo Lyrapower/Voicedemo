@@ -33,7 +33,7 @@
 - activation_signals:
   - type_news: no_multi_source_headline_cluster_in_local_ingest
   - type_capex_flow: no_datacenter_power_capex_shift_signal_in_ingest
-- last_update_utc: 2026-07-02T06:35:54Z
+- last_update_utc: 2026-09-04T05:47:10Z
 - notes:
   - Compile defaults only; warming needs cross-type confirmation per transition rules.
 
@@ -46,7 +46,7 @@
 - activation_signals:
   - type_news: no_project_delay_attributed_to_power_or_permit_in_ingest
   - type_rs: no_proxy_relative_strength_series_evaluated
-- last_update_utc: 2026-07-02T06:35:54Z
+- last_update_utc: 2026-09-04T05:47:10Z
 - notes:
   - No RS feed in this build; active requires strong signal or RS per rules.
 
@@ -59,6 +59,6 @@
 - activation_signals:
   - type_policy: no_program_award_or_budget_line_cluster_in_ingest
   - type_flow: no_PLTR_relative_strength_vs_basket_evaluated
-- last_update_utc: 2026-07-02T06:35:54Z
+- last_update_utc: 2026-09-04T05:47:10Z
 
 - trading_permission: allowed_only_if_active_constraint=yes

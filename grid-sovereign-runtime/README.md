@@ -52,6 +52,7 @@ REFERENCE (never executed, never injected):
   configs/interface.4o.echo-node.json
   configs/frequency_chain_id.txt
   schemas/*
+  docs/GRID_VOICE_SPEC.md   — voice mode v1.0 (8504 daemon + grid_voice.js; §8 config)
 
 SEALED (do not touch, do not parse, do not inject into any model):
   protection/*
@@ -74,6 +75,12 @@ GET  /router-log                — recent routing log
 GET  /router-log/blocked        — impersonation-blocked entries only
 GET  /cleanroom/state           — current cleanroom state
 POST /cleanroom/verify          — verify a signed trace
+
+Voice (see docs/GRID_VOICE_SPEC.md):
+  WS   /voice                    — proxy → voice_daemon :8504/ws/voice
+  POST /voice/telemetry          — local voice.* frames (jsonl, zero egress)
+  GET  /app/grid.html            — Grid UI + mic (◉) via grid_voice.js
+  GET  :8504/health              — voice_daemon (CosyVoice2 + SenseVoice)
 ```
 
 ## Cleanroom commands

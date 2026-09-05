@@ -1,0 +1,1038 @@
+[
+  {
+    "time": "2026-07-01T20:19:59.135666-07:00",
+    "target": "OptionScanner",
+    "kind": "健康异常: 进程心跳",
+    "detail": "日志 469 分钟无更新（阈值 90）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-01T20:19:59.137725-07:00",
+    "target": "OptionScanner",
+    "kind": "健康异常: 数据源 yfinance",
+    "detail": "yfinance 最近 50 次调用失败率 100%（阈值 50%）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-01T20:19:59.138963-07:00",
+    "target": "OptionScanner",
+    "kind": "健康异常: 数据源 stooq",
+    "detail": "stooq 最近 50 次调用失败率 100%（阈值 50%）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-01T20:25:52.224623-07:00",
+    "target": "OptionScanner",
+    "kind": "健康异常: 进程心跳",
+    "detail": "日志 475 分钟无更新（阈值 90）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-01T20:25:52.228927-07:00",
+    "target": "OptionScanner",
+    "kind": "健康异常: 数据源 yfinance",
+    "detail": "yfinance 最近 50 次调用失败率 100%（阈值 50%）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-01T20:25:52.229673-07:00",
+    "target": "OptionScanner",
+    "kind": "健康异常: 数据源 stooq",
+    "detail": "stooq 最近 50 次调用失败率 100%（阈值 50%）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-01T21:00:06.620689-07:00",
+    "target": "OptionScanner",
+    "kind": "健康异常: 进程心跳",
+    "detail": "日志 509 分钟无更新（阈值 90）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-01T21:00:06.621810-07:00",
+    "target": "OptionScanner",
+    "kind": "健康异常: 数据源 yfinance",
+    "detail": "yfinance 最近 50 次调用失败率 100%（阈值 50%）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-01T21:00:06.622116-07:00",
+    "target": "OptionScanner",
+    "kind": "健康异常: 数据源 stooq",
+    "detail": "stooq 最近 50 次调用失败率 100%（阈值 50%）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-05T00:14:10.666443-07:00",
+    "target": "ETH-USD",
+    "kind": "价格波动",
+    "detail": "价格 1619.63 → 1762.33（+8.8%，阈值 ±8%）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-05T02:14:25.397922-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 3f13b80922 → facae2e6e6）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-05T04:14:47.861898-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash facae2e6e6 → f24bdbf856）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-05T18:22:57.614581-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash f24bdbf856 → 880e254895）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-06T00:05:42.938888-07:00",
+    "target": "OptionScanner",
+    "kind": "健康异常: 扫描新鲜度",
+    "detail": "信号文件不存在: /Users/ciciwang/Desktop/demo/aether_nexus/dryrun_state/signals.json",
+    "summary": null
+  },
+  {
+    "time": "2026-07-06T12:26:11.188593-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 880e254895 → 08cd58dd2b）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-06T16:27:02.747877-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 08cd58dd2b → ef234e036f）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-06T17:27:18.734625-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash ef234e036f → 6f58ef070f）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-06T18:27:36.768323-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 6f58ef070f → 53c80be51b）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-06T20:28:04.484582-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 53c80be51b → 054e754af2）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-06T22:28:17.056709-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 054e754af2 → 20a1313ff8）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-07T10:05:42.445722-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 20a1313ff8 → 1575522607）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-07T12:06:07.055736-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 1575522607 → 743f31dd7b）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-07T13:06:23.553859-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 743f31dd7b → ca0d462a50）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-07T15:06:42.446088-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash ca0d462a50 → 8ebf3ed057）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-07T16:06:50.266709-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 8ebf3ed057 → 1b8153c862）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-07T18:07:06.237060-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 1b8153c862 → 556158bc20）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-07T23:07:48.593295-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 556158bc20 → 7a34f36e3d）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-08T01:08:14.237641-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 7a34f36e3d → cf09ed69ba）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-08T04:08:41.698868-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash cf09ed69ba → 066f62d482）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-08T06:09:07.882312-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 066f62d482 → a635fbc69c）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-08T07:09:21.746985-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash a635fbc69c → 45e7e9f3a7）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-08T08:09:23.528890-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 45e7e9f3a7 → 7737f35015）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-08T11:10:11.954725-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 7737f35015 → d5e40a109d）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-08T13:10:17.479332-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash d5e40a109d → a126232928）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-08T14:10:30.707861-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash a126232928 → 7b33ff54cb）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-08T15:10:40.200223-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 7b33ff54cb → 5adcbdb1b4）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-08T18:11:05.519077-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 5adcbdb1b4 → c912f77583）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-09T01:12:01.175333-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash c912f77583 → 994dba003a）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-09T06:12:44.515837-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 994dba003a → c60f244c09）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-09T10:13:21.259309-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash c60f244c09 → 926178b16c）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-09T12:13:31.877173-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 926178b16c → 6349236312）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-09T14:13:37.378510-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 6349236312 → 37f9f3ab8e）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-09T22:14:44.448289-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 37f9f3ab8e → 3baae6844c）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-10T02:15:28.095839-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 3baae6844c → 160e1aa2c6）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-10T06:16:00.355752-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 160e1aa2c6 → 954e5df6ed）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-10T18:17:44.197309-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 954e5df6ed → daa0d55d32）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-10T19:17:49.443351-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash daa0d55d32 → ece7cd71bd）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-10T21:18:06.985199-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash ece7cd71bd → dc0fc34251）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-10T22:18:13.516313-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash dc0fc34251 → 91b151cfe2）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-10T23:18:19.070000-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 91b151cfe2 → 0ca8394909）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-11T02:18:41.418011-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 0ca8394909 → dcb9f9efbc）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-11T03:18:48.719791-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash dcb9f9efbc → 572b9a4026）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-11T04:18:57.108543-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 572b9a4026 → 81c8e0a326）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-11T05:19:08.625242-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 81c8e0a326 → e2b4f0eb63）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-11T06:19:19.073178-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash e2b4f0eb63 → 09c3556819）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-11T08:19:40.431283-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 09c3556819 → bc4f810b67）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-11T09:19:47.359464-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash bc4f810b67 → c964e6c01b）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-11T12:20:16.569037-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash c964e6c01b → 814808b3c0）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-11T14:20:31.562108-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 814808b3c0 → 7d3f5c9eb8）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-11T15:20:33.609715-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 7d3f5c9eb8 → 9690bfd51e）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-11T16:20:47.168227-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 9690bfd51e → 4c9dd78888）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-11T19:21:23.481821-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 4c9dd78888 → 5948bea6ea）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-12T04:23:26.254816-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 5948bea6ea → 4e25aac92f）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-12T05:23:32.049684-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 4e25aac92f → 7cd4694559）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-12T06:23:43.720716-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 7cd4694559 → b6f96ecf68）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-12T10:24:22.490065-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash b6f96ecf68 → da39815d36）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-13T02:26:53.250824-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash da39815d36 → fa7fd212bc）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-13T04:27:17.180002-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash fa7fd212bc → b91fea1d26）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-13T05:27:23.064155-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash b91fea1d26 → 1b4a49965a）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-13T12:28:33.267874-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 1b4a49965a → 78faf22844）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-13T15:28:53.042062-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 78faf22844 → 8991caab48）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-13T17:29:15.808163-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 8991caab48 → d135488c27）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-13T20:29:49.120149-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash d135488c27 → ab8e95cfd4）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-13T22:30:10.886024-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash ab8e95cfd4 → b9882b19ff）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-14T01:30:34.835763-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash b9882b19ff → 3232a819f5）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-14T05:31:12.130499-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 3232a819f5 → 50b2c34efc）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-14T06:31:23.019360-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 50b2c34efc → 2c83cb01b1）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-14T09:32:09.058231-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 2c83cb01b1 → 5655d7239a）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-14T11:32:34.318528-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 5655d7239a → d92fb23ceb）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-14T12:32:36.948588-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash d92fb23ceb → 3a1ef88fcc）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-14T16:33:22.388758-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 3a1ef88fcc → b0f5d31873）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-14T23:34:21.680432-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash b0f5d31873 → 8cf9388c6e）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-15T03:34:45.440909-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 8cf9388c6e → 09348d4d1f）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-15T05:52:38.601593-07:00",
+    "target": "ETH-USD",
+    "kind": "价格波动",
+    "detail": "价格 1762.33 → 1913.85（+8.6%，阈值 ±8%）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-15T06:35:05.228522-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 09348d4d1f → 1bad6a3290）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-15T08:35:39.049047-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 1bad6a3290 → cf4b05a507）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-15T17:37:18.169981-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash cf4b05a507 → 7598051087）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-15T20:38:02.019406-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 7598051087 → a284f4b058）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-15T22:38:21.957310-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash a284f4b058 → f08e130bee）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-15T23:38:24.645224-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash f08e130bee → 4ff9324ea6）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T00:38:40.595527-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 4ff9324ea6 → bf1dc78e85）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T01:38:48.039938-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash bf1dc78e85 → 0458ba8853）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T02:39:02.447705-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 0458ba8853 → 6b78a6cdb6）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T05:39:39.436578-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 6b78a6cdb6 → 84d8d682c0）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T06:39:53.571448-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 84d8d682c0 → 9450bd072d）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T07:40:12.871018-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 9450bd072d → 2f915c64c9）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T08:40:28.238203-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 2f915c64c9 → 6105ab0ae2）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T09:40:45.273822-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 6105ab0ae2 → 66ef9b1fec）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T10:41:05.022364-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 66ef9b1fec → 901dfa54cb）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T12:41:20.852907-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 901dfa54cb → 884abd4b2e）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T13:41:24.634963-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 884abd4b2e → eaa5e6fac0）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T15:41:37.768234-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash eaa5e6fac0 → f21531af8e）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T16:41:55.318760-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash f21531af8e → 15edbfd170）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T17:42:07.303686-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 15edbfd170 → 1751fdf4b5）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T18:42:18.938312-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 1751fdf4b5 → 853043f42a）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-16T22:42:52.068338-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 853043f42a → 92bfcb7b5f）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-17T00:43:00.667091-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 92bfcb7b5f → 346de2f5cc）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-18T04:48:39.399776-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 346de2f5cc → 56698fb59a）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-18T08:49:21.538555-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 56698fb59a → 33ad2223d9）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-19T02:52:35.925654-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 33ad2223d9 → 31ed0e1210）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-19T06:53:08.145410-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 31ed0e1210 → de642439f7）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-19T07:53:22.757997-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash de642439f7 → 735091d9c3）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-20T03:56:12.183414-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 735091d9c3 → 3b3c2dbf4d）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-20T04:56:26.996984-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 3b3c2dbf4d → db9e0fe14f）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-20T05:56:40.583146-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash db9e0fe14f → b1b166099d）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-20T06:56:54.795685-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash b1b166099d → 5a8bd786b5）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-20T09:57:36.508095-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 5a8bd786b5 → 76e845d993）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-20T11:58:10.559365-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 76e845d993 → b25cd5a2a9）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-20T13:58:15.258834-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash b25cd5a2a9 → 051fb01aad）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-20T14:58:17.626687-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 051fb01aad → 17c576f759）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-20T15:58:26.091458-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 17c576f759 → 1971f213fc）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-20T17:58:42.872620-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 1971f213fc → 978138a4b0）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-20T18:58:58.403328-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 978138a4b0 → 722aa49784）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-20T19:59:08.157885-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 722aa49784 → 466fb8b814）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-20T20:59:23.701121-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 466fb8b814 → ac514ef68c）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-20T23:59:51.780970-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash ac514ef68c → 8e13bda586）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T00:59:53.279979-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 8e13bda586 → 862e9ba1c9）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T01:59:56.240000-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 862e9ba1c9 → b439baff0b）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T03:00:03.151778-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash b439baff0b → bb21c2acc5）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T03:18:33.909881-07:00",
+    "target": "BTC-USD",
+    "kind": "价格波动",
+    "detail": "价格 60298 → 66328.6（+10.0%，阈值 ±10%）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T04:00:07.737372-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash bb21c2acc5 → d7c4548ab9）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T05:00:28.335270-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash d7c4548ab9 → 4474754dd6）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T06:00:36.481382-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 4474754dd6 → cbca2ab4a8）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T09:01:10.911808-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash cbca2ab4a8 → 98accaf687）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T09:03:36.918985-07:00",
+    "target": "MomentumSticker-pool",
+    "kind": "Momentum异动",
+    "detail": "📌 Momentum Sticker\nCOIN $180.91 | 放量×1.25 | 突破+7.1% | opt_vol=48334\n—\n异动观察 report-only | 不产生信号 | sentinel 注意力预算",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T09:34:01.550710-07:00",
+    "target": "MomentumSticker-pool",
+    "kind": "Momentum异动",
+    "detail": "📌 Momentum Sticker\nCOIN $179.38 | 放量×1.34 | 突破+6.2% | opt_vol=53591\n—\n异动观察 report-only | 不产生信号 | sentinel 注意力预算",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T10:04:33.824904-07:00",
+    "target": "MomentumSticker-pool",
+    "kind": "Momentum异动",
+    "detail": "📌 Momentum Sticker\nCOIN $179.85 | 放量×1.42 | 突破+6.5% | opt_vol=57245\n—\n异动观察 report-only | 不产生信号 | sentinel 注意力预算",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T10:34:54.180983-07:00",
+    "target": "MomentumSticker-pool",
+    "kind": "Momentum异动",
+    "detail": "📌 Momentum Sticker\nCOIN $179.18 | 放量×1.51 | 突破+6.1% | opt_vol=58731\n—\n异动观察 report-only | 不产生信号 | sentinel 注意力预算",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T11:05:20.813500-07:00",
+    "target": "MomentumSticker-pool",
+    "kind": "Momentum异动",
+    "detail": "📌 Momentum Sticker\nCOIN $178.31 | 放量×1.62 | 突破+5.6% | opt_vol=60321\n—\n异动观察 report-only | 不产生信号 | sentinel 注意力预算",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T11:35:40.812147-07:00",
+    "target": "MomentumSticker-pool",
+    "kind": "Momentum异动",
+    "detail": "📌 Momentum Sticker\nCOIN $177.70 | 放量×1.73 | 突破+5.2% | opt_vol=62488\n—\n异动观察 report-only | 不产生信号 | sentinel 注意力预算",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T12:01:44.804656-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 98accaf687 → 586c3cba86）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T12:06:10.592786-07:00",
+    "target": "MomentumSticker-pool",
+    "kind": "Momentum异动",
+    "detail": "📌 Momentum Sticker\nCOIN $176.20 | 放量×1.84 | 突破+4.4% | opt_vol=64314\n—\n异动观察 report-only | 不产生信号 | sentinel 注意力预算",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T12:36:30.373059-07:00",
+    "target": "MomentumSticker-pool",
+    "kind": "Momentum异动",
+    "detail": "📌 Momentum Sticker\nCOIN $176.53 | 放量×1.98 | 突破+4.5% | opt_vol=66245\n—\n异动观察 report-only | 不产生信号 | sentinel 注意力预算",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T13:01:50.953237-07:00",
+    "target": "OllamaReleases",
+    "kind": "页面变更",
+    "detail": "页面内容变更（hash 586c3cba86 → 88c9e5d8c5）",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T13:06:56.321699-07:00",
+    "target": "MomentumSticker-pool",
+    "kind": "Momentum异动",
+    "detail": "📌 Momentum Sticker\nCOIN $175.80 | 放量×2.38 | 突破+4.1% | opt_vol=68212\n—\n异动观察 report-only | 不产生信号 | sentinel 注意力预算",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T13:37:54.626064-07:00",
+    "target": "MomentumSticker-pool",
+    "kind": "Momentum异动",
+    "detail": "📌 Momentum Sticker\nCOIN $175.80 | 放量×2.38 | 突破+4.1% | opt_vol=69048\n—\n异动观察 report-only | 不产生信号 | sentinel 注意力预算",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T14:08:02.138410-07:00",
+    "target": "MomentumSticker-pool",
+    "kind": "Momentum异动",
+    "detail": "📌 Momentum Sticker\nCOIN $175.80 | 放量×2.39 | 突破+4.1% | opt_vol=69048\n—\n异动观察 report-only | 不产生信号 | sentinel 注意力预算",
+    "summary": null
+  },
+  {
+    "time": "2026-07-21T14:38:27.759903-07:00",
+    "target": "MomentumSticker-pool",
+    "kind": "Momentum异动",
+    "detail": "📌 Momentum Sticker\nCOIN $175.80 | 放量×2.39 | 突破+4.1% | opt_vol=69048\n—\n异动观察 report-only | 不产生信号 | sentinel 注意力预算",
+    "summary": null
+  }
+]

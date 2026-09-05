@@ -6,7 +6,7 @@ Aether Watcher V0.2 — 大脑显示屏的眼睛
 V0.2: 新增 scanner_health 目标类型（监督 Aether Nexus R5.4.1 期权扫描器）；
       price 类型支持鉴权头（headers_env），可直接接 Alpaca 行情端点。
 
-架构沿用 aether_crypto 的模式：常驻循环 + 原子状态落盘 + heartbeat + Streamlit 面板。
+架构沿用常驻循环 + 原子状态落盘 + heartbeat + Streamlit 面板。
 目标配置在 watch_targets.toml（stdlib tomllib，零额外依赖）。
 
 设计原则：
@@ -355,6 +355,26 @@ def check_target(t: dict, st: dict) -> dict:
 
     elif kind == "scanner_health":
         st = check_scanner_health(t, st)
+
+    elif kind == "momentum_sticker":
+        from momentum_sticker import check_momentum_sticker
+
+        st = check_momentum_sticker(t, st, SESSION)
+        for ev in st.pop("events", []):
+            events = safe_read_json(EVENTS_PATH, [])
+            if not isinstance(events, list):
+                events = []
+            events.append(
+                {
+                    "time": datetime.datetime.now().astimezone().isoformat(),
+                    "target": t["name"],
+                    "kind": ev.get("kind", "Momentum异动"),
+                    "detail": str(ev.get("detail", ""))[:500],
+                    "summary": None,
+                    "sym": ev.get("sym"),
+                }
+            )
+            atomic_write_json(EVENTS_PATH, events[-500:])
 
     else:
         logger.warning(f"[{name}] 未知类型 {kind}")

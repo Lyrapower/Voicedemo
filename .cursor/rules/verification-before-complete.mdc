@@ -6,6 +6,7 @@ alwaysApply: true
 # 完成声明 — 必须先验收跑通
 
 > **升级（2026-08-12）：** 禁止 one-shot 改完即报完成。完整自检循环见同目录 **`task-harness-evidence-complete.mdc`**（alwaysApply · 硬红线）。
+> **升级（2026-09-04）：** 动 8600 / worker / `/data` 后须 `bash scripts/blast_radius_check.sh` exit 0。
 
 ## 绝对禁止
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from code_task.cloud_attachments import preprocess_cloud_attachments
 from code_task.cloud_chat_executor import execute_cloud_chat
 from code_task.cloud_substrates import CLOUD_SUBSTRATES, resolve_substrate
 
@@ -20,21 +21,28 @@ except Exception:  # pragma: no cover
     inject_messages = None  # type: ignore
     soul_of = None  # type: ignore
 
-# ctx 实数(Ollama Cloud library):glm-5.2:cloud=976000 · kimi-k2.6:cloud=256000
-# 注入实用预算=单条 sanitize 上限 8000 的一半=4000 字(拼进最后 user);非 ctx/2(否则无约束)
+# 2026-08-05 seal: cloud-* store archived; chat OK; no soul/recall inject; no store memory.
+# Unlock store+inject: CLOUD_MEMORY_SEALED=0. /task/expanded 不受此开关影响.
+def _cloud_memory_sealed() -> bool:
+    return (os.environ.get("CLOUD_MEMORY_SEALED", "1").strip() or "1") != "0"
+
+# ctx 实数(Ollama Cloud library):glm-5.2:cloud=976000 · glm-5.3-flash:cloud=1000000
 GLM52_CONTEXT_TOKENS = 976_000
 KIMI_CONTEXT_TOKENS = 256_000
-INJECT_CHAR_BUDGET = 4_000  # half of MAX_PROMPT_CHARS
+GLM53_CONTEXT_TOKENS = 1_000_000
+GLM53_FULL_CONTEXT_TOKENS = 1_000_000
 _SUBSTRATE_SURFACE = {
     "glm52": "cloud-glm",
-    "kimi_k25": "cloud-kimi",
-    "deepseek_v4": "cloud-glm",  # DS 无独立魂,暂挂 cloud 魂组读
+    "deepseek_v4": "cloud-deepseek",
+    "glm53": "cloud-glm53",
+    "glm53_full": "cloud-glm53-full",
 }
 
 _SUBSTRATE_CONFIG_KEYS: dict[str, tuple[str, str]] = {
     "glm52": ("glm52_cloud_model", "glm52_cloud_endpoint"),
-    "kimi_k25": ("kimi_k25_cloud_model", "kimi_k25_cloud_endpoint"),
     "deepseek_v4": ("deepseek_v4_cloud_model", "deepseek_v4_cloud_endpoint"),
+    "glm53": ("glm53_flash_cloud_model", "glm53_flash_cloud_endpoint"),
+    "glm53_full": ("glm53_full_cloud_model", "glm53_full_cloud_endpoint"),
 }
 
 
@@ -67,8 +75,8 @@ def match_cloud_model(request_model: str | None, config: dict[str, Any]) -> tupl
     # Ollama sometimes shortens echoed ids; accept alias map to canonical config model.
     aliases = {
         "glm-5.2": config.get("glm52_cloud_model"),
-        "kimi-k2.6": config.get("kimi_k25_cloud_model"),
-        "kimi-k2.5": "kimi-k2.5:cloud",
+        "glm-5.3-flash": config.get("glm53_flash_cloud_model"),
+        "glm-5.3": config.get("glm53_full_cloud_model"),
         "deepseek-v4-pro": config.get("deepseek_v4_cloud_model"),
         "deepseek-v4-flash": config.get("deepseek_v4_cloud_model"),
         "deepseek-v4": config.get("deepseek_v4_cloud_model"),
@@ -113,6 +121,7 @@ async def openai_cloud_chat_completion(
         max_tokens=int(body.get("max_tokens") or config.get("chat_max_tokens") or 1024),
         temperature=float(body.get("temperature") or 0.3),
         timeout=float(body.get("timeout") or 300.0),
+        substrate=substrate,
     )
     mission_ref = body.get("mission_ref")
     extra_meta = {"cloud_substrate": substrate, "ollama_cloud": True}
@@ -161,7 +170,16 @@ def _with_soul_inject(
     db: str | None = None,
     window: bool | None = None,
 ) -> list[dict[str, Any]]:
-    """注入魂组到最后一条 user(GLM/Kimi build_messages 会丢弃 client system)。"""
+    """注入魂组到最后一条 user(GLM/Kimi build_messages 会丢弃 client system)。
+
+    多轮(≥2 条 user/assistant)=只加召回,不叠近程窗(近程已由客户端 15∩10k 多轮承担)。
+    单条 user=近程窗+召回。块级不再套 4000 字上限。
+    """
+    if _cloud_memory_sealed():
+        return list(messages or [])
+    # b11 已客户端组装 15窗+top4 时禁止服务端再叠魂组全量
+    if os.environ.get("CLOUD_CLIENT_BUILT_MEMORY", "").strip() == "1":
+        return list(messages or [])
     if inject_messages is None:
         return list(messages or [])
     path = (db or os.environ.get("GRID_STORE_DB") or DEFAULT_STORE_DB or "").strip()
@@ -169,12 +187,12 @@ def _with_soul_inject(
         return list(messages or [])
     out = [dict(m) for m in (messages or [])]
     dial = [m for m in out if m.get("role") in ("user", "assistant")]
-    # 客户端多轮→只召回;单条 user(终批单源组装)→近程窗+召回
+    # 客户端多轮→只召回;单条 user→近程窗+召回
     use_window = bool(window) if window is not None else len(dial) < 2
     try:
         prefix = inject_messages(
             path, surface, _last_user_text(out),
-            window=use_window, max_chars=INJECT_CHAR_BUDGET,
+            window=use_window, max_chars=None,
         )
     except Exception:
         return out
@@ -193,50 +211,154 @@ def _with_soul_inject(
     out.append({"role": "user", "content": block})
     return out
 
+
+# P1: store 原文只读工具 —— 给 GLM(侯)查 cloud-* 对话原文(日记层不开放)。
+try:
+    from code_task.cloud_store_tools import execute_tool as _store_execute_tool, TOOL_DECLARATION as _STORE_TOOL_DECLARATION  # noqa: E402
+except Exception:  # pragma: no cover
+    _store_execute_tool = None  # type: ignore
+    _STORE_TOOL_DECLARATION = None
+
+
+def _make_store_tool_executor(substrate: str):
+    """构造 tool_executor(name, args) -> str。只读 sqlite,不写 store。无工具依赖时返回 None。"""
+    if _store_execute_tool is None:
+        return None
+    # cloud_nodes 按底座选(侯=glm52 → cloud-glm52 + cloud + cloud-kimi)
+    if substrate == "glm53":
+        nodes = ["cloud-glm53", "cloud", "cloud-glm52"]
+    elif substrate == "glm53_full":
+        nodes = ["cloud-glm53-full", "cloud", "cloud-glm52"]
+    elif substrate == "deepseek_v4":
+        nodes = ["cloud-deepseek", "cloud", "cloud-glm52"]
+    else:
+        nodes = ["cloud-glm52", "cloud", "cloud-kimi"]
+
+    def _exec_wrapper(name: str, args: dict[str, str]) -> str:
+        return _store_execute_tool(name, args, cloud_nodes=nodes)
+
+    return _exec_wrapper
+
+
 async def task_cloud_chat_handler(body: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     import json
     import logging
 
     log = logging.getLogger("grid.cloud_chat")
+    # sealed:仍允许推理 chat; _with_soul_inject 在 sealed 时为空操作(无回忆注入)
     substrate = resolve_substrate(body.get("substrate"))
     spec = CLOUD_SUBSTRATES[substrate]
     model, endpoint = _cfg_model_endpoint(config, substrate)
     rid = str(body.get("request_id") or uuid4())
-    messages = body.get("messages") or []
+    # Attachments: text/pdf → inject; GLM images → M3 eyes; DeepSeek → Kimi VL
+    body_pp, attach_meta = await preprocess_cloud_attachments(
+        body, substrate, config=config, route_id=rid
+    )
+    messages = body_pp.get("messages") or []
     if not messages:
         raise ValueError("messages required")
-    surface = str(body.get("surface") or _SUBSTRATE_SURFACE.get(substrate) or "cloud-glm")
+    # GLM 5.2/5.3 never receive pixels; M3 already transcribed.
+    images = None
+    surface = str(body_pp.get("surface") or body.get("surface") or _SUBSTRATE_SURFACE.get(substrate) or "cloud-glm")
     # 注入前体积(客户端原样)
     try:
         pre_bytes = len(json.dumps({"messages": messages}, ensure_ascii=False).encode("utf-8"))
     except Exception:
         pre_bytes = -1
-    messages = _with_soul_inject(messages, surface=surface)
+    # b11 Cloud 已 buildCloudStoreMessages → 禁止再魂组全量叠注
+    if body.get("client_built_memory") or body.get("memory_sealed"):
+        pass
+    else:
+        messages = _with_soul_inject(messages, surface=surface)
     try:
         post_bytes = len(json.dumps({"messages": messages}, ensure_ascii=False).encode("utf-8"))
     except Exception:
         post_bytes = -1
     log.info(
         "cloud_chat outbound payload_bytes pre=%s post=%s surface=%s substrate=%s "
-        "ctx_limit=%s inject_char_budget=%s",
+        "ctx_limit=%s attach=%s",
         pre_bytes, post_bytes, surface, substrate,
-        GLM52_CONTEXT_TOKENS if substrate == "glm52" else KIMI_CONTEXT_TOKENS,
-        INJECT_CHAR_BUDGET,
+        GLM52_CONTEXT_TOKENS if substrate == "glm52"
+        else (GLM53_CONTEXT_TOKENS if substrate == "glm53"
+        else (GLM53_FULL_CONTEXT_TOKENS if substrate == "glm53_full" else KIMI_CONTEXT_TOKENS)),
+        bool(attach_meta.get("preprocess")),
     )
     resp = await execute_cloud_chat(
         request_id=rid,
         messages=messages,
         endpoint=endpoint,
-        model=str(body.get("model") or model).strip(),
+        model=str(body_pp.get("model") or body.get("model") or model).strip(),
         build_messages=spec["build_messages"],
         source=f"task_cloud_chat:{substrate}",
+        images=images,
         max_tokens=int(body.get("max_tokens") or config.get("task_max_tokens") or 4096),
         temperature=float(body.get("temperature") or 0.3),
         timeout=float(body.get("timeout") or 300.0),
+        substrate=substrate,
+        tool_executor=_make_store_tool_executor(substrate),
+        tool_declaration=_STORE_TOOL_DECLARATION,
     )
     out = resp.to_dict()
     out["substrate"] = substrate
     out["payload_bytes"] = {"pre": pre_bytes, "post": post_bytes}
+    if attach_meta.get("preprocess"):
+        out["attachment_meta"] = attach_meta
     if body.get("mission_ref") is not None:
         out["mission_ref"] = body.get("mission_ref")
+    eyes = attach_meta.get("eyes") if isinstance(attach_meta, dict) else None
+    if isinstance(eyes, dict) and (eyes.get("records") or eyes.get("refs")):
+        from code_task.m3_vl_eyes import (
+            format_glm_audit_record,
+            persist_allowed,
+            persist_eyes_messages,
+        )
+
+        ok_persist, node_id = persist_allowed(body)
+        surface = str(
+            body_pp.get("surface")
+            or body.get("surface")
+            or _SUBSTRATE_SURFACE.get(substrate)
+            or "cloud-glm"
+        )
+        store_msgs: list[dict[str, Any]] = []
+        for rec in eyes.get("records") or []:
+            store_msgs.append({
+                "role": "system",
+                "content": rec,
+                "surface": surface,
+                "substrate": "minimax_m3",
+            })
+        if resp.ok:
+            store_msgs.append({
+                "role": "system",
+                "content": format_glm_audit_record(
+                    list(eyes.get("refs") or []),
+                    str(out.get("content") or ""),
+                    substrate=substrate,
+                    route_id=rid,
+                    glm_model=str(out.get("model") or ""),
+                ),
+                "surface": surface,
+                "substrate": substrate,
+            })
+        wrote = 0
+        if ok_persist and store_msgs:
+            try:
+                wrote = persist_eyes_messages(store_msgs, node_id=node_id)
+            except Exception as exc:
+                log.warning("eyes provenance persist failed node=%s err=%s", node_id, exc)
+                wrote = 0
+        eyes["store_node"] = node_id if ok_persist else ""
+        eyes["store_wrote"] = int(wrote or 0)
+        out["eyes"] = {
+            "vl_backend": "minimax_m3",
+            "vl_ok": eyes.get("vl_ok"),
+            "refs": eyes.get("refs") or [],
+            "store_node": eyes.get("store_node"),
+            "store_wrote": eyes.get("store_wrote"),
+        }
+        attach_meta["eyes"] = eyes
+        out["attachment_meta"] = attach_meta
+        if wrote:
+            out["memory_write"] = True
     return out

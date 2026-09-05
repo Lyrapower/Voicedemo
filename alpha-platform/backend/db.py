@@ -65,6 +65,10 @@ def conn() -> sqlite3.Connection:
     c = sqlite3.connect(DB_PATH, timeout=30)
     _configure_sqlite(c)
     c.executescript(SCHEMA)
+    try:
+        c.execute("ALTER TABLE bars ADD COLUMN src TEXT")
+    except sqlite3.OperationalError:
+        pass
     return c
 
 
@@ -130,7 +134,7 @@ BASE_WATCHLIST = [
 ]
 SURFACE_DENY = frozenset(
     s.strip().upper()
-    for s in os.getenv("SURFACE_DENY", "TSLA,GOOGL").split(",")
+    for s in os.getenv("SURFACE_DENY", "TSLA,GOOGL,AEHR").split(",")
     if s.strip()
 )
 ENV_EXCLUDE = frozenset(

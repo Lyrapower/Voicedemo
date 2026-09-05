@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.demo.aether.watcher-bridge</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__DEMO_ROOT__/scripts/aether/start_watcher_bridge.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__DEMO_ROOT__/aether_watcher</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/demo-aether/watcher-bridge.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/demo-aether/watcher-bridge.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Library/Frameworks/Python.framework/Versions/3.13/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>GRID_STORE_URL</key>
+    <string>http://127.0.0.1:8501/store/events</string>
+  </dict>
+</dict>
+</plist>

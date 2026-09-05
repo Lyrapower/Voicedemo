@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>CONSOLE_URL</key>
+		<string>http://localhost:8610</string>
+		<key>DS_MAX_TOKENS</key>
+		<string>12000</string>
+		<key>SCOUT_OUT</key>
+		<string>__SCOUT_DIR__</string>
+		<key>WORKBENCH_URL</key>
+		<string>http://127.0.0.1:8515</string>
+	</dict>
+	<key>Label</key>
+	<string>com.grid.evening-brief</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13</string>
+		<string>__SCOUT_DIR__/scout_agent.py</string>
+		<string>--mode</string>
+		<string>evening</string>
+	</array>
+	<key>StandardErrorPath</key>
+	<string>__SCOUT_DIR__/scout.err</string>
+	<key>StandardOutPath</key>
+	<string>__SCOUT_DIR__/scout.log</string>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>21</integer>
+		<key>Minute</key>
+		<integer>5</integer>
+	</dict>
+</dict>
+</plist>

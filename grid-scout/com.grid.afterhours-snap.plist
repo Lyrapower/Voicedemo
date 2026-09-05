@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 盘后快照 4:45pm PST(=7:45pm ET,Nasdaq 盘后窗内;v3.26.3)。只取盘后读数落 state/,不调 DS 不写简报。
+     是否 load 由 Lyra 拍板(不默认引入常驻项);不 load 则 21:00 晚班回落实时取并报健康态。
+     cp 到 ~/Library/LaunchAgents/ 后:launchctl load ~/Library/LaunchAgents/com.grid.afterhours-snap.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.grid.afterhours-snap</string>
+  <key>ProgramArguments</key>
+  <array><string>/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13</string><string>__SCOUT_DIR__/scout_agent.py</string>
+         <string>--mode</string><string>afterhours</string></array>
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>45</integer></dict>
+  <key>StandardOutPath</key><string>__SCOUT_DIR__/scout_afterhours.log</string>
+  <key>StandardErrorPath</key><string>__SCOUT_DIR__/scout_afterhours.err</string>
+  <key>EnvironmentVariables</key><dict>
+    <!-- 密钥不进 plist:单一来源 .env -->
+    <key>SCOUT_OUT</key><string>__SCOUT_DIR__</string>
+  </dict>
+</dict></plist>

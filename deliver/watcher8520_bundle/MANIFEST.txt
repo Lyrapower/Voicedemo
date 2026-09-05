@@ -1,0 +1,28 @@
+8520 Aether Watcher bundle
+==========================
+
+UI (:8520)
+  aether_watcher/watcher_dashboard.py
+  aether_watcher/run_dashboard.sh
+  scripts/aether/start_watcher8520.sh
+  scripts/aether/launchd/com.demo.aether.watcher8520.plist
+
+Daemon (feeds 8520 state/ + optional :8501 aether_momentum)
+  aether_watcher/aether_watcher.py
+  aether_watcher/momentum_sticker.py
+  aether_watcher/sentinel_attention.py
+  aether_watcher/watch_targets.toml
+  aether_watcher/run_watcher.sh
+  scripts/aether/start_watcher_daemon.sh
+  scripts/aether/launchd/com.demo.aether.watcher-daemon.plist
+
+Runtime state (8520 reads these)
+  aether_watcher/state/heartbeat.json
+  aether_watcher/state/events.json
+  aether_watcher/state/watch_state.json
+  aether_watcher/state/sentinel_attention_budget.json
+  aether_watcher/state/watcher.log.tail200
+
+Repo paths (live):
+  /Users/ciciwang/Projects/demo/aether_watcher/
+  /Users/ciciwang/Projects/demo/scripts/aether/start_watcher8520.sh

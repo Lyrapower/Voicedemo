@@ -1,0 +1,10 @@
+# Optional: pre-commit framework wrapper — same gates as scripts/git-hooks/pre-commit
+repos:
+  - repo: local
+    hooks:
+      - id: grid-infrastructure-lock
+        name: Grid P0 infrastructure lock
+        entry: bash scripts/git-hooks/pre-commit
+        language: system
+        pass_filenames: false
+        always_run: true

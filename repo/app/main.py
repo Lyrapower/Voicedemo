@@ -9,10 +9,11 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from telemetry.garden_api import router as garden_router
+from telemetry.voice_field_ingest import build_ingest_router
 
 from .grid_route import router as grid_route_router
 from .router import router
@@ -59,6 +60,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Aster", version="1.0", lifespan=lifespan)
 
 DEV_PROXY = "http://127.0.0.1:5173"
+FIELD_UI = os.environ.get("ASTER_FIELD_URL", "http://127.0.0.1:8790/")
 
 
 def _aster_channel() -> tuple[str, int]:
@@ -119,8 +121,18 @@ class ViteDevProxyMiddleware(BaseHTTPMiddleware):
         if request.method not in ("GET", "HEAD"):
             return await call_next(request)
         path = request.url.path
+        if path == "/":
+            return RedirectResponse(url=FIELD_UI, status_code=301)
+        if path.startswith("/legacy"):
+            path = path[7:] or "/"
+            if not path.startswith("/"):
+                path = "/" + path
+            request.scope["path"] = path
+            if request.scope.get("raw_path") is not None:
+                request.scope["raw_path"] = path.encode("utf-8")
         if (
             path == "/health"
+            or path == "/telemetry.json"
             or path.startswith("/api/")
             or path.startswith("/docs")
             or path.startswith("/openapi")
@@ -195,6 +207,7 @@ async def health():
 
 
 app.include_router(garden_router)
+app.include_router(build_ingest_router())
 app.include_router(grid_route_router)
 app.include_router(router)
 app.add_middleware(ViteDevProxyMiddleware)

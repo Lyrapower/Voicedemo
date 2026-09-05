@@ -1,0 +1,620 @@
+{
+ "results": [
+  {
+   "source": "treasury_yields",
+   "ok": true,
+   "ts": "2026-08-03T10:53:20.823873-07:00",
+   "items": [
+    {
+     "field": "Date",
+     "value": "07/31/2026"
+    },
+    {
+     "field": "\"1 Mo\"",
+     "value": "3.78"
+    },
+    {
+     "field": "\"1.5 Month\"",
+     "value": "3.80"
+    },
+    {
+     "field": "\"2 Mo\"",
+     "value": "3.85"
+    },
+    {
+     "field": "\"3 Mo\"",
+     "value": "3.83"
+    },
+    {
+     "field": "\"4 Mo\"",
+     "value": "3.92"
+    },
+    {
+     "field": "\"6 Mo\"",
+     "value": "3.98"
+    },
+    {
+     "field": "\"1 Yr\"",
+     "value": "4.08"
+    },
+    {
+     "field": "\"2 Yr\"",
+     "value": "4.28"
+    },
+    {
+     "field": "\"3 Yr\"",
+     "value": "4.34"
+    },
+    {
+     "field": "\"5 Yr\"",
+     "value": "4.45"
+    },
+    {
+     "field": "\"7 Yr\"",
+     "value": "4.59"
+    },
+    {
+     "field": "\"10 Yr\"",
+     "value": "4.75"
+    },
+    {
+     "field": "\"20 Yr\"",
+     "value": "5.28"
+    },
+    {
+     "field": "\"30 Yr\"",
+     "value": "5.27"
+    }
+   ]
+  },
+  {
+   "source": "fred_macro",
+   "ok": false,
+   "ts": "2026-08-03T10:53:21.272062-07:00",
+   "error": "FRED_API_KEY not set, skipped(设计如此,免费注册后填 .env 即启)",
+   "items": []
+  },
+  {
+   "source": "edgar_ma_8k",
+   "ok": true,
+   "ts": "2026-08-03T10:53:21.272864-07:00",
+   "items": [
+    {
+     "company": "Atkore Inc.  (ATKR)  (CIK 0001666138)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Indivior Pharmaceuticals, Inc.  (INDV)  (CIK 0001625297)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SUPERNUS PHARMACEUTICALS, INC.  (SUPN)  (CIK 0001356576)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Bowhead Specialty Holdings Inc.  (BOW)  (CIK 0002002473)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SUPERNUS PHARMACEUTICALS, INC.  (SUPN)  (CIK 0001356576)",
+     "form": "EX-10.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Indivior Pharmaceuticals, Inc.  (INDV)  (CIK 0001625297)",
+     "form": "EX-99.2",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SUPERNUS PHARMACEUTICALS, INC.  (SUPN)  (CIK 0001356576)",
+     "form": "EX-10.2",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Indivior Pharmaceuticals, Inc.  (INDV)  (CIK 0001625297)",
+     "form": "EX-99.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "AIR INDUSTRIES GROUP  (AIRI)  (CIK 0001009891)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "CECO ENVIRONMENTAL CORP  (CECO)  (CIK 0000003197)",
+     "form": "EX-99.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Esquire Financial Holdings, Inc.  (ESQ)  (CIK 0001531031)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Lantheus Holdings, Inc.  (LNTH)  (CIK 0001521036)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SKYWORKS SOLUTIONS, INC.  (SWKS)  (CIK 0000004127)",
+     "form": "EX-99.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SKYWORKS SOLUTIONS, INC.  (SWKS)  (CIK 0000004127)",
+     "form": "EX-99.2",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "AIR INDUSTRIES GROUP  (AIRI)  (CIK 0001009891)",
+     "form": "EX-99.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SUPERNUS PHARMACEUTICALS, INC.  (SUPN)  (CIK 0001356576)",
+     "form": "EX-99.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Indivior Pharmaceuticals, Inc.  (INDV)  (CIK 0001625297)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Lantheus Holdings, Inc.  (LNTH)  (CIK 0001521036)",
+     "form": "EX-99.2",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SKYWORKS SOLUTIONS, INC.  (SWKS)  (CIK 0000004127)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "HANCOCK WHITNEY CORP  (HWC, HWCPZ)  (CIK 0000750577)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Lantheus Holdings, Inc.  (LNTH)  (CIK 0001521036)",
+     "form": "EX-99.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SKYWORKS SOLUTIONS, INC.  (SWKS)  (CIK 0000004127)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SUPERNUS PHARMACEUTICALS, INC.  (SUPN)  (CIK 0001356576)",
+     "form": "EX-2.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Indivior Pharmaceuticals, Inc.  (INDV)  (CIK 0001625297)",
+     "form": "EX-2.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Bowhead Specialty Holdings Inc.  (BOW)  (CIK 0002002473)",
+     "form": "EX-99.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Beacon Financial Corp  (BBT)  (CIK 0001108134)",
+     "form": "EX-99.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SUPERNUS PHARMACEUTICALS, INC.  (SUPN)  (CIK 0001356576)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Bowhead Specialty Holdings Inc.  (BOW)  (CIK 0002002473)",
+     "form": "EX-99.2",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SUPERNUS PHARMACEUTICALS, INC.  (SUPN)  (CIK 0001356576)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SUPERNUS PHARMACEUTICALS, INC.  (SUPN)  (CIK 0001356576)",
+     "form": "EX-99.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Indivior Pharmaceuticals, Inc.  (INDV)  (CIK 0001625297)",
+     "form": "EX-99.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Indivior Pharmaceuticals, Inc.  (INDV)  (CIK 0001625297)",
+     "form": "EX-99.3",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SUPERNUS PHARMACEUTICALS, INC.  (SUPN)  (CIK 0001356576)",
+     "form": "EX-99.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SUPERNUS PHARMACEUTICALS, INC.  (SUPN)  (CIK 0001356576)",
+     "form": "EX-10.3",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Bluerock Acquisition Corp.  (BLRK, BLRKU, BLRKW)  (CIK 0002081532)",
+     "form": "EX-10.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SmartKem, Inc.  (SMTK)  (CIK 0001817760)",
+     "form": "EX-2.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Bluerock Acquisition Corp.  (BLRK, BLRKU, BLRKW)  (CIK 0002081532)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Bluerock Acquisition Corp.  (BLRK, BLRKU, BLRKW)  (CIK 0002081532)",
+     "form": "EX-10.5",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Bowhead Specialty Holdings Inc.  (BOW)  (CIK 0002002473)",
+     "form": "EX-2.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Atkore Inc.  (ATKR)  (CIK 0001666138)",
+     "form": "EX-2.1",
+     "filed": "2026-08-03"
+    }
+   ]
+  },
+  {
+   "source": "fda_press",
+   "ok": true,
+   "ts": "2026-08-03T10:53:24.477866-07:00",
+   "items": [
+    {
+     "title": "FDA Licenses First-Ever Freeze-Dried Plasma Product in the U.S.",
+     "date": "Wed, 29 Jul 2026 12:10:31 EDT"
+    },
+    {
+     "title": "FDA Announces First Participant Selected for TEMPO for Digital Health Devices Pilot",
+     "date": "Wed, 22 Jul 2026 13:57:57 EDT"
+    },
+    {
+     "title": "FDA Takes Further Steps to Remove Outdated Authorizations for Color Additives in Food",
+     "date": "Wed, 22 Jul 2026 09:10:58 EDT"
+    },
+    {
+     "title": "FDA Approves First Oral PCSK9 Inhibitor to Lower LDL Cholesterol in Adults with High Cholesterol",
+     "date": "Fri, 17 Jul 2026 11:01:17 EDT"
+    },
+    {
+     "title": "FDA Issues Emergency Use Authorization for Drug for Short-Term Prevention of New World Screwworm in Horses",
+     "date": "Wed, 15 Jul 2026 17:04:45 EDT"
+    },
+    {
+     "title": "FDA Proposes Rule to Modernize Drug Manufacturing Registration",
+     "date": "Fri, 10 Jul 2026 09:07:06 EDT"
+    },
+    {
+     "title": "FDA Approves First Gene Therapy for Young Children with Sickle Cell Disease",
+     "date": "Wed, 01 Jul 2026 17:29:41 EDT"
+    },
+    {
+     "title": "FDA Approves New Treatment That Uses Donor Immune Cells to Prevent Serious Complications in Blood Cancer Patients",
+     "date": "Tue, 30 Jun 2026 17:29:30 EDT"
+    },
+    {
+     "title": "FDA Selects Seven Participants for PreCheck Pilot Program to Advance U.S. Drug Manufacturing",
+     "date": "Mon, 29 Jun 2026 16:16:10 EDT"
+    },
+    {
+     "title": "FDA Proposes Rule That Would Help Hold Foreign Tobacco Product Manufacturers Accountable, Protect Public Health",
+     "date": "Fri, 26 Jun 2026 08:58:49 EDT"
+    },
+    {
+     "title": "FDA Approves First Single-Dose Generic Treatment for Influenza",
+     "date": "Wed, 17 Jun 2026 17:32:27 EDT"
+    },
+    {
+     "title": "FDA Broadens Access to Over-the-Counter Naloxone Nasal Spray for Opioid Overdose",
+     "date": "Tue, 16 Jun 2026 08:41:20 EDT"
+    },
+    {
+     "title": "FDA Approves New Indication for Tzield (teplizumab) for Certain Pediatric Patients with Recently Diagnosed Stage 3 Type 1 Diabetes",
+     "date": "Mon, 15 Jun 2026 16:44:15 EDT"
+    },
+    {
+     "title": "FDA Clears First Over-the-Counter Continuous Glucose Monitor for Children",
+     "date": "Fri, 12 Jun 2026 15:39:25 EDT"
+    },
+    {
+     "title": "FDA Issues Emergency Use Authorization for Generic Over-the-Counter Drug to Treat New World Screwworm in Dogs and Cats",
+     "date": "Thu, 11 Jun 2026 08:21:28 EDT"
+    },
+    {
+     "title": "FDA Expands Sunscreen Options for the First Time in 20 Years",
+     "date": "Tue, 09 Jun 2026 10:05:25 EDT"
+    },
+    {
+     "title": "FDA Issues Draft Guidance to Help Accelerate Cell and Gene Therapies for Patients",
+     "date": "Tue, 02 Jun 2026 09:03:59 EDT"
+    },
+    {
+     "title": "FDA Issues Draft Guidance to Cut Unnecessary Animal Testing for Cancer Drugs",
+     "date": "Fri, 29 May 2026 09:13:39 EDT"
+    },
+    {
+     "title": "FDA Approves First Treatment for Chronic Hepatitis Delta Virus (HDV) Infection",
+     "date": "Fri, 22 May 2026 13:16:56 EDT"
+    },
+    {
+     "title": "FDA Warns Retailers Selling Illegal Tobacco Products That Look Like Everyday Products",
+     "date": "Wed, 20 May 2026 09:53:58 EDT"
+    }
+   ]
+  },
+  {
+   "source": "commodities",
+   "ok": true,
+   "ts": "2026-08-03T10:53:24.686486-07:00",
+   "items": [
+    {
+     "name": "WTI",
+     "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"robots\" content=\"noindex": "</script></body></html>"
+    },
+    {
+     "name": "GOLD",
+     "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"robots\" content=\"noindex": "</script></body></html>"
+    }
+   ]
+  },
+  {
+   "source": "polymarket_odds",
+   "ok": true,
+   "ts": "2026-08-03T10:53:26.342286-07:00",
+   "items": [
+    {
+     "q": "Will the U.S. invade Iran before 2027?",
+     "implied": [
+      "0.205",
+      "0.795"
+     ],
+     "vol24h": 930779,
+     "ends": "2026-12-31"
+    },
+    {
+     "q": "Dota 2: Team Falcons vs BetBoom Team - Game 2 Winner",
+     "implied": [
+      "0.9995",
+      "0.0005"
+     ],
+     "vol24h": 837436,
+     "ends": "2026-08-03"
+    },
+    {
+     "q": "Dota 2: Vici Gaming vs Yakult Brothers (BO3) - Games of the Future Playoffs",
+     "implied": [
+      "0.0005",
+      "0.9995"
+     ],
+     "vol24h": 836993,
+     "ends": "2026-08-03"
+    },
+    {
+     "q": "Plovdiv 2: Yanaki Milev vs Oriol Roca Batalla",
+     "implied": [
+      "0.535",
+      "0.465"
+     ],
+     "vol24h": 791704,
+     "ends": "2026-08-10"
+    },
+    {
+     "q": "LoL: Natus Vincere vs Shifters - Game 1 Winner",
+     "implied": [
+      "0.9995",
+      "0.0005"
+     ],
+     "vol24h": 781169,
+     "ends": "2026-08-03"
+    },
+    {
+     "q": "Dota 2: Team Falcons vs BetBoom Team - Game 1 Winner",
+     "implied": [
+      "0.9995",
+      "0.0005"
+     ],
+     "vol24h": 773595,
+     "ends": "2026-08-03"
+    },
+    {
+     "q": "Will Adanech Abiebie be the next Prime Minister of Ethiopia?",
+     "implied": [
+      "0.002",
+      "0.998"
+     ],
+     "vol24h": 707108,
+     "ends": "2026-06-01"
+    },
+    {
+     "q": "LoL: Natus Vincere vs Shifters - Game 2 Winner",
+     "implied": [
+      "0.9995",
+      "0.0005"
+     ],
+     "vol24h": 635983,
+     "ends": "2026-08-03"
+    },
+    {
+     "q": "National Bank Open: Diane Parry vs Kayla Day",
+     "implied": [
+      "0.0005",
+      "0.9995"
+     ],
+     "vol24h": 577278,
+     "ends": "2026-08-10"
+    },
+    {
+     "q": "Mubadala Citi DC Open: Taylor Fritz vs Rafael Jodar",
+     "implied": [
+      "0.645",
+      "0.355"
+     ],
+     "vol24h": 517131,
+     "ends": "2026-08-09"
+    },
+    {
+     "q": "Will Trump speak to Emmanuel Macron in July?",
+     "implied": [
+      "0.007",
+      "0.993"
+     ],
+     "vol24h": 503828,
+     "ends": "2026-07-31"
+    },
+    {
+     "q": "Strait of Hormuz traffic returns to normal by August 31?",
+     "implied": [
+      "0.125",
+      "0.875"
+     ],
+     "vol24h": 482861,
+     "ends": "2026-08-31"
+    },
+    {
+     "q": "US x Iran Effective Ceasefire by July 31?",
+     "implied": [
+      "0.615",
+      "0.385"
+     ],
+     "vol24h": 354752,
+     "ends": "2026-07-31"
+    },
+    {
+     "q": "LoL: Natus Vincere vs Shifters (BO3) - LEC Regular Season",
+     "implied": [
+      "0.9995",
+      "0.0005"
+     ],
+     "vol24h": 352268,
+     "ends": "2026-08-03"
+    },
+    {
+     "q": "Will Wes Moore win the 2028 Democratic presidential nomination?",
+     "implied": [
+      "0.0145",
+      "0.9855"
+     ],
+     "vol24h": 318806,
+     "ends": "2028-11-07"
+    },
+    {
+     "q": "Will the Fed increase interest rates by 25 bps after the September 2026 meeting?",
+     "implied": [
+      "0.555",
+      "0.445"
+     ],
+     "vol24h": 311313,
+     "ends": "2026-09-16"
+    },
+    {
+     "q": "Dota 2: Team Falcons vs BetBoom Team (BO3) - 1win Essence Playoffs",
+     "implied": [
+      "0.9995",
+      "0.0005"
+     ],
+     "vol24h": 308875,
+     "ends": "2026-08-03"
+    },
+    {
+     "q": "Counter-Strike: MOUZ NXT vs Misa Esports (BO3) - ESL Challenger League Europe Cup #2 Group D",
+     "implied": [
+      "0.9995",
+      "0.0005"
+     ],
+     "vol24h": 303105,
+     "ends": "2026-08-03"
+    },
+    {
+     "q": "Will Spider-Man: Brand New Day beat Avengers: Endgame's opening weekend record?",
+     "implied": [
+      "0.999",
+      "0.001"
+     ],
+     "vol24h": 301188,
+     "ends": "2026-08-02"
+    },
+    {
+     "q": "Strait of Hormuz traffic returns to normal by July 31?",
+     "implied": [
+      "0.0005",
+      "0.9995"
+     ],
+     "vol24h": 286206,
+     "ends": "2026-07-31"
+    },
+    {
+     "q": "National Bank Open: Yulia Putintseva vs Shuai Zhang",
+     "implied": [
+      "0.665",
+      "0.335"
+     ],
+     "vol24h": 283759,
+     "ends": "2026-08-10"
+    },
+    {
+     "q": "National Bank Open: Talia Gibson vs Elisabetta Cocciaretto",
+     "implied": [
+      "0.9995",
+      "0.0005"
+     ],
+     "vol24h": 280718,
+     "ends": "2026-08-10"
+    },
+    {
+     "q": "S&P 500 (SPX) Opens Up or Down on August 3?",
+     "implied": [
+      "0.9995",
+      "0.0005"
+     ],
+     "vol24h": 262761,
+     "ends": "2026-08-03"
+    },
+    {
+     "q": "Will Elon Musk win the 2028 Republican presidential nomination?",
+     "implied": [
+      "0.0075",
+      "0.9925"
+     ],
+     "vol24h": 252889,
+     "ends": "2028-11-07"
+    },
+    {
+     "q": "Philadelphia Phillies vs. Baltimore Orioles",
+     "implied": [
+      "0.995",
+      "0.005"
+     ],
+     "vol24h": 252662,
+     "ends": "2026-08-09"
+    }
+   ]
+  }
+ ],
+ "skips": []
+}

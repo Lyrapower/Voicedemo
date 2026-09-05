@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>GRID · VOICE SESSION</title>
+<style>
+:root{--bg:#05070c;--panel:rgba(18,24,38,.72);--line:rgba(120,160,220,.14);
+--ink:#dce6f5;--dim:#7f90ac;--gold:#e2b95f;--grn:#5fd6a4;--red:#f2607a;
+--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1100px 640px at 25% -10%,rgba(60,90,160,.18),transparent),var(--bg);
+color:var(--ink);font:13px/1.55 var(--mono);min-height:100vh}
+header{display:flex;gap:14px;align-items:baseline;padding:14px 20px;
+border-bottom:1px solid var(--line);position:sticky;top:0;backdrop-filter:blur(14px);
+background:rgba(5,7,12,.84);z-index:5}
+h1{font-size:13px;letter-spacing:.42em;margin:0}
+.sub{color:var(--dim);font-size:11px}
+main{padding:18px 20px 60px;max-width:1100px;margin:0 auto;
+display:grid;gap:12px;grid-template-columns:1fr 1fr}
+@media(max-width:820px){main{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+padding:14px 16px;backdrop-filter:blur(9px)}
+.card h3{margin:0 0 10px;font-size:11px;letter-spacing:.2em;color:var(--dim);
+display:flex;align-items:center;gap:8px}
+.dot{width:7px;height:7px;border-radius:50%}
+.ok{background:var(--grn);box-shadow:0 0 9px rgba(95,214,164,.6)}
+.bad{background:var(--red)} .non{background:#3d4761}
+button{background:rgba(226,185,95,.1);border:1px solid rgba(226,185,95,.45);
+color:var(--gold);border-radius:8px;padding:8px 16px;cursor:pointer;font:inherit}
+button.stop{background:rgba(242,96,122,.09);border-color:rgba(242,96,122,.42);color:var(--red)}
+button:hover{filter:brightness(1.25)}
+.line{padding:4px 0;border-bottom:1px dashed rgba(120,160,220,.08);font-size:11.5px}
+.line b{color:var(--dim);font-weight:500;margin-right:8px}
+.r-user{color:var(--ink)} .r-model{color:#7fa8ff} .r-grid{color:var(--grn)}
+.r-bridge{color:var(--gold)}
+.code{font-size:44px;letter-spacing:.30em;color:var(--gold);text-align:center;
+padding:14px 0 6px;text-shadow:0 0 26px rgba(226,185,95,.35)}
+.pend{border-color:rgba(226,185,95,.42);background:rgba(226,185,95,.05)}
+.mut{color:var(--dim)} .warn{color:var(--gold);font-size:11px;line-height:1.55;margin-top:8px}
+pre{white-space:pre-wrap;word-break:break-word;background:rgba(8,11,18,.7);
+border:1px solid var(--line);border-radius:8px;padding:10px;font-size:11px;
+max-height:200px;overflow:auto;margin:6px 0 0}
+.full{grid-column:1/-1}
+</style></head><body>
+<header><h1>V O I C E</h1><span class="sub">GRID VOICE BRIDGE · :8796 · v0.2</span>
+<span class="sub" id="st" style="margin-left:auto">idle</span></header>
+<main>
+  <div class="card full">
+    <h3><i class="dot non" id="d-conn"></i>会话</h3>
+    <button id="btn" onclick="toggle()">开始语音</button>
+    <span class="mut" id="hint" style="margin-left:12px">key 在服务端;浏览器只拿分钟级 ephemeral token · 复述码三次不符即作废</span>
+  </div>
+
+  <div class="card" id="pendcard">
+    <h3><i class="dot non" id="d-pend"></i>待确认动作 · 复述码</h3>
+    <div id="pend"><div class="mut">无待确认动作</div></div>
+  </div>
+
+  <div class="card">
+    <h3><i class="dot ok"></i>本回合信封(给语音模型的全部上下文)</h3>
+    <pre id="env">—</pre>
+    <div class="warn">只有 last_broadcast + pending_action + workspace_list。
+      没有记忆、日记、历史会话、身份锚。</div>
+  </div>
+
+  <div class="card full">
+    <h3><i class="dot ok"></i>转写与调用流</h3>
+    <div id="tr"><div class="mut">—</div></div>
+  </div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const BKEY=(document.querySelector('meta[name=bridge-key]')||{}).content||'';
+const post=(p,b)=>fetch(p,{method:'POST',headers:{'Content-Type':'application/json','X-Bridge-Key':BKEY},
+  body:JSON.stringify(b||{})}).then(r=>r.json());
+const esc=s=>String(s??'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+let pc=null, dc=null, on=false;
+
+async function toggle(){ on ? stop() : start(); }
+
+async function start(){
+  $('#st').textContent='签发 token…';
+  let s;
+  try{ s=await post('/api/session'); }catch(e){ $('#st').textContent='签发失败'; return; }
+  if(!s.client_secret){ $('#st').textContent='无 client_secret:'+(s.detail||''); return; }
+  $('#env').textContent=JSON.stringify(s.envelope,null,2);
+
+  pc=new RTCPeerConnection();
+  const audio=new Audio(); audio.autoplay=true;
+  pc.ontrack=e=>{ audio.srcObject=e.streams[0]; };
+  const mic=await navigator.mediaDevices.getUserMedia({audio:{
+    echoCancellation:true, noiseSuppression:true, autoGainControl:true}});
+  mic.getTracks().forEach(t=>pc.addTrack(t,mic));
+
+  dc=pc.createDataChannel('oai-events');
+  dc.onmessage=e=>handle(JSON.parse(e.data));
+  dc.onopen=()=>{ $('#st').textContent='已连接 · 说话即可'; $('#d-conn').className='dot ok'; };
+
+  const offer=await pc.createOffer(); await pc.setLocalDescription(offer);
+  const r=await fetch('https://api.openai.com/v1/realtime/calls?model='+encodeURIComponent(s.model),{
+    method:'POST', body:offer.sdp,
+    headers:{'Authorization':'Bearer '+s.client_secret,'Content-Type':'application/sdp'}});
+  const answer={type:'answer', sdp:await r.text()};
+  await pc.setRemoteDescription(answer);
+  on=true; $('#btn').textContent='结束'; $('#btn').className='stop';
+}
+
+function stop(){
+  try{ dc&&dc.close(); pc&&pc.getSenders().forEach(x=>x.track&&x.track.stop()); pc&&pc.close(); }catch(e){}
+  pc=dc=null; on=false; $('#btn').textContent='开始语音'; $('#btn').className='';
+  $('#st').textContent='idle'; $('#d-conn').className='dot non';
+}
+
+async function handle(ev){
+  // 转写回传(仅面板可见性)
+  if(ev.type==='conversation.item.input_audio_transcription.completed')
+    post('/api/utterance',{role:'user',text:ev.transcript||''});
+  if(ev.type==='response.output_audio_transcript.done')
+    post('/api/utterance',{role:'model',text:ev.transcript||''});
+
+  // 函数调用 → 中继给 Bridge 执行
+  if(ev.type==='response.function_call_arguments.done'){
+    let args={}; try{ args=JSON.parse(ev.arguments||'{}'); }catch(e){}
+    const out=await post('/api/fn',{name:ev.name,arguments:args});
+    dc.send(JSON.stringify({type:'conversation.item.create',item:{
+      type:'function_call_output', call_id:ev.call_id,
+      output:JSON.stringify(out)}}));
+    dc.send(JSON.stringify({type:'response.create'}));
+    refresh();
+  }
+}
+
+async function refresh(){
+  const p=await fetch('/api/panel',{headers:{'X-Bridge-Key':BKEY}}).then(r=>r.json());
+  $('#env').textContent=JSON.stringify(p.envelope,null,2);
+  const tr=(p.transcript||[]).map(l=>`<div class="line r-${l.role}">
+    <b>${new Date(l.ts*1000).toLocaleTimeString()} ${esc(l.role)}</b>${esc(l.text)}</div>`).join('');
+  $('#tr').innerHTML=tr||'<div class="mut">—</div>';
+  if(p.pending){
+    $('#pendcard').className='card pend'; $('#d-pend').className='dot bad';
+    $('#pend').innerHTML=`<div>${esc(p.pending.summary)}</div>
+      <div class="code">${esc(p.pending.code)}</div>
+      <div class="mut" style="text-align:center">念出上面四位码以确认 · ${p.pending.expires_in}s 后作废</div>
+      <div class="warn">语音模型看不到这个码。它只能中继你说出的数字,无法自我批准。</div>
+      <div style="text-align:center;margin-top:10px">
+        <button class="stop" onclick="post('/api/cancel').then(refresh)">取消</button></div>`;
+  }else{
+    $('#pendcard').className='card'; $('#d-pend').className='dot non';
+    $('#pend').innerHTML='<div class="mut">无待确认动作</div>';
+  }
+}
+refresh(); setInterval(refresh, 2000);
+</script></body></html>

@@ -1,0 +1,53 @@
+{
+  "generated_at": "2026-07-28T15:57:36.990461-04:00",
+  "reds": 1,
+  "warns": 1,
+  "status": "alert",
+  "rows": [
+    {
+      "check": "c1_same_scan_id",
+      "status": "FAIL",
+      "detail": {
+        "store": null,
+        "platform": 50737,
+        "watchdog_store": null
+      }
+    },
+    {
+      "check": "c2_count_conservation",
+      "status": "OK",
+      "detail": {
+        "header_hits": 3,
+        "candidates": 3,
+        "decisions": 3,
+        "filtered": 0,
+        "sum_dec_filt": 3,
+        "filter_reasons": [],
+        "quarantine": null
+      }
+    },
+    {
+      "check": "c3_card_eligibility",
+      "status": "OK",
+      "detail": "无可执行卡"
+    },
+    {
+      "check": "c4_brief_slots",
+      "status": "SKIPPED",
+      "detail": "store 未配置"
+    },
+    {
+      "check": "c5_quarantine",
+      "status": "OK",
+      "detail": "无 quarantine 轮"
+    },
+    {
+      "check": "c6_stale",
+      "status": "WARN",
+      "detail": [
+        "data_crypto age=302s>300s"
+      ]
+    }
+  ],
+  "source": "surface_doctor"
+}

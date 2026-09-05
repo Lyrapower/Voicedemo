@@ -49,6 +49,8 @@ export function mountChatPanel(applyState: (s: FieldState) => void): void {
     if (d.truncated) parts.push('truncated (transport)');
     if ((d.continuation_part ?? 0) > 0) parts.push(`part ${(d.continuation_part ?? 0) + 1}`);
     if (d.merged_json_valid) parts.push('merged_json_valid=true');
+    if (d.schema) parts.push(String(d.schema));
+    if (d.compile_semantics === 'parse_only') parts.push('draft');
     if (d.status) parts.push(`status=${d.status}`);
     if (d.contract_flag) parts.push(`contract_flag=${d.contract_flag}`);
     metaEl.innerHTML = `<span class="gw-dot ${heartbeatClass(d)}" title="gateway heartbeat"></span>${parts.join(' · ')}`;
@@ -61,6 +63,12 @@ export function mountChatPanel(applyState: (s: FieldState) => void): void {
     if (d.artifact?.ok && d.artifact.json !== undefined && typeof d.artifact.json === 'object' && d.artifact.json) {
       const wrap = document.createElement('div');
       wrap.className = 'artifact-json';
+      if (d.compile_semantics === 'parse_only') {
+        const badge = document.createElement('span');
+        badge.className = 'artifact-draft-badge';
+        badge.textContent = 'draft';
+        artifactEl.append(badge);
+      }
       Object.entries(d.artifact.json as Record<string, unknown>).forEach(([k, v], i) => {
         const row = document.createElement('div');
         row.className = 'artifact-row';
@@ -84,6 +92,7 @@ export function mountChatPanel(applyState: (s: FieldState) => void): void {
 
   const runOnce = (message: string, task: TaskType, merged: string, part: number): Promise<ChatDone | null> => {
     let partText = '';
+    applyState('thinking');
     return new Promise(resolve => {
       replyEl.textContent = '';
       void sendChat(
@@ -100,7 +109,7 @@ export function mountChatPanel(applyState: (s: FieldState) => void): void {
           setRaw(part > 0 ? merged + partText : partText);
           replyEl.append(document.createTextNode(t));
         },
-        d => resolve(d),
+        d => { applyState('idle'); resolve(d); },
         err => { replyEl.textContent = '⏸ ' + err; applyState('error'); resolve(null); },
       );
     });
@@ -147,15 +156,31 @@ export function mountChatPanel(applyState: (s: FieldState) => void): void {
     try { await navigator.clipboard.writeText(rawText); } catch { /* ignore */ }
   });
 
-  ask.addEventListener('keydown', e => {
-    if (e.key !== 'Enter' || !ask.value.trim()) return;
+  const sendBtn = document.getElementById('ask-send') as HTMLButtonElement | null;
+  sendBtn?.addEventListener('click', () => submitMessage());
+  const setBusy = (busy: boolean): void => {
+    ask.disabled = busy;
+    if (sendBtn) sendBtn.disabled = busy;
+  };
+
+  const submitMessage = (): void => {
+    if (ask.disabled) return;
     const message = ask.value.trim();
+    if (!message) return;
     ask.value = '';
     const task = detectTask(message);
     session = { message, task, merged: '', part: 0 };
     setRaw('');
     artifactEl.innerHTML = '';
     metaEl.textContent = '';
-    void finishOrContinue();
+    replyEl.textContent = '…';
+    setBusy(true);
+    void finishOrContinue().finally(() => setBusy(false));
+  };
+
+  ask.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    e.preventDefault();
+    submitMessage();
   });
 }

@@ -1,0 +1,239 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>OPTION WORKSTATION</title>
+<style>
+/* DESIGN_SPEC v1:6级字阶/CJK 禁等宽/gold 唯一 accent/横幅40px/log 折叠 */
+:root{--bg:#07090e;--panel:rgba(17,22,34,.78);--line:rgba(126,148,190,.13);
+--ink:#e3eaf6;--dim:#8a97ad;--faint:#5a6478;--gold:#e2b95f;--grn:#57d19e;
+--red:#ef5f79;--amb:#e0a33c;--f1:12px;--f2:14px;--f3:16px;--f5:24px;
+--sans:-apple-system,"PingFang SC","Hiragino Sans GB",sans-serif;
+--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1000px 600px at 15% -10%,rgba(58,84,148,.15),transparent),var(--bg);
+color:var(--ink);font:var(--f2)/1.6 var(--sans)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+header{display:flex;gap:14px;align-items:center;height:54px;padding:0 16px;
+border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(7,9,14,.9);z-index:5}
+h1{font:700 var(--f3) var(--mono);letter-spacing:.3em;margin:0}
+#banner{display:flex;gap:16px;align-items:center;height:40px;padding:0 14px;margin:12px;
+border:1px solid var(--line);border-radius:10px;background:rgba(11,15,24,.72);
+overflow-x:auto;white-space:nowrap;font-size:var(--f1)}
+#banner b{font-size:var(--f2)}
+#banner .no-trade{color:var(--red);font-weight:700}
+main{display:grid;grid-template-columns:1fr 320px;gap:12px;padding:0 12px 60px}
+.col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px}
+.card h3{margin:0 0 9px;font-size:var(--f1);color:var(--dim);display:flex;gap:8px;align-items:center}
+.dot{width:8px;height:8px;border-radius:50%}.ok{background:var(--grn)}.bad{background:var(--red)}
+.wr{background:var(--amb)}.non{background:#3c465e}
+.kv{display:flex;justify-content:space-between;padding:2px 0;font-size:var(--f2)}
+.kv b{color:var(--dim);font-weight:500}
+.src{color:var(--faint);font-size:var(--f1);font-family:var(--mono);margin-top:6px;word-break:break-all}
+.warn{color:var(--amb);font-size:var(--f1);margin-top:6px}
+table{width:100%;border-collapse:collapse;font-size:var(--f1)}
+th{color:var(--dim);text-align:right;padding:4px 6px;border-bottom:1px solid var(--line);font-weight:500}
+td{text-align:right;padding:3px 6px;border-bottom:1px solid rgba(126,148,190,.06);font-family:var(--mono)}
+td.k{color:var(--gold)}
+tr.sel td{background:rgba(226,185,95,.08)}
+tr:hover td{background:rgba(126,148,190,.06);cursor:pointer}
+.q{display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-bottom:1px dashed rgba(126,148,190,.09)}
+.q:last-child{border:0}.q .t{font-size:var(--f2)}.q .d{color:var(--faint);font-size:var(--f1)}
+select,input,button{background:rgba(10,14,22,.85);border:1px solid var(--line);color:var(--ink);
+border-radius:8px;padding:6px 10px;font:var(--f2) var(--sans)}
+button.act{border-color:rgba(226,185,95,.45);color:var(--gold);cursor:pointer}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+svg text{font:var(--f1) var(--mono);fill:var(--dim)}
+pre{white-space:pre-wrap;background:rgba(8,11,18,.72);border:1px solid var(--line);
+border-radius:8px;padding:10px;font:var(--f1)/1.5 var(--mono);max-height:220px;overflow:auto}
+details summary{cursor:pointer;color:var(--dim);font-size:var(--f1)}
+.matrix td{padding:2px 5px}
+.pos{color:var(--grn)}.neg{color:var(--red)}
+footer{padding:10px 16px;color:var(--faint);font-size:10px;border-top:1px solid var(--line);font-family:var(--mono)}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+</style></head><body>
+<header><h1>OPTION&nbsp;WORKSTATION</h1><span style="color:var(--faint);font-size:var(--f1)">v1 · 研究驾驶舱 · 不产信号</span>
+<div style="margin-left:auto" class="row">
+<select id="root" title="标的"></select>
+<select id="dsel"></select>
+<button class="act" onclick="step(-1)">◀ 回放</button><button class="act" onclick="step(1)">▶</button>
+</div></header>
+<div id="banner"><span style="color:var(--faint)">读数中…</span></div>
+<main>
+<div class="col">
+  <div class="card"><h3><i class="dot ok"></i>标的 &amp; 特征</h3><div id="feat"></div></div>
+  <div class="card"><h3><i class="dot ok"></i>IV 微笑(30d)· <span id="rmse" class="num"></span></h3>
+    <svg id="smile" width="100%" height="180" viewBox="0 0 640 180" preserveAspectRatio="none"></svg>
+    <div class="warn">二次拟合 v1(SVI 升级路留);RMSE 为仪表读数</div></div>
+  <div class="card"><h3><i class="dot ok"></i>期权链(30d,点行加腿)</h3>
+    <div style="max-height:300px;overflow:auto"><table id="chain"></table></div></div>
+  <div class="card"><h3><i class="dot ok"></i>Net GEX · <span id="gexsum" class="num"></span></h3>
+    <svg id="gexsvg" width="100%" height="140" viewBox="0 0 640 140" preserveAspectRatio="none"></svg>
+    <div class="warn" id="gexass"></div></div>
+  <div class="card"><h3><i class="dot non"></i>策略卡</h3>
+    <div class="row"><span id="legs" style="flex:1;color:var(--dim);font-size:var(--f1)">(空——期权链里点行加腿;再点减)</span>
+    <button class="act" onclick="clearLegs()">清空</button><button class="act" onclick="evalStrat()">评估</button></div>
+    <div id="scard"></div></div>
+</div>
+<div class="col">
+  <div class="card"><h3><i class="dot ok"></i>七问清单</h3><div id="checklist"></div>
+    <div class="warn">高 IV ≠ 该卖波动率;证据不足时,「不交易」是一等结果。</div></div>
+  <div class="card"><h3><i class="dot non"></i>数据质量</h3><div id="dq"></div>
+    <details><summary>隔离样本(不销毁,带原因码)</summary><pre id="quar"></pre></details></div>
+</div>
+</main>
+<footer>build option-workstation v1 · 宪法:数字全出确定性引擎/七问为脊柱/仪表带来源时间戳/模型读数带假设/隔离不销毁 · POP=对数正态研究口径</footer>
+<script>
+const $=s=>document.querySelector(s);
+let DATES=[],CUR=null,DAY=null,LEGS=[],ROOT='SPY';
+const fmt=(x,d=2)=>x==null?"—":(+x).toFixed(d);
+const pct=(x,d=1)=>x==null?"—":(x*100).toFixed(d); /* null*100===0 in JS——空值曾显示成 0.00 完美读数 */
+function showNoData(reason){
+  /* #2: 无真实 Theta 数据时显占位,不崩不造假(与 A1 同族:不可达就说不可达) */
+  DAY=null;CUR=null;
+  const msg='等待 Theta 数据 · '+reason;
+  $('#banner').innerHTML=`<span class="no-trade">${msg}</span>`;
+  const ph=`<div class="warn" style="color:var(--amb)">${msg}——Theta Terminal(:25503)未起或当日无快照。付费档到位后自动恢复。</div>`;
+  $('#feat').innerHTML=ph;$('#smile').innerHTML='';$('#chain').innerHTML='';
+  $('#gexsvg').innerHTML='';$('#gexsum').textContent='';$('#gexass').textContent=msg;
+  $('#dq').innerHTML=ph;$('#quar').textContent='';$('#checklist').innerHTML=ph;
+  $('#scard').innerHTML='';
+}
+async function boot(){
+  const roots=await fetch('/api/health').then(r=>r.json()).then(d=>d.roots||['SPY']).catch(()=>['SPY']);
+  const rs=$('#root');rs.innerHTML=roots.map(r=>`<option>${r}</option>`).join('');
+  if(!roots.includes(ROOT))ROOT=roots[0]||'SPY';
+  rs.value=ROOT;rs.onchange=()=>{ROOT=rs.value;boot();};
+  DATES=await fetch('/api/dates?root='+ROOT).then(r=>r.json());
+  if(!DATES || !DATES.length){ /* 无任何快照 */
+    $('#dsel').innerHTML='<option>(无数据)</option>';
+    showNoData('暂无快照('+ROOT+')');
+    return;
+  }
+  const sel=$('#dsel');sel.innerHTML=DATES.map(d=>`<option>${d}</option>`).join('');
+  sel.value=DATES[DATES.length-1];sel.onchange=()=>load(sel.value);
+  load(sel.value);
+}
+function step(k){const i=DATES.indexOf(CUR)+k;if(i>=0&&i<DATES.length){$('#dsel').value=DATES[i];load(DATES[i]);}}
+async function load(date){
+  if(!date){showNoData('未选日期');return;}
+  const r=await fetch('/api/day/'+date+'?root='+ROOT);
+  if(!r.ok){ /* 404 = 该日无 snapshot,不造假不崩 */
+    showNoData(date+' 无快照');
+    return;
+  }
+  CUR=date;DAY=await r.json();
+  renderFeat();renderSmile();renderChain();renderGex();renderDQ();renderChecklist();
+  if(LEGS.length)evalStrat();
+}
+function renderFeat(){
+  const f=DAY.features,s=DAY.snap;
+  $('#feat').innerHTML=
+   `<div class="kv"><b>${s.underlying} spot</b><span class="num">${fmt(s.spot)}</span></div>
+    <div class="kv"><b>ATM IV30 / RV20</b><span class="num">${pct(f.atm_iv30,1)}% / ${pct(f.rv20,1)}%</span></div>
+    <div class="kv"><b>IV Rank / Percentile</b><span class="num">${fmt(f.ivr,1)} / ${fmt(f.ivp,1)}</span></div>
+    <div class="kv"><b>VRP20</b><span class="num">${fmt(f.vrp20)}</span></div>
+    <div class="kv"><b>Expected Move 30d</b><span class="num">±${fmt(f.expected_move_30d)}</span></div>
+    <div class="src">${s.source} · ${s.ts}</div>`;
+}
+function renderSmile(){
+  const rows=DAY.chain.filter(r=>r.dte===30);
+  if(!rows.length){$('#smile').innerHTML='';return;}
+  const xs=rows.map(r=>r.m),ys=rows.map(r=>r.iv);
+  const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys)*0.95,y1=Math.max(...ys)*1.05;
+  const X=m=>20+(m-x0)/(x1-x0+1e-9)*600,Y=v=>170-(v-y0)/(y1-y0+1e-9)*150;
+  let dots=rows.map(r=>`<circle cx="${X(r.m)}" cy="${Y(r.iv)}" r="2.4" fill="${r.cp==='call'?'#57d19e':'#ef5f79'}"/>`).join('');
+  const fit=DAY.smiles["30"];let path='';
+  if(fit){const pts=[];for(let i=0;i<=60;i++){const m=x0+(x1-x0)*i/60;pts.push(`${X(m)},${Y(fit.a+fit.b*m+fit.c*m*m)}`);}
+    path=`<polyline points="${pts.join(' ')}" fill="none" stroke="#e2b95f" stroke-width="1.6"/>`;
+    $('#rmse').textContent='RMSE '+(fit.rmse*100).toFixed(2)+' vol pt';}
+  $('#smile').innerHTML=path+dots;
+}
+function renderChain(){
+  const rows=DAY.chain.filter(r=>r.dte===30).sort((a,b)=>a.K-b.K||a.cp.localeCompare(b.cp));
+  const byK={};rows.forEach(r=>{(byK[r.K]=byK[r.K]||{})[r.cp]=r;});
+  let h='<tr><th>C mid</th><th>C IV</th><th>K</th><th>P IV</th><th>P mid</th></tr>';
+  Object.keys(byK).sort((a,b)=>a-b).forEach(K=>{
+    const c=byK[K].call,p=byK[K].put;
+    h+=`<tr onclick="toggleLeg(${K})" class="${LEGS.some(l=>l.K==K)?'sel':''}">
+      <td>${c?fmt(c.mid):'—'}</td><td>${c?fmt(c.iv*100,1):'—'}</td>
+      <td class="k">${K}</td>
+      <td>${p?fmt(p.iv*100,1):'—'}</td><td>${p?fmt(p.mid):'—'}</td></tr>`;
+  });
+  $('#chain').innerHTML=h;
+}
+function toggleLeg(K){
+  const i=LEGS.findIndex(l=>l.K===K);
+  if(i>=0){LEGS.splice(i,1);}else{
+    const cp=prompt('腿类型 call/put?','call');if(!cp)return;
+    const side=+(prompt('方向 1=买 -1=卖','1')||1);
+    LEGS.push({dte:30,K:+K,cp:cp.trim(),side:side>0?1:-1,qty:1});}
+  $('#legs').textContent=LEGS.map(l=>`${l.side>0?'+':'−'}${l.qty} ${l.K}${l.cp[0].toUpperCase()}`).join('  ')||'(空)';
+  renderChain();
+}
+function clearLegs(){LEGS=[];$('#legs').textContent='(空)';$('#scard').innerHTML='';renderChain();}
+async function evalStrat(){
+  if(!LEGS.length)return;
+  const r=await fetch('/api/strategy/'+CUR+'?root='+ROOT,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({legs:LEGS})});
+  const c=await r.json();
+  if(c.error){$('#scard').innerHTML=`<div style="color:var(--red)">${c.error}</div>`;return;}
+  let m='<table class="matrix"><tr><th>剩余d</th><th>ΔIV</th>'+c.scenario[0].prices.map(p=>`<th>${p}</th>`).join('')+'</tr>';
+  c.scenario.forEach(row=>{m+=`<tr><td>${row.t_left_d}</td><td>${row.iv_shift>0?'+':''}${row.iv_shift}</td>`+
+    row.pnl.map(v=>`<td class="${v>=0?'pos':'neg'}">${v}</td>`).join('')+'</tr>';});
+  m+='</table>';
+  $('#scard').innerHTML=
+   `<div class="kv"><b>入场净额</b><span class="num">${fmt(c.entry_debit)} (含滑点假设)</span></div>
+    <div class="kv"><b>盈亏平衡</b><span class="num">${c.breakevens.join(' ~ ')||'—'}</span></div>
+    <div class="kv"><b>最大亏损</b><span class="num">${c.max_loss==null?('<span class="neg">'+c.max_loss_note+'</span>'):fmt(c.max_loss)}</span></div>
+    <div class="kv"><b>POP</b><span class="num">${c.pop}%</span></div>
+    <div class="kv"><b>价差成本/权利金</b><span class="num">${c.spread_cost_pct_of_premium}%</span></div>
+    <div class="src">${c.pop_note} · ${c.scenario_note}</div>${m}`;
+  window._lastCard=c;renderChecklist();
+}
+function renderChecklist(){
+  const g=DAY.gauges,f=DAY.features,gx=DAY.gex,c=window._lastCard;
+  const dq_ok=g.reconciled&&g.smile_rmse_worst!=null&&g.smile_rmse_worst<0.03&&g.quarantine_pct<45; /* null<0.03===true:无曲面曾误判绿 */
+  const spread_ok=!c||c.spread_cost_pct_of_premium<8;
+  const qs=[
+   ['1 数据可信?',dq_ok?'ok':'bad',`RMSE ${pct(g.smile_rmse_worst,2)}pt · 隔离 ${g.quarantine_pct}% · 对账${g.reconciled?'✓':'✗'}`],
+   ['2 方向还是波动率?','non','人工判断——IV−RV 剪刀差 '+fmt(f.vrp20)],
+   ['3 权利金贵否?',f.ivp>80||f.ivp<20?'wr':'ok',`IVR ${fmt(f.ivr,1)} · IVP ${fmt(f.ivp,1)} · VRP ${fmt(f.vrp20)}(展示,不下结论)`],
+   ['4 Gamma 环境?',gx.net_gex_musd_per_1pct<0?'wr':'ok',`NetGEX ${gx.net_gex_musd_per_1pct}M/1% · Flip ${gx.gamma_flip??'—'}(模型,带假设)`],
+   ['5 结构表达判断?',c?'non':'non',c?'人工核对策略卡与 thesis':'(先构建策略)'],
+   ['6 每腿能成交?',c?(spread_ok?'ok':'bad'):'non',c?`价差成本/权利金 ${c.spread_cost_pct_of_premium}%`:'—'],
+  ];
+  const reds=qs.filter(q=>q[1]==='bad').length;
+  qs.push(['7 证据足否?',reds?'bad':'ok',reds?`${reds} 问亮红`:'前六问无红']);
+  $('#checklist').innerHTML=qs.map(q=>
+   `<div class="q"><i class="dot ${q[1]}"></i><div><div class="t">${q[0]}</div><div class="d">${q[2]}</div></div></div>`).join('');
+  $('#banner').innerHTML=
+   `<span><b class="num">${DAY.snap.underlying} ${fmt(DAY.snap.spot)}</b></span>
+    <span>IVP <b class="num">${fmt(f.ivp,1)}</b></span>
+    <span>VRP <b class="num">${fmt(f.vrp20)}</b></span>
+    <span>EM30 <b class="num">±${fmt(f.expected_move_30d)}</b></span>
+    <span>NetGEX <b class="num">${gx.net_gex_musd_per_1pct}M</b></span>`+
+   (reds?`<span class="no-trade">⛔ 当前不适合交易(${reds} 红)</span>`:`<span style="color:var(--grn)">清单无红</span>`);
+}
+function renderGex(){
+  const bs=DAY.gex.by_strike;if(!bs.length)return;
+  const ks=bs.map(b=>b.K),vs=bs.map(b=>b.gex);
+  const x0=Math.min(...ks),x1=Math.max(...ks),vm=Math.max(...vs.map(Math.abs))||1;
+  const X=k=>20+(k-x0)/(x1-x0+1e-9)*600,Y=v=>70-v/vm*60;
+  let bars=bs.map(b=>`<rect x="${X(b.K)-3}" y="${Math.min(70,Y(b.gex))}" width="6" height="${Math.abs(Y(b.gex)-70)}" fill="${b.gex>=0?'#57d19e':'#ef5f79'}"/>`).join('');
+  let flip=DAY.gex.gamma_flip?`<line x1="${X(DAY.gex.gamma_flip)}" y1="0" x2="${X(DAY.gex.gamma_flip)}" y2="140" stroke="#e2b95f" stroke-dasharray="4 3"/><text x="${X(DAY.gex.gamma_flip)+4}" y="12">flip ${DAY.gex.gamma_flip}</text>`:'';
+  let spot=`<line x1="${X(DAY.snap.spot)}" y1="0" x2="${X(DAY.snap.spot)}" y2="140" stroke="#8a97ad" stroke-dasharray="2 4"/>`;
+  $('#gexsvg').innerHTML=bars+flip+spot;
+  $('#gexsum').textContent=DAY.gex.net_gex_musd_per_1pct+'M$/1%';
+  $('#gexass').textContent=DAY.gex.assumption;
+}
+function renderDQ(){
+  const g=DAY.gauges;
+  $('#dq').innerHTML=
+   `<div class="kv"><b>raw = clean + 隔离</b><span class="num">${g.rows_raw} = ${g.rows_clean} + ${g.rows_quarantine} ${g.reconciled?'✓':'✗'}</span></div>
+    <div class="kv"><b>隔离率 / 陈旧率</b><span class="num">${g.quarantine_pct}% / ${g.stale_pct}%</span></div>
+    <div class="kv"><b>最差曲面 RMSE</b><span class="num">${pct(g.smile_rmse_worst,2)} vol pt</span></div>
+    <div class="src">${g.source} · ${g.ts}</div>`;
+  $('#quar').textContent=DAY.quarantine_sample.map(q=>`${q.dte}d ${q.K}${q.cp[0]} → ${q.reason}`).join('\n');
+}
+boot();
+</script></body></html>

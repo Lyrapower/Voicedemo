@@ -61,7 +61,11 @@ def execute_route(
 
     compiled = mapper.compile_intent(prompt)
     target_layer = explicit_layer or compiled.target_layer
+    # PATCH: never soften for gateway — raw (strip-only cleaned) carries affect/negation
     user_prompt = compiled.cleaned_prompt or prompt
+    if user_prompt.strip() != (prompt or "").strip():
+        # Refuse silent rewrite; fall back to raw
+        user_prompt = (prompt or "").strip()
 
     from models.aster_config import direct_1234_allowed
     from models.gateway_client import gateway_compile, gateway_dialogue_envelope, dialogue_display_text
@@ -73,6 +77,7 @@ def execute_route(
             or "json_ast" in (user_prompt or "").lower()
         )
         if compile_mode:
+            # Always 8501 /compile — never direct :1234 / Ollama
             gw = gateway_compile(user_prompt)
             if gw is None:
                 return {

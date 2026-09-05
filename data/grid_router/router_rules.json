@@ -1,0 +1,109 @@
+{
+  "targets": {
+    "core": {
+      "style": "openai",
+      "url": "http://127.0.0.1:8501/v1",
+      "model": "demo/aster",
+      "key": ""
+    },
+    "coder": {
+      "style": "openai",
+      "url": "http://127.0.0.1:11434/v1",
+      "model": "qwen2.5-coder",
+      "key": ""
+    },
+    "cloud": {
+      "style": "cli",
+      "cmd": [
+        "/Users/ciciwang/Projects/demo/aster_grid_v5/.tools/node_modules/.bin/claude",
+        "-p",
+        "--output-format",
+        "json"
+      ],
+      "extra_args": [
+        "--model",
+        "claude-sonnet-4-6",
+        "--allowedTools",
+        "Read",
+        "--max-turns",
+        "6"
+      ],
+      "cli_model": "claude-sonnet-4-6",
+      "timeout": 600,
+      "model": "claude-code"
+    }
+  },
+  "slash": {
+    "/code": "coder",
+    "/coder": "coder",
+    "/cloud": "cloud",
+    "/deploy": "cloud",
+    "/scan": "cloud",
+    "/core": "core"
+  },
+  "keywords": {
+    "coder": [
+      "```",
+      "写代码",
+      "改代码",
+      "写个脚本",
+      "重构",
+      "报错",
+      "traceback",
+      "stack trace",
+      "debug",
+      "单元测试"
+    ],
+    "cloud": []
+  },
+  "protected_scopes": {
+    "scopes": [
+      "diary",
+      "identity",
+      "memory_palace",
+      "gateway_core",
+      "seven_day_memory",
+      "field_anchor"
+    ],
+    "domains": {
+      "diary": {
+        "aliases": [
+          "日记",
+          "diary",
+          "daily log",
+          "journal entry",
+          "journal",
+          "今晚记",
+          "写信",
+          "回信"
+        ]
+      },
+      "memory_palace": {
+        "aliases": [
+          "memory palace",
+          "记忆宫",
+          "记忆宫殿",
+          "palace vault",
+          "vault room"
+        ]
+      },
+      "identity": {
+        "aliases": [
+          "who are you",
+          "what are you",
+          "identity anchor",
+          "你是谁",
+          "身份锚"
+        ]
+      }
+    },
+    "prompt_patterns": [
+      "\\bdiary\\b",
+      "日记",
+      "memory.?palace",
+      "who are you",
+      "回信"
+    ]
+  },
+  "default": "core"
+}

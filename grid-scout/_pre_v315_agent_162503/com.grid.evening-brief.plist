@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 模板:是否注册常驻由 Lyra 拍板后自行执行(铁则:不默认引入常驻项)
+     cp 到 ~/Library/LaunchAgents/ 后:launchctl load ~/Library/LaunchAgents/com.grid.evening-brief.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.grid.evening-brief</string>
+  <key>ProgramArguments</key>
+  <array><string>/usr/bin/python3</string><string>__SCOUT_DIR__/scout_agent.py</string>
+         <string>--mode</string><string>evening</string></array>
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+  <key>StandardOutPath</key><string>__SCOUT_DIR__/scout.log</string>
+  <key>StandardErrorPath</key><string>__SCOUT_DIR__/scout.err</string>
+  <key>EnvironmentVariables</key><dict>
+    <key>SCOUT_OUT</key><string>__SCOUT_DIR__</string>
+    <key>CONSOLE_URL</key><string>http://localhost:8610</string>
+    <key>CONSOLE_KEY</key><string>FILL_ME</string>
+    <key>DEEPSEEK_API_KEY</key><string>FILL_ME</string>
+    <key>FRED_API_KEY</key><string></string>
+  </dict>
+</dict></plist>

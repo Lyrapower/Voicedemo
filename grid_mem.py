@@ -23,7 +23,7 @@ Lyra 只需跑一条(自动备份 DB,输出即执行证据):
   doctor  <db> [标签=文件路径 ...]        体检 + 文件停摆龄检查
 
 架构(Lyra 已拍板,2026-08-03,不重开):
-  两魂读并集:local ⊇ {local, workbench-b11, field-particle} · cloud ⊇ {cloud, cloud-glm52, cloud-kimi}
+  两魂读并集:local ⊇ {local, workbench-b11, field-particle} · cloud ⊇ {cloud, cloud-glm52, cloud-kimi, cloud-kimi-k3, cloud-glm53, cloud-glm53-full, cloud-minimax, cloud-deepseek, cloud-qwen35}
   魂由面定:EXPANDED 走云端那几轮 soul 仍是 local;substrate 只记录不参与归属。
   生产正文永不硬删:DELETE 仅在该行已进原文归档表时放行(DB 级触发器,绕过任何代码层都拦)。
   老行不迁移不改写;三字段为 ALTER ADD COLUMN 可空新增,不动既有列与 8501 读法。
@@ -38,7 +38,7 @@ WIRING(给 Cursor,整块执行,完成后贴回 diff;不要另写文档):
          write_turn(DB_PATH或连接, surface=面, role="user"或"assistant", content=正文, substrate=实际模型名或None)
      面取值:8790→"8790" · grid.html→"grid-app" · b11 STUDIO/HOME/EXPANDED→"b11-studio"/"b11-home"/"b11-expanded"
      (EXPANDED 即使 route 到 GLM/Kimi,surface 仍是 b11-expanded,soul 自动归 local,substrate 填实际模型)
-     b11 Cloud→"cloud-glm"/"cloud-kimi" · Console Cloud→"console-cloud"。
+     b11 Cloud→"cloud-glm"/"cloud-kimi"/"cloud-kimi-k3"/"cloud-glm53"/"cloud-glm53-full"/"cloud-minimax"/"cloud-deepseek" · Console Cloud→"console-cloud"。
   5. 读回与召回统一走本文件 read/recall(或同名函数);任何地方不得再按 node 切分读。
   6. b11 前端唯一改动:发消息请求体带 "surface" 字段(当前所在面)。其余前端问题不预修,复现再单点改。
   7. 不碰 GLM 手上 P0 四条(epoch 硬删代码、/task/candidate、8515 双名、STUDIO 断档标);撞车以 GLM 的 diff 为准。
@@ -48,7 +48,10 @@ from datetime import datetime
 
 SOUL_NODES = {
     "local": ("local", "workbench-b11", "field-particle"),
-    "cloud": ("cloud", "cloud-glm52", "cloud-kimi"),
+    "cloud": (
+        "cloud", "cloud-glm52", "cloud-kimi",
+        "cloud-kimi-k3", "cloud-glm53", "cloud-glm53-full", "cloud-minimax", "cloud-deepseek", "cloud-qwen35",
+    ),
 }
 SURFACE_NODE = {
     # 生产 store node:8790/grid.html 均落 field-particle(非字面 "local")
@@ -56,13 +59,22 @@ SURFACE_NODE = {
     "b11-studio": "workbench-b11", "b11-home": "workbench-b11", "b11-expanded": "workbench-b11",
     "field-particle": "field-particle",
     "cloud-glm": "cloud-glm52", "cloud-kimi": "cloud-kimi", "console-cloud": "cloud",
+    # b11 Cloud 新 lane(2026-08-26:未登记 → POST /messages 500 → 发不出)
+    "cloud-kimi-k3": "cloud-kimi-k3",
+    "cloud-glm53": "cloud-glm53",
+    "cloud-glm53-full": "cloud-glm53-full",
+    "cloud-minimax": "cloud-minimax",
+    "cloud-deepseek": "cloud-deepseek",
+    "cloud-qwen35": "cloud-qwen35",
 }
 # 模型 ctx(Ollama Cloud library 实数):glm-5.2:cloud=976000 · kimi-k2.6:cloud 见 cloud_gateway_route
-# 注入预算:取「单条 sanitize 上限 MAX_PROMPT_CHARS=8000」的一半=4000 字(拼进最后 user 不爆 8k)
-# 召回另计 ≤2000 字;客户端已带多轮时服务端只召回不再叠近程窗
-INJECT_WINDOW_TURNS = 15
+# 近程窗:轮数 ∧ 总字符双限,超了从最老轮截
+READ_WINDOW_TURNS = 15
+READ_WINDOW_CHARS = 10000
+# 注入:近程受 READ_WINDOW_*、召回受 INJECT_RECALL_CHARS;块级不再另砍 4000
+INJECT_WINDOW_TURNS = READ_WINDOW_TURNS
 INJECT_RECALL_CHARS = 2000
-INJECT_BLOCK_CHARS = 4000  # half of code_task.kimi_input_scope.MAX_PROMPT_CHARS
+BUSY_TIMEOUT_MS = 5000
 # 真库唯一常量 — 禁止 data/grid_store.db 软链;doctor / 全仓调用只认这里
 DEFAULT_STORE_DB = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -88,15 +100,22 @@ def soul_of(surface):
     return "cloud" if surface.startswith(("cloud", "console-cloud")) else "local"
 
 def node_of(surface):
-    return SURFACE_NODE.get(surface, "cloud" if soul_of(surface) == "cloud" else "local")
+    if surface not in SURFACE_NODE:
+        legal = ", ".join(sorted(SURFACE_NODE))
+        raise ValueError(f"未知 surface={surface!r};合法值: {legal}")
+    return SURFACE_NODE[surface]
 
 _CONN_META = {}  # id(conn) -> {key, m}  # Py3.9 sqlite3.Connection 不可挂属性
 
 def _conn(db):
     if not os.path.isfile(db):
         sys.exit(f"DB 不存在: {db}")
-    c = sqlite3.connect(db)
+    c = sqlite3.connect(db, timeout=BUSY_TIMEOUT_MS / 1000.0)
     c.row_factory = sqlite3.Row
+    c.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
+    mode = (c.execute("PRAGMA journal_mode").fetchone() or [""])[0]
+    if str(mode).lower() != "wal":
+        c.execute("PRAGMA journal_mode=WAL")
     _CONN_META[id(c)] = {"key": os.path.abspath(db), "m": None}
     return c
 
@@ -190,6 +209,7 @@ def _arch_name(t=None):
     return ARCHIVE_TABLE
 
 def _now(m):
+    # 雷2 定性(2026-08-04):真库 ts≈1.78e9 秒 epoch(<1e12),非毫秒 → 写秒,不乘 1000
     if m.get("ts_int"):
         return int(time.time())
     if m.get("ts_real"):
@@ -292,10 +312,18 @@ def ensure_guard(conn, m):
 
 def write_turn(db, surface, role, content, substrate=None, node_id=None):
     """四面共用写入。服务端接线只调这一个函数。db 可传路径或已开连接(高频落点传连接)。返回新行 id。
-    node_id 可选:覆盖 SURFACE_NODE(用于 smoke 等非生产 node,或 URL 路径与面不一致时)。"""
+    node_id 可选:覆盖 SURFACE_NODE 的 node(smoke 等);surface 本身必须在 SURFACE_NODE 表内。"""
+    if surface not in SURFACE_NODE:
+        legal = ", ".join(sorted(SURFACE_NODE))
+        raise ValueError(f"未知 surface={surface!r};合法值: {legal}")
     conn = _conn(db) if isinstance(db, str) else db
-    if not isinstance(db, str) and not _gm_get(conn, "key"):
-        _gm_set(conn, "key", "live")
+    if not isinstance(db, str):
+        if not _gm_get(conn, "key"):
+            _gm_set(conn, "key", "live")
+        try:
+            conn.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
+        except sqlite3.DatabaseError:
+            pass
     m = detect(conn)
     if "surface" not in m["names"]:
         raise RuntimeError("先跑: python3 grid_mem.py install <db>")
@@ -316,9 +344,13 @@ def write_turn(db, surface, role, content, substrate=None, node_id=None):
         cur = _ins(d)
     except sqlite3.DatabaseError as e:
         if "NOT NULL" in str(e).upper():
+            filled = []
             for name, typ in m["notnull"]:
                 if name not in d and name.lower() not in ("soul", "surface", "substrate"):
                     d[name] = 0 if ("INT" in typ or "REAL" in typ) else ""
+                    filled.append(f"{name}:{typ or '?'}")
+            if filled:
+                print(f"[write_turn] NOT NULL 兜底填列: {', '.join(filled)}", file=sys.stderr)
             cur = _ins(d)
         else:
             raise
@@ -400,7 +432,8 @@ def install(db):
     ensure_guard(conn, m)
     conn.commit()
     ok = True
-    wid = write_turn(conn, "selftest", "system", "[grid_mem 自测行A,可无视]")
+    wid = write_turn(conn, "8790", "system", "[grid_mem 自测行A,可无视]",
+                     node_id="smoke_grid_mem")
     print(f"[自测1] 写入 id={wid} PASS")
     if _try_delete(conn, m, wid):
         print("[自测2] 未归档硬删居然放行 —— FAIL"); ok = False
@@ -419,7 +452,8 @@ def install(db):
     else:
         print("[自测4] 归档原文读回 FAIL"); ok = False
     # 自测5:rowid 复用洞。刚删掉的 wid 是当时最大 rowid,紧接着写入的新行应复用它。
-    wid2 = write_turn(conn, "selftest", "system", "[grid_mem 自测行B,正文与A不同]")
+    wid2 = write_turn(conn, "8790", "system", "[grid_mem 自测行B,正文与A不同]",
+                      node_id="smoke_grid_mem")
     if wid2 == wid:
         if _try_delete(conn, m, wid2):
             print("[自测5] rowid 复用行被静默放行 —— FAIL,守卫有洞"); ok = False
@@ -434,8 +468,19 @@ def install(db):
     print(("五条自测全 PASS。" if ok else "有 FAIL,上面输出整段发回。")
           + "下一步:本文件转给 Cursor,按文件头 WIRING 七条接线,完成后贴回 diff 与 install 输出。")
 
-def fetch_turns(db, soul, n=15):
-    """魂组并集读回(库用/接线用)。返回时间正序 list[dict]。"""
+def _trim_char_budget(rows, max_chars=None):
+    """时间正序 rows:超 READ_WINDOW_CHARS 从最老轮截到总字符≤预算。"""
+    cap = int(max_chars if max_chars is not None else READ_WINDOW_CHARS)
+    total = sum(len(str(r.get("content") or "")) for r in rows)
+    while rows and total > cap:
+        dropped = rows.pop(0)
+        total -= len(str(dropped.get("content") or ""))
+    return rows
+
+def fetch_turns(db, soul, n=None):
+    """魂组并集读回(库用/接线用)。返回时间正序 list[dict]。
+    双限:轮数≤READ_WINDOW_TURNS(或 n) 且总字符≤READ_WINDOW_CHARS。"""
+    n = int(n if n is not None else READ_WINDOW_TURNS)
     conn = _conn(db) if isinstance(db, str) else db
     if isinstance(db, str):
         pass
@@ -465,10 +510,10 @@ def fetch_turns(db, soul, n=15):
             "node": d.get(m["node"], ""),
             "ts": d.get(m["ts"] or "", None),
         })
-    return out
+    return _trim_char_budget(out, READ_WINDOW_CHARS)
 
-def read(db, soul, n=15):
-    rows = fetch_turns(db, soul, n)
+def read(db, soul, n=None):
+    rows = fetch_turns(db, soul, n if n is not None else READ_WINDOW_TURNS)
     for d in rows:
         txt = d["content"][:160].replace("\n", " ")
         tag = d.get("surface") or d.get("node") or "?"
@@ -534,9 +579,12 @@ def recall(db, surface, query, budget=None):
 
 def inject_messages(db, surface, query, *, turns=None, recall_budget=None,
                     window=True, max_chars=None):
-    """组装注入块:近程窗(可关) + recall。总字数≤max_chars(默认 INJECT_BLOCK_CHARS)。"""
+    """组装注入块:近程窗(可关) + recall。
+
+    max_chars=None → 不块级再砍(近程/召回各自已有预算)。
+    显式传入 max_chars 时仍按该上限截断(兼容旧调用方)。
+    """
     turns = int(turns if turns is not None else INJECT_WINDOW_TURNS)
-    cap = int(max_chars if max_chars is not None else INJECT_BLOCK_CHARS)
     soul = soul_of(surface)
     parts = []
     if window:
@@ -555,8 +603,10 @@ def inject_messages(db, surface, query, *, turns=None, recall_budget=None,
     if not parts:
         return []
     body = "\n\n".join(parts)
-    if len(body) > cap:
-        body = body[: max(0, cap - 1)] + "…"
+    if max_chars is not None:
+        cap = int(max_chars)
+        if cap >= 0 and len(body) > cap:
+            body = body[: max(0, cap - 1)] + "…"
     return [{"role": "system", "content": body}]
 
 def doctor(db, extras):

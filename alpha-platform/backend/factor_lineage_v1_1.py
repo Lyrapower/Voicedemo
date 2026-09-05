@@ -85,9 +85,15 @@ def _db_path() -> str:
 
 
 def connect(path: str | None = None) -> sqlite3.Connection:
-    con = sqlite3.connect(path or _db_path())
+    p = path or _db_path()
+    readonly = os.environ.get("FACTOR_LINEAGE_DB_READONLY") == "1"
+    if readonly:
+        con = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+    else:
+        con = sqlite3.connect(p)
     con.row_factory = sqlite3.Row
-    con.executescript(SCHEMA)
+    if not readonly:
+        con.executescript(SCHEMA)
     return con
 
 

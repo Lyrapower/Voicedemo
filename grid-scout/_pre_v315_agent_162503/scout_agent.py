@@ -1,0 +1,2264 @@
+#!/usr/bin/env python3
+"""scout_agent.py —— Scout Agent v3.13(守恒交付语义 + 本机接线累加)
+
+版本纪律:禁跑 install.sh 整包覆盖本机接线(.env/expanded/aether/ssl/FRED回退)。
+v3.13 明确优化处**替代**旧逻辑:
+  · trading_date ET 锚定;prompt/渲染真实 ET 钟点(废硬编码 9:45)
+  · 晚班+晨班 earnings_movers;movers |chg|≥8% 必须进 candidates 或 rejected
+  · #12 sectors → sector_leaders; #11 流动性闸盖章;EDGAR/财报日历交易日窗
+  · 财报手册第三步(次日 IV crush);数字纪律;rejected 漏斗
+保留本机非冲突累加:
+  · SCOUT_REVIEW=expanded;ensure_hedge/三灯/三层宇宙/财报硬优先/rank+rank_reason
+  · 否决票 EA;归档重跑;console/aether emit;默认复用 raw(--fetch 重采)
+"""
+from __future__ import annotations
+import argparse, datetime, html, json, os, re, sys, urllib.error, urllib.request
+from pathlib import Path
+
+import fetchers
+
+_HERE = Path(__file__).resolve().parent
+
+# Lyra 否决:不算主菜(可环境变量追加,逗号分隔)
+_BAN = {"EA"}
+_BAN |= {t.strip().upper() for t in os.getenv("SCOUT_BAN_TICKERS", "").split(",") if t.strip()}
+
+_UNIVERSE_CACHE: set[str] | None = None
+CANDIDATE_RANK_N = 3
+# v3.8 层 C:海外 ADR 巨头(可进主菜;对冲腿仍可另用 FXI/KWEB 等 ETF)
+_ADR_MEGA = {"BABA", "PDD", "JD", "TSM", "NVO", "BIDU", "LI", "XPEV", "NIO", "ASML", "SAP"}
+# 指数/对冲壳——永不进 candidates 主菜
+_SHELL_TICKERS = {
+    "SPY", "QQQ", "IWM", "DIA", "GLD", "SLV", "USO", "UNG", "TLT", "UUP",
+    "VIXY", "UVXY", "FXI", "KWEB", "EWZ", "EWJ", "EEM", "YINN", "YANG",
+}
+
+
+def load_equity_universe() -> set[str]:
+    """层 A 主池 = SP500 ∪ Nasdaq-100。对冲/指数壳剔除。"""
+    global _UNIVERSE_CACHE
+    if _UNIVERSE_CACHE is not None:
+        return _UNIVERSE_CACHE
+    uni: set[str] = set()
+    local = _HERE / "data" / "equity_universe.json"
+    if local.is_file():
+        try:
+            j = json.loads(local.read_text(encoding="utf-8"))
+            uni |= {str(x).upper().replace(".", "-") for x in (j.get("universe") or [])}
+        except Exception as e:
+            print("[scout] equity_universe.json 读失败:", e)
+    sp_path = _HERE.parent / "alpha-platform" / "data" / "sp500_symbols.json"
+    if sp_path.is_file():
+        try:
+            j = json.loads(sp_path.read_text(encoding="utf-8"))
+            uni |= {str(x).upper().replace(".", "-") for x in (j.get("symbols") or [])}
+        except Exception as e:
+            print("[scout] sp500_symbols.json 读失败:", e)
+    uni -= _SHELL_TICKERS
+    _UNIVERSE_CACHE = uni
+    print("[scout] 主池层A加载 %d 只(SP500∪NDX;层B事件/层C ADR 另闸)" % len(uni))
+    return uni
+
+
+def in_equity_universe(ticker: str) -> bool:
+    t = str(ticker or "").strip().upper().replace(".", "-")
+    return bool(t) and t in load_equity_universe()
+
+
+def _has_event_evidence(c: dict) -> bool:
+    for e in c.get("evidence") or []:
+        if not isinstance(e, dict):
+            continue
+        src = str(e.get("source") or "").lower()
+        if src in ("edgar", "edgar_ma_8k", "fda", "fda_press", "earnings", "earnings_calendar"):
+            return True
+    return False
+
+
+def candidate_tier(ticker: str, c: dict | None = None) -> str | None:
+    """v3.8 三层闸。返回 'A'|'B'|'C'|None(拒绝)。对冲壳/否决票 → None。"""
+    t = str(ticker or "").strip().upper().replace(".", "-")
+    if not t or t in _BAN or t in _SHELL_TICKERS:
+        return None
+    if t in load_equity_universe():
+        return "A"
+    if t in _ADR_MEGA:
+        return "C"
+    c = c or {}
+    liq = str(c.get("liquidity") or "").strip()
+    if _has_event_evidence(c) and len(liq) >= 6:
+        return "B"  # 事件驱动·过流动性闸(小盘无 liquidity 说明 → 拒)
+    return None
+
+
+def _load_dotenv(path: Path) -> None:
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        k, _, v = s.partition("=")
+        k, v = k.strip(), v.strip().strip('"').strip("'")
+        if k and k not in os.environ:
+            os.environ[k] = v
+
+
+_load_dotenv(_HERE / ".env")
+
+DS_BASE = os.getenv("DEEPSEEK_BASE", "http://127.0.0.1:11434/v1").rstrip("/")
+DS_KEY = os.getenv("DEEPSEEK_API_KEY", "ollama").strip()
+DS_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro:cloud")
+GW = os.getenv("GATEWAY_URL", "http://127.0.0.1:8501").rstrip("/")
+WB = os.getenv("WORKBENCH_URL", "http://127.0.0.1:8515").rstrip("/")
+GLM_MODEL = os.getenv("GLM_MODEL", "glm-5.2:cloud")
+CONSOLE = os.getenv("CONSOLE_URL", "http://localhost:8610").rstrip("/")
+CONSOLE_KEY = os.getenv("CONSOLE_KEY", "").strip()
+OWS = os.getenv("OWS_URL", "http://localhost:8620").rstrip("/")
+OUT = os.getenv("SCOUT_OUT", str(_HERE))
+EXPANDED_MEMORY_NODE = os.getenv("SCOUT_EXPANDED_MEMORY_NODE", "scout-review").strip() or "scout-review"
+DEFAULT_REVIEW = "expanded"
+SKIP_ASTER_INTEGRATE = os.getenv("SCOUT_SKIP_ASTER", "1").strip() not in ("0", "false", "no")
+
+
+def _ds_via_ollama() -> bool:
+    return "11434" in DS_BASE or (
+        DS_BASE.endswith("/v1") and "deepseek.com" not in DS_BASE
+    )
+
+
+
+def _http(url, body=None, headers=None, timeout=120):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method="POST" if data else "GET",
+                                 headers={"Content-Type": "application/json", **(headers or {})})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode())
+
+
+# ---- workstation 数据联动 ----
+def fetch_workstation_state():
+    """取 8620 最新非 synthetic 日;全是合成则拒喂 DS(不作数)。"""
+    try:
+        dates = _http(OWS + "/api/dates", timeout=5)
+        if not dates:
+            return None
+        # 从新到旧找实弹 source
+        for day in reversed(dates):
+            try:
+                d = _http(OWS + "/api/day/" + day, timeout=8)
+            except Exception:
+                continue
+            src = str((d.get("snap") or {}).get("source") or "")
+            if src.startswith("synthetic"):
+                continue
+            ws = {"date": day, "underlying": d["snap"]["underlying"],
+                  "spot": d["snap"]["spot"], "net_gex": d["gex"]["net_gex_musd_per_1pct"],
+                  "gamma_flip": d["gex"]["gamma_flip"], "ivp": d["features"]["ivp"],
+                  "vrp": d["features"]["vrp20"], "source": src,
+                  "atm_iv30": (d.get("features") or {}).get("atm_iv30")}
+            print("[scout] workstation 实弹 %s source=%s gex=%s ivp=%s"
+                  % (day, src, ws.get("net_gex"), ws.get("ivp")))
+            return ws
+        print("[scout] workstation 仅合成演示数据——不作数,不喂 DS")
+        return None
+    except Exception as e:
+        print("[scout] workstation(:8620) 不可达:", e)
+        return None
+
+
+def engine_data_gaps(payload, yday, ws) -> list:
+    """第四节缺口由引擎据实填——禁止 DS 凭感觉编「SSL 全挂」等假缺口。"""
+    gaps = []
+    results = (payload or {}).get("results") or []
+    by_src = {r.get("source"): r for r in results if isinstance(r, dict)}
+
+    fred = by_src.get("fred_macro") or {}
+    if not fred.get("ok"):
+        gaps.append({
+            "item": "FRED宏观数据",
+            "status": "不可用(%s)" % ((fred.get("error") or "未采集")[:120]),
+            "handling": "已尝试 FRED key / BLS+NYFed 回退仍失败时,宏观改看收益率曲线与 Polymarket",
+        })
+    # fred ok(含 BLS/NYFed 回退)=已解决,不进缺口清单;via 留在 raw items 供引用
+
+    y_ok = 0
+    if isinstance(yday, dict):
+        y_ok = sum(1 for r in (yday.get("results") or []) if r.get("ok"))
+    if not yday:
+        gaps.append({
+            "item": "昨日完整日线数据",
+            "status": "无昨日 raw 落盘",
+            "handling": "无法对比昨收形态;仅用今日盘初/隔夜截面",
+        })
+    elif y_ok <= 0:
+        gaps.append({
+            "item": "昨日完整日线数据",
+            "status": "昨日 raw 存在但 0 源成功",
+            "handling": "检查 raw 选优(_pick_day_raw);勿把 SSL 失败戳记稿当全日失败",
+        })
+
+    if not ws:
+        gaps.append({
+            "item": "工作站GEX/特征数据",
+            "status": "无实弹(仅 synthetic 或 8620 不可达)",
+            "handling": "关键位改用盘初高低/昨收;跑 alpaca_loader/theta_loader 灌 OWS raw 后重拉",
+        })
+    return gaps
+
+
+def ensure_data_gaps(data, engine_gaps: list):
+    """引擎缺口覆盖同名 item;保留 DS 额外矛盾标注(不同名)。"""
+    if not isinstance(data, dict):
+        return data
+    eng = [g for g in (engine_gaps or []) if isinstance(g, dict) and g.get("item")]
+    ds = [g for g in (data.get("data_gaps") or []) if isinstance(g, dict) and g.get("item")]
+    eng_items = {g["item"] for g in eng}
+    # 假缺口黑名单:引擎已证明昨日有好 raw 时,DS 不得再写 SSL 全挂
+    merged = list(eng)
+    for g in ds:
+        item = str(g.get("item") or "")
+        if item in eng_items:
+            continue
+        st = str(g.get("status") or "")
+        # 引擎已证明昨日有好 raw → 丢弃 DS「SSL 全挂」假缺口
+        if "昨日" in item and ("SSL" in st or "ssl" in st) and not any(
+            "昨日" in e.get("item", "") for e in eng
+        ):
+            print("[scout] 丢弃 DS 假缺口:", item, st[:60])
+            continue
+        # 引擎清单空且工作站已实弹 → 丢弃 DS 再编的 GEX/IV 缺失
+        if not eng and any(k in item for k in ("工作站", "GEX", "IV", "ivp", "隐含波动")):
+            if "缺失" in st or "null" in st.lower() or "不可用" in st:
+                print("[scout] 丢弃 DS 假缺口(实弹已到):", item, st[:60])
+                continue
+        merged.append(g)
+    data["data_gaps"] = merged
+    return data
+
+
+def yesterday_raw(today):
+    """上一交易日对比 raw——按「ok 源数」选,禁止 mtime 最新的 SSL 全挂稿盖掉好日线。
+
+    事故(2026-08-06):16:48 全采 0/9(SSL) 写成 2026-08-05-1648.json,
+    旧逻辑按 mtime 取它 → DS 误报「昨日完整日线全部 SSL 失败」,
+    实际 canonical 2026-08-05.json 已是 8/9 好稿。
+    """
+    try:
+        rawdir = os.path.join(OUT, "raw")
+        days = {f[:10] for f in os.listdir(rawdir)
+                if f.endswith(".json") and len(f) >= 10 and f[:10] < today}
+        if not days:
+            return None
+        last_day = max(days)
+        pick = _pick_day_raw(rawdir, last_day)
+        if not pick:
+            return None
+        n = _raw_ok_count(pick)
+        print("[scout] 昨日对比 raw(%d ok) → %s" % (n, pick))
+        if n <= 0:
+            print("[scout] 【响亮】昨日 raw 无可用源——对比弹药空(非默认真全日失败)")
+        return json.load(open(pick, encoding="utf-8"))
+    except Exception as e:
+        print("[scout] yesterday_raw 失败:", e)
+        return None
+
+
+# ---- DS 决策官 prompt(v3.8 三层宇宙 + 财报手册 + 复盘回路;盘初口径保留) ----
+def build_trading_prompt(raw, ws, yday, cross=None, engine_gaps=None, prev=None):
+    ammo = _hedge_ammo(raw)
+    ammo_line = json.dumps(ammo, ensure_ascii=False)[:3500]
+    gaps_line = json.dumps(engine_gaps or [], ensure_ascii=False)[:2000]
+    return f"""你是交易台的首席决策官。现在是 ET {fetchers.et_now_hm()}
+(常规调度 = 9:45 ET 开盘后15分钟;交易员在美西 PST。若当前非常规时刻——手动重跑——读数按实际时刻解读),
+基于隔夜数据 + 盘初 tape 给出清晰的分析作业
+(这是给交易员参考的分析,交易员自己拍板执行,不是自动下单)。
+观察宇宙(三层):
+A. S&P 500 与 Nasdaq 成分池(主池,不是 SPY/QQQ 两只 ETF)
+B. 事件驱动个股不限成分——8-K/FDA/财报日历命中的美股可点名,但必须过流动性闸:
+   大中盘、期权活跃;小盘或期权价差宽的宁可不点(T+0 会死在价差上);liquidity 必填
+C. 海外 ADR 巨头(BABA/PDD/JD/TSM/NVO 级)——迁徙或自身事件驱动时可作主菜,
+   时差跳空风险写进 abandon
+每个候选必须填 liquidity(一句话说明为何扛得住 T+0)。
+读数口径铁律(不标注会把部分K线冒充全日判断——禁止):
+- indices/hedge_assets 的当日行是盘初部分K线(开盘~15分钟,非收盘完整日线)
+- chg_pct 是盘初对昨收,不是全日涨跌;tape_flag/close_loc 按盘初形态解读
+- 写 logic/basis 时必须标明「盘初」;挤兑硬判据以晚报完整日线为准
+
+隔夜采集:{json.dumps(raw, ensure_ascii=False)[:6000]}
+工作站读数(GEX/特征):{json.dumps(ws, ensure_ascii=False) if ws else "工作站无可用实弹数据(不可达或仅合成数据),基于隔夜数据判断"}
+昨日采集(对比用):{json.dumps(yday, ensure_ascii=False)[:2000] if yday else "无"}
+跨资产引擎读数(确定性,判断必须引用;晨班=盘初截面):{json.dumps(cross, ensure_ascii=False) if cross else "无"}
+昨日战绩(确定性复盘,必须引用):{json.dumps(prev, ensure_ascii=False) if prev else "无(首日或昨日无产出)"}
+对冲弹药(引擎实测,hedge 必须引用数字;GLD/SLV 等勿漏读):{ammo_line}
+财报日历弹药(爬虫#10 实读,财报 call 必须引用——禁凭记忆编「今日财报」):
+{json.dumps(_earnings_ammo(raw), ensure_ascii=False)[:2500]}
+出货三灯/风险地板(引擎,必须引用;齐亮时 DS 不得压成低):
+{json.dumps({k: (cross or {}).get(k) for k in ("distribution_lights","distribution_hint","distribution_basis")}, ensure_ascii=False)}
+数据缺口引擎清单(第四节 data_gaps 必须以本清单为准;禁止编造未列出的假缺口):
+{gaps_line}
+
+交易风格偏置(硬约束):交易员主做 T+0 单腿 CALL,当日了结。
+- 策略默认形态 = 单腿 CALL,到期选 0DTE 或最近可用到期,必须给 t0_exit
+- PUT 仅当看空证据明确时才提;禁止多腿组合;禁止编造权利金/报价
+候选铁律(主菜=个股卡——空清单非法):
+- 必须恰好 3 张卡,rank=1/2/3;每卡写 rank_reason(相对排序依据)
+- ticker 须落入层 A/B/C 之一;SPY/QQQ/GLD 等壳代码禁止当主菜
+- 层 B(非成分)必须有 edgar/fda/earnings 证据 + 非空 liquidity;无流动性说明=拒
+- 否决票(禁止出现在 candidates):{sorted(_BAN)}
+- 每卡锚定隔夜采集具体条目,逐条给出处;禁凭训练记忆点名;禁编权利金
+- no_candidate_reason 仅当采集源全空时才许非空
+财报两步手册(earnings_calendar 必须核对;撞财报必须在 earnings_note 声明):
+- 第一步·财报/重大消息当日:禁开盘第一根追入——高 IV+双向扫损=多空双杀;
+  合法入场=IV crush 落地后、盘初区间方向突破确认再进,0DTE 此时才合法
+- 第二步·财报前 run-up(公布前 2-8 个交易日):可做预期抢跑 call;铁律=公布前必须离场;
+  今日 AMC 出财报 → T+0 收盘前清仓
+- 第三步·财报次日(昨夜 AMC 已出结果,今晨 gap):IV 已 crush——单腿 call 黄金窗口之一;
+  gap-and-go=盘初30分钟站稳开盘价上方再追;首30分钟回补 gap 过半=fade,放弃做多;
+  方向已被结果定调,禁逆结果抄底/摸顶
+- 5 个交易日内有财报 → earnings_note 写日期/BMO或AMC/采用哪条手册;无则写「无」
+- 【硬优先】若 earnings_calendar 当日有大中盘(日历实读)→ 3 张主菜中至少 1 张必须是
+  财报手册候选(evidence.source=earnings, earnings_note 锚定日历日期/BMO|AMC/第几步);
+  禁止用无关 8-K 把当日财报名额挤出榜外
+主菜优先级(堵抓小众漏大鱼):
+- 引擎 earnings_movers 榜首 |chg_pct|≥8% 必须显式处理——进 candidates 或 rejected 写明理由;禁止无痕跳过
+- 候选所属板块应与引擎 sector_leaders 对齐;背离必须在 rank_reason 解释
+数字纪律:一切绝对数字须能在采集读数中找到并标明来源;找不到只用相对表述;禁编精确点位/概率
+战绩与 RSI 铁律:
+- 昨日方向错的腿,今日同逻辑再点必须写「昨日同逻辑失误 + 今日为何不同」;
+  滚动命中率 <50% → 整体压低置信度
+- RSI14 是时机过滤器不是方向信号:rsi14>70 禁追高(须回踩确认);
+  rsi14<30 禁追空 put;对冲腿同规
+对冲铁律(hedge 段永不空白):
+- 对冲工具池(贵金属/原油/汇率国债/波动率/海外 ETF·ADR)=不受层 A 主池限制
+- distribution_risk 不得低于引擎 distribution_hint;先定 regime 写 basis
+- 风险 中/高 → 1-2 条对冲腿;风险 低 → note 写明依据(不许留空)
+对冲分级手册:
+- regime=轮动/拉高出货 → GLD/SLV/OXY/USO 单腿 call
+- regime=全线下跌(liquidation_watch) → 商品 call 禁用;切指数 PUT/VIXY/UUP;
+  TLT 仅 tlt_chg_pct>0;「减仓也是对冲」须写成结论;写明 IV 代价与 vol crush
+- regime=资金迁徙(海外)(rotation_divergence 非空) → FXI/KWEB/EWZ/EWJ/EEM/BABA;
+  YINN 仅 T+0;跳空风险进 abandon
+- 护栏:liquidation_watch 或 divergence 空 → 禁海外腿
+- evidence 锚定引擎数字,禁编报价
+
+只输出一个 JSON 对象——不要 markdown、不要代码围栏、不要 JSON 之外的任何文字。schema:
+{{"macro": {{"sp500_bias": "看涨|看跌|中性震荡", "nasdaq_bias": "看涨|看跌|中性震荡",
+  "confidence": "高|中|低", "logic": "引用 indices/收益率/VIX/赔率读数的推理",
+  "key_levels": "大盘关键位(无实弹 GEX 时如实写依据)"}},
+ "candidates": [{{"rank": 1, "ticker": "", "direction": "call|put",
+   "rank_reason": "为何排第1(相对#2/#3的优先依据)",
+   "liquidity": "市值/期权活跃度为何扛得住 T+0",
+   "evidence": [{{"source": "edgar|fda|polymarket|indices|macro|earnings", "item": "条目摘要", "why": "为何构成驱动"}}],
+   "key_levels": "该标的阻力/支撑及依据",
+   "strategy": {{"type": "单腿 call", "strike_logic": "行权价选择逻辑(不编报价)",
+     "expiry": "0DTE|本周五|最近到期", "entry_condition": "入场触发条件",
+     "stop": "止损条件", "abandon": "作废条件",
+     "earnings_note": "5个交易日内财报:日期/BMO或AMC/手册;无则写无",
+     "t0_exit": "当日平仓纪律"}}}},
+  {{"rank": 2, "ticker": "", "direction": "call|put", "rank_reason": "为何排第2",
+   "liquidity": "", "evidence": [{{"source": "edgar|fda|polymarket|indices|macro|earnings", "item": "", "why": ""}}],
+   "key_levels": "", "strategy": {{"type": "单腿 call", "strike_logic": "", "expiry": "0DTE",
+     "entry_condition": "", "stop": "", "abandon": "", "earnings_note": "无", "t0_exit": ""}}}},
+  {{"rank": 3, "ticker": "", "direction": "call|put", "rank_reason": "为何排第3",
+   "liquidity": "", "evidence": [{{"source": "edgar|fda|polymarket|indices|macro|earnings", "item": "", "why": ""}}],
+   "key_levels": "", "strategy": {{"type": "单腿 call", "strike_logic": "", "expiry": "0DTE",
+     "entry_condition": "", "stop": "", "abandon": "", "earnings_note": "无", "t0_exit": ""}}}}],
+ "no_candidate_reason": "仅当采集源全空无法提名时填写,否则空串",
+ "rejected": [{{"ticker": "", "reason": "一句话淘汰理由(候选漏斗可审;考虑过但没入选的,最多3条)"}}],
+ "hedge": {{"distribution_risk": "高|中|低", "regime": "轮动|资金迁徙(海外)|全线下跌|无明显风险",
+   "basis": "引用跨资产引擎/fear_greed/hedge_assets 读数的依据",
+   "legs": [{{"ticker": "GLD|SLV|OXY|USO|TLT|UUP|VIXY|SPY|QQQ|FXI|KWEB|EWZ|EWJ|EEM|BABA|YINN", "direction": "call|put",
+     "evidence": [{{"source": "hedge_assets|fear_greed|indices|macro", "item": "读数", "why": "为何对冲"}}],
+     "strategy": {{"type": "单腿 call", "strike_logic": "", "expiry": "0DTE|本周五|最近到期",
+       "entry_condition": "", "stop": "", "abandon": "", "t0_exit": ""}}}}],
+   "note": "风险低暂不对冲时写明依据;永不空白;对冲腿不受层A主池限制"}},
+ "data_gaps": [{{"item": "", "status": "", "handling": ""}}],
+ "conclusion": "一句话结论"}}
+data_gaps 铁律:必须覆盖引擎缺口清单;禁止把「昨日有好 raw」写成 SSL 全失败;工作站仅 synthetic 时如实写无实弹。
+禁止"具体视情况而定""谨慎操作"等无效废话。全部值用中文。"""
+
+
+def build_evening_prompt(raw, yday, cross=None, review=None):
+    return f"""你是交易台参谋。现在是收盘后(21:00 本机班次),写今日完整日线复盘 + 明日弹药,给交易员看。
+读数口径:本班 indices/hedge_assets 是完整日线(非盘初部分K线);
+tape_flag/close_loc/chg_pct 按全日形态解读;liquidation_watch 等挤兑判据在本班最硬
+(晨会盘初「冲高回落」证据等级低于本班收盘形态——勿把晨会预警直接升格为全日铁证)。
+1. 今日要闻与并购/FDA/事件催化(带出处)
+2. 隔夜→今日的赔率变化(Polymarket)
+3. 明日日历(FDA/到期/财报/事件——引用 earnings_calendar)
+4. 明日值得盯的方向与关键位(分析,非指令)
+5. 风险雷达(黑天鹅/机构拉高出货/全线下跌排查,永不留空):逐项核对——
+   跨资产引擎读数(liquidation_watch、tape_flags、vix_chg_pct)、fear_greed 极值、
+   hedge_assets 异动、polymarket bucket=event 赔率突变;
+   财报异动榜(earnings_movers)有 |chg|≥8% 者必须点名讲清楚;
+   命中拉高出货 → 点名并给商品对冲方向(GLD/SLV/OXY/USO);
+   命中资金迁徙(rotation_divergence 非空)→ 点名领涨海外腿(引用 rotation_leaders 数字),
+   给 FXI/KWEB/EWZ/EWJ/EEM/BABA 方向,YINN 注明仅 T+0;
+   命中全线下跌(liquidation_watch=true)→ 明写"商品 call 不是对冲、海外也不是避风港",
+   给指数 PUT/VIXY/UUP 方向与"减仓也是对冲";未命中则明写"今日未见"
+6. 晨会复盘与明日调优(复盘读数必须逐腿引用,方向命中口径=收盘对昨收):
+   逐腿讲对错与原因假设;给明日晨会具体调优——哪些逻辑降权、入场条件怎么改、
+   RSI 时机过滤怎么用;明日/本周财报名单从 earnings_calendar 点名,标注 run-up 机会
+复盘读数(确定性):{json.dumps(review, ensure_ascii=False) if review else "今日无晨会腿可复盘"}
+跨资产引擎读数(完整日线截面):{json.dumps(cross, ensure_ascii=False) if cross else "无"}
+今日采集:{json.dumps(raw, ensure_ascii=False)[:6000]}
+昨日对比:{json.dumps(yday, ensure_ascii=False)[:1500] if yday else "无"}
+用 markdown,严格以 ## 分节(要闻催化/赔率变化/明日日历/明日方向/风险雷达/晨会复盘与明日调优),
+每节内用短段落或列表,不要糊成整段。用中文,给数字给出处,不写废话。"""
+
+
+def ds_call(prompt):
+    if not DS_KEY:
+        raise SystemExit(
+            "[scout] DEEPSEEK_API_KEY 未配置。\n"
+            "  1) platform.deepseek.com 注册取 key,填 .env 或 plist\n"
+            "  2) curl -s %s/models -H 'Authorization: Bearer $DEEPSEEK_API_KEY' 验模型名\n"
+            "  3) 实况名与默认 %s 不符则设 DEEPSEEK_MODEL" % (DS_BASE, DS_MODEL))
+    url = DS_BASE + ("/chat/completions" if DS_BASE.endswith("/v1") or "deepseek.com" in DS_BASE
+                     else "/v1/chat/completions")
+    if DS_BASE.endswith("/v1"):
+        url = DS_BASE + "/chat/completions"
+    body = {
+        "model": DS_MODEL,
+        "max_tokens": int(os.getenv("DEEPSEEK_MAX_TOKENS", "8000")),
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if _ds_via_ollama():
+        body["think"] = False
+    r = _http(url, body, {"Authorization": "Bearer " + DS_KEY}, timeout=300)
+    msg = (r.get("choices") or [{}])[0].get("message") or {}
+    text = (msg.get("content") or "").strip()
+    if not text:
+        raise SystemExit("[scout] DS 空正文 model=%s" % DS_MODEL)
+    return text
+
+
+def cross_asset_summary(payload):
+    """确定性跨资产读数(数字出引擎,解读归 DS)。
+    全线下跌体制判据:6 只风险资产(SP500/NASDAQ/GLD/SLV/OXY/USO)≥5 收跌
+    且 VIX 单日 ≥ +8%——此时黄金原油同跌,商品 call 不构成对冲。
+    累加 patch:raw 落盘键是 results(非 sources)——读错则引擎永远空、GLD 进不了芯片。"""
+    m = {}
+    rows = payload.get("results") or payload.get("sources") or []
+    for src in rows:
+        if src.get("source") in ("indices", "hedge_assets") and src.get("ok") is not False:
+            for it in src.get("items") or []:
+                if isinstance(it, dict) and it.get("name"):
+                    m[it["name"]] = it
+    risk = ["SP500", "NASDAQ", "GLD", "SLV", "OXY", "USO"]
+    downs = [n for n in risk if n in m and (m[n].get("chg_pct") or 0) < 0]
+    vix = (m.get("VIX") or {}).get("chg_pct")
+    rot = {n: v for n, v in m.items() if v.get("cls") == "rotation"}
+    spx_chg = (m.get("SP500") or {}).get("chg_pct") or 0
+    leaders = sorted(((n, v.get("chg_pct")) for n, v in rot.items()
+                      if v.get("chg_pct") is not None), key=lambda x: -x[1])[:3]
+    out = {"risk_assets_down": downs, "down_count": len(downs), "of": len(risk),
+           "vix_chg_pct": vix,
+           "tlt_chg_pct": (m.get("TLT") or {}).get("chg_pct"),
+           "uup_chg_pct": (m.get("UUP") or {}).get("chg_pct"),
+           "tape_flags": {n: m[n]["tape_flag"] for n in m if m[n].get("tape_flag")},
+           "rotation_leaders": [{"name": n, "chg_pct": c} for n, c in leaders],
+           # 分化=资金迁徙迹象:美股收跌而海外腿收涨(数字出引擎,解读归 DS)
+           "rotation_divergence": ([n for n, v in rot.items() if (v.get("chg_pct") or 0) > 0]
+                                   if spx_chg < 0 else []),
+           "liquidation_watch": len(downs) >= 5 and (vix or 0) >= 8.0,
+           "sector_leaders": [], "sector_laggards": []}
+    sec = []
+    for src in rows:
+        if src.get("source") == "sectors" and src.get("ok") is not False:
+            sec = [x for x in (src.get("items") or [])
+                   if isinstance(x, dict) and x.get("chg_pct") is not None]
+    sec.sort(key=lambda x: -x["chg_pct"])
+    out["sector_leaders"] = [{"name": x["name"], "chg_pct": x["chg_pct"]} for x in sec[:3]]
+    out["sector_laggards"] = (
+        [{"name": x["name"], "chg_pct": x["chg_pct"]} for x in sec[-3:]] if len(sec) >= 3 else []
+    )
+    # 拉高出货三灯(数字出引擎):指数冲高回落 + 恐贪极值 + GLD 强势收高
+    # ——齐亮时 DS 不得把 distribution_risk 压成「低」
+    out.update(_distribution_lights(payload, out))
+    return out
+
+
+def _distribution_lights(payload, cross=None):
+    """确定性出货风险地板。返回 distribution_lights / distribution_hint / distribution_basis。"""
+    ammo = _hedge_ammo(payload if isinstance(payload, dict) else {"results": []})
+    idx = ammo.get("indices_tape") or []
+    spx_dist = any(
+        t.get("name") in ("SP500", "NASDAQ") and t.get("tape_flag") == "冲高回落"
+        for t in idx
+    )
+    fg = (ammo.get("fear_greed") or [{}])[0] if ammo.get("fear_greed") else {}
+    try:
+        fg_score = float(fg.get("score") or 0)
+    except (TypeError, ValueError):
+        fg_score = 0.0
+    fg_rating = str(fg.get("rating") or "").lower()
+    # 极贪:CNN extreme greed 或 score≥75;「贪婪」单独不够亮第三灯
+    fg_extreme = fg_score >= 75.0 or "extreme" in fg_rating
+    hedges = ammo.get("hedge_assets") or []
+    gld = next((a for a in hedges if (a.get("name") or a.get("ticker")) == "GLD"), None) or {}
+    gld_strong = (
+        gld.get("tape_flag") == "强势收高"
+        or ((gld.get("chg_pct") or 0) > 0 and (gld.get("close_loc") or 0) >= 0.8)
+    )
+    lights = {
+        "index_distribution": spx_dist,   # SP500/NASDAQ tape_flag=冲高回落
+        "fear_greed_extreme": fg_extreme, # 恐贪极值
+        "gld_bid": gld_strong,            # GLD 强势收高/买盘
+        "fear_greed_score": fg_score,
+        "fear_greed_rating": fg.get("rating"),
+        "gld_chg_pct": gld.get("chg_pct"),
+        "gld_tape": gld.get("tape_flag"),
+    }
+    n = sum(1 for k in ("index_distribution", "fear_greed_extreme", "gld_bid") if lights[k])
+    if n >= 3:
+        hint, basis = "高", "三灯齐亮:指数冲高回落+恐贪极值+GLD强势——拉高出货语境"
+    elif n == 2:
+        hint, basis = "中", "出货三灯亮2/3——中度拉高出货预警(引擎地板)"
+    elif spx_dist and (fg_score >= 55 or "greed" in fg_rating):
+        # 指数出货形 + 贪婪(非极)也抬到中,避免 DS 一句感觉压成低
+        hint, basis = "中", "指数冲高回落且恐贪偏贪——中度预警(引擎地板)"
+        lights["soft_greed_floor"] = True
+    else:
+        hint, basis = "低", "出货三灯未齐(引擎);低风险须写清 note 依据"
+    return {
+        "distribution_lights": lights,
+        "distribution_hint": hint,
+        "distribution_basis": basis,
+    }
+
+
+def _hedge_ammo(raw):
+    """v3.4 累加:从 raw.results 抽出对冲判断弹药(引擎实测),单独喂 DS 防漏读。"""
+    ammo = {"indices_tape": [], "hedge_assets": [], "fear_greed": [], "polymarket_event": []}
+    for r in (raw or {}).get("results") or []:
+        src, items = r.get("source"), r.get("items") or []
+        if not r.get("ok"):
+            continue
+        if src == "indices":
+            for it in items:
+                ammo["indices_tape"].append({
+                    "name": it.get("name"),
+                    "close": it.get("close") or it.get("Close"),
+                    "chg_pct": it.get("chg_pct"),
+                    "close_loc": it.get("close_loc"),
+                    "tape_flag": it.get("tape_flag"),
+                    "source": it.get("source"),
+                    "proxy": it.get("proxy"),
+                })
+        elif src == "hedge_assets":
+            ammo["hedge_assets"] = [
+                {"ticker": it.get("ticker") or it.get("name"), "name": it.get("name"),
+                 "close": it.get("close") or it.get("Close"),
+                 "chg_pct": it.get("chg_pct"), "close_loc": it.get("close_loc"),
+                 "tape_flag": it.get("tape_flag"), "source": it.get("source")}
+                for it in items
+            ]
+        elif src == "fear_greed":
+            ammo["fear_greed"] = items
+        elif src == "polymarket_odds":
+            ammo["polymarket_event"] = [it for it in items if it.get("bucket") == "event"][:20]
+    return ammo
+
+
+def _engine_hedge_legs(raw, limit=2):
+    """v3.4 累加:风险中/高且 DS 漏腿时用引擎实测补 1-2 条(禁编报价)。"""
+    ammo = _hedge_ammo(raw if isinstance(raw, dict) else {"results": raw or []})
+    picks = []
+    assets = list(ammo.get("hedge_assets") or [])
+    assets.sort(
+        key=lambda a: (
+            0 if (a.get("name") in ("GLD", "SLV") and (a.get("chg_pct") or 0) > 0) else 1,
+            -(abs(a.get("chg_pct") or 0)),
+        )
+    )
+    idx_dist = any(
+        (t.get("tape_flag") == "冲高回落" and t.get("name") in ("SP500", "NASDAQ"))
+        for t in (ammo.get("indices_tape") or [])
+    )
+    for a in assets:
+        if len(picks) >= limit:
+            break
+        name = a.get("name") or a.get("ticker")
+        if name not in ("GLD", "SLV", "OXY", "USO"):
+            continue
+        chg = a.get("chg_pct")
+        cl = a.get("close_loc")
+        flag = a.get("tape_flag") or ""
+        why = "引擎补位: %s chg_pct=%s close_loc=%s tape=%s" % (name, chg, cl, flag or "—")
+        if idx_dist:
+            why += "; 大盘 tape_flag=冲高回落"
+        picks.append({
+            "ticker": name,
+            "direction": "call",
+            "evidence": [{
+                "source": "hedge_assets",
+                "item": "%s chg_pct=%s close_loc=%s" % (name, chg, cl),
+                "why": why,
+            }],
+            "strategy": {
+                "type": "单腿 call",
+                "strike_logic": "ATM 上一档(禁编报价,以盘口为准)",
+                "expiry": "本周五",
+                "entry_condition": "高开不回补或盘中确认避险延续",
+                "stop": "权利金 -30%",
+                "abandon": "大盘收复日高且对冲腿转弱",
+                "t0_exit": "15:30 ET 前了结",
+            },
+        })
+    return picks
+
+
+def _ticker_from_edgar_company(company: str) -> str | None:
+    """'Foo Inc.  (SUNS)  (CIK …)' → SUNS;过滤过短/明显非 ticker。"""
+    if not company:
+        return None
+    found = re.findall(r"\(([A-Z]{1,5})\)", company)
+    for t in found:
+        if t in ("CIK", "LLC", "INC", "CORP", "THE", "AND", "FOR"):
+            continue
+        if 1 <= len(t) <= 5:
+            return t
+    return None
+
+
+_LIQUID_UNIVERSE = (
+    "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "AVGO", "TSLA", "AMD", "COST",
+    "NFLX", "ADBE", "PEP", "CSCO", "INTU", "QCOM", "TXN", "AMAT", "MU", "PANW",
+)
+
+
+def _engine_candidate_cards(raw, limit=3, exclude: set[str] | None = None) -> list:
+    """主菜不足时:先 EDGAR∩宇宙,再 indices/macro 锚定的流动性成分股补位。对冲标的不走此路径。"""
+    today = fetchers.trading_date().isoformat()
+    exclude = {str(x).upper() for x in (exclude or set())}
+    pool = []
+    for r in (raw or {}).get("results") or []:
+        if not r.get("ok") or r.get("source") != "edgar_ma_8k":
+            continue
+        for it in r.get("items") or []:
+            ticker = _ticker_from_edgar_company(str(it.get("company") or ""))
+            if not ticker or ticker in _BAN or ticker in exclude:
+                continue
+            if not in_equity_universe(ticker):
+                continue
+            filed = str(it.get("filed") or "")[:10]
+            pool.append((0 if filed == today else 1, filed, ticker, it))
+    pool.sort(key=lambda x: (x[0], x[1] or "9999", x[2]))
+    picks, seen = [], set()
+    for _, filed, ticker, it in pool:
+        if ticker in seen or len(picks) >= limit:
+            continue
+        seen.add(ticker)
+        why_item = "%s · %s · filed %s" % (it.get("company"), it.get("form"), it.get("filed"))
+        picks.append({
+            "ticker": ticker,
+            "direction": "call",
+            "rank_reason": "【引擎补位】层A可锚定 EDGAR 条目中优先补位(弱催化·待复核排名理由)",
+            "liquidity": "层A成分股·期权深度通常可扛 T+0(引擎补位·待盘口复核)",
+            "evidence": [{
+                "source": "edgar",
+                "item": why_item[:200],
+                "why": ("【引擎补位·弱催化】仅 8-K 提交事实、无正文摘要——"
+                        "开盘须确认才可执行,否则 abandon"),
+            }],
+            "key_levels": "无实盘报价·仅结构建议;开盘后15分钟站稳昨收上方再论(禁编具体价)",
+            "strategy": {
+                "type": "单腿 call",
+                "strike_logic": "ATM 上一档(禁编权利金,以盘口为准)",
+                "expiry": "0DTE",
+                "entry_condition": "开盘后15–30分钟确认事件定价未一次性出尽,且未跳空低开>1%",
+                "stop": "权利金 -30% 或跌破开盘15分钟低点",
+                "abandon": "开盘即利空定价/跳空低开>1%/无成交量确认——弱催化直接作废",
+                "earnings_note": "无",
+                "t0_exit": "15:30 ET 前了结,不隔夜",
+            },
+        })
+    if len(picks) >= limit:
+        return picks
+    # EDGAR 池内空/不足 → 用盘初 indices/宏观实读锚定流动性成分股(仍属采集证据,禁编报价)
+    ammo = _hedge_ammo(raw if isinstance(raw, dict) else {"results": []})
+    idx = {t.get("name"): t for t in (ammo.get("indices_tape") or []) if t.get("name")}
+    fg = (ammo.get("fear_greed") or [{}])[0] if ammo.get("fear_greed") else {}
+    spx = idx.get("SP500") or {}
+    ndx = idx.get("NASDAQ") or {}
+    vix = idx.get("VIX") or {}
+    tape_line = (
+        "SP500 chg=%s tape=%s close_loc=%s; NASDAQ chg=%s tape=%s; VIX chg=%s; fear_greed=%s(%s)"
+        % (spx.get("chg_pct"), spx.get("tape_flag") or "—", spx.get("close_loc"),
+           ndx.get("chg_pct"), ndx.get("tape_flag") or "—",
+           vix.get("chg_pct"), fg.get("score"), fg.get("rating"))
+    )
+    rank_reasons = [
+        "盘初流动性与期权深度最佳,便于 T+0 单腿 CALL 验证大盘承接",
+        "对 NASDAQ/成长因子弹性更高,作第2观察名观察 beta 放大",
+        "相对前两名弹性或板块暴露不同,作第3名分散观察",
+    ]
+    for ticker in _LIQUID_UNIVERSE:
+        if len(picks) >= limit:
+            break
+        if ticker in seen or ticker in exclude or ticker in _BAN:
+            continue
+        if not in_equity_universe(ticker):
+            continue
+        seen.add(ticker)
+        ri = len(picks)
+        picks.append({
+            "ticker": ticker,
+            "direction": "call",
+            "rank_reason": "【引擎补位·宏观锚定】" + rank_reasons[min(ri, 2)],
+            "liquidity": "层A超大盘·期权点差通常可扛 T+0(引擎宏观锚定补位)",
+            "evidence": [{
+                "source": "indices",
+                "item": tape_line[:220],
+                "why": ("层A EDGAR 不足——以盘初指数/恐贪实读锚定流动性成分股观察;"
+                        "非事件催化,开盘未确认则 abandon"),
+            }],
+            "key_levels": "跟随 SP500/NASDAQ 盘初高低点;无个股盘口则禁编具体价",
+            "strategy": {
+                "type": "单腿 call",
+                "strike_logic": "ATM 上一档(禁编权利金,以盘口为准)",
+                "expiry": "0DTE",
+                "entry_condition": "开盘后15–30分钟指数未破盘初低且标的放量跟涨",
+                "stop": "权利金 -30% 或跌破开盘15分钟低点",
+                "abandon": "指数失守盘初低/无量假突破——宏观锚定观察直接作废",
+                "earnings_note": "无",
+                "t0_exit": "15:30 ET 前了结,不隔夜",
+            },
+        })
+    return picks
+
+
+def _assign_ranks(cands: list) -> list:
+    """强制 rank=1..n;补 rank_reason / liquidity / earnings_note。"""
+    out = []
+    for i, c in enumerate(cands[:CANDIDATE_RANK_N]):
+        if not isinstance(c, dict):
+            continue
+        c = dict(c)
+        c["rank"] = i + 1
+        if not str(c.get("rank_reason") or "").strip():
+            c["rank_reason"] = (
+                "【待补排名理由】相对其余候选的优先依据未写清——按输出顺序暂列 #%d" % (i + 1)
+            )
+            print("[scout] rank_reason 缺失 → 占位 #%d %s" % (i + 1, c.get("ticker")))
+        if not str(c.get("liquidity") or "").strip():
+            tier = candidate_tier(c.get("ticker") or "", c) or "?"
+            c["liquidity"] = (
+                "【待补流动性】层%s——须说明市值/期权深度为何扛得住 T+0" % tier
+            )
+            print("[scout] liquidity 缺失 → 占位 #%d %s" % (i + 1, c.get("ticker")))
+        st = c.get("strategy") if isinstance(c.get("strategy"), dict) else {}
+        st = dict(st)
+        if not str(st.get("earnings_note") or "").strip():
+            st["earnings_note"] = "无"
+        c["strategy"] = st
+        out.append(c)
+    return out
+
+
+def _earnings_index(raw) -> dict:
+    """earnings_calendar → {SYMBOL: [items]}。跳过 PBR.A 类带点代码。"""
+    idx: dict = {}
+    for r in (raw or {}).get("results") or []:
+        if r.get("source") != "earnings_calendar" or not r.get("ok"):
+            continue
+        for it in r.get("items") or []:
+            if not isinstance(it, dict):
+                continue
+            sym = str(it.get("symbol") or "").strip().upper().replace(".", "-")
+            if not sym or not re.fullmatch(r"[A-Z]{1,5}", sym):
+                continue
+            idx.setdefault(sym, []).append(it)
+    return idx
+
+
+def _session_label(when: str) -> str:
+    w = (when or "").lower()
+    if "pre" in w or "bmo" in w:
+        return "BMO"
+    if "after" in w or "amc" in w or "post" in w:
+        return "AMC"
+    return when or "?"
+
+
+def _earnings_ammo(raw) -> dict:
+    """喂 DS 的财报日历摘要(按日分组,当日优先)。"""
+    today = fetchers.trading_date().isoformat()
+    by_day: dict = {}
+    for sym, items in _earnings_index(raw).items():
+        for it in items:
+            day = str(it.get("date") or "")[:10]
+            by_day.setdefault(day, []).append({
+                "symbol": sym, "when": _session_label(str(it.get("when") or "")),
+                "name": (it.get("name") or "")[:36], "marketCap": it.get("marketCap"),
+            })
+    for day in by_day:
+        by_day[day] = by_day[day][:12]
+    return {
+        "today": today,
+        "today_count": len(by_day.get(today) or []),
+        "by_day": dict(sorted(by_day.items())[:5]),
+        "handbook": "当日BMO→手册①IV crush后突破;当日AMC→手册②尾声须收盘前离场;未来2-8日→run-up call",
+    }
+
+
+def _engine_earnings_cards(raw, limit=2, exclude: set[str] | None = None) -> list:
+    """从 earnings_calendar 生成财报 call 卡(优先当日大中盘∈层A/C)。"""
+    today = fetchers.trading_date().isoformat()
+    exclude = {str(x).upper() for x in (exclude or set())}
+    idx = _earnings_index(raw)
+    # 排序:当日BMO → 当日AMC → 未来日;层A/C优先
+    scored = []
+    for sym, items in idx.items():
+        if sym in exclude or sym in _BAN or sym in _SHELL_TICKERS:
+            continue
+        it = items[0]
+        day = str(it.get("date") or "")[:10]
+        sess = _session_label(str(it.get("when") or ""))
+        tier = "A" if in_equity_universe(sym) else ("C" if sym in _ADR_MEGA else None)
+        if not tier:
+            # 日历大中盘但非成分——仍可层B(有 earnings 证据+流动性)
+            tier = "B"
+        day_delta = 0
+        try:
+            day_delta = (datetime.date.fromisoformat(day) - fetchers.trading_date()).days
+        except ValueError:
+            day_delta = 99
+        if day_delta < 0 or day_delta > 8:
+            continue
+        sess_rank = 0 if (day == today and sess == "BMO") else (1 if day == today else 2 + day_delta)
+        tier_rank = 0 if tier == "A" else (1 if tier == "C" else 2)
+        scored.append((sess_rank, tier_rank, sym, it, sess, day, tier, day_delta))
+    scored.sort(key=lambda x: (x[0], x[1], x[2]))
+    picks = []
+    for _, _, sym, it, sess, day, tier, day_delta in scored:
+        if len(picks) >= limit:
+            break
+        if day == today and sess == "BMO":
+            step = "手册①·财报当日BMO:禁追开盘第一根;IV crush落地+盘初区间突破确认后再进0DTE call"
+            rank_reason = "【财报call】当日BMO已出·日历实读——优先观察IV crush后方向确认"
+            entry = "开盘后15–30分钟区间突破且IV回落确认,禁止第一根市价追"
+            abandon = "开盘双向扫损/跳空无承接/IV未回落——手册①不作数"
+        elif day == today and sess == "AMC":
+            step = "手册②尾声·今日AMC:可做日内预期,铁律=收盘前清仓,绝不拿隔夜赌财报"
+            rank_reason = "【财报call】今日AMC·日历实读——run-up尾声,收盘前必须离场"
+            entry = "盘初回踩不破均价且未提前定价过度;权利金不过热"
+            abandon = "盘中已一次性出尽预期/收盘前无法平仓窗口——直接作废"
+        else:
+            step = "手册②·财报前run-up(距公布%d日):买预期+IV双升;公布前必须离场" % max(day_delta, 0)
+            rank_reason = "【财报call】未来%d日%s财报·日历实读——run-up抢跑call" % (day_delta, sess)
+            entry = "回调不破近5日低且IV未极端;公布前至少一个交易日离场"
+            abandon = "提前砸盘/IV已极端/临近公布日仍未建仓——放弃"
+        picks.append({
+            "ticker": sym,
+            "direction": "call",
+            "_tier": tier,
+            "rank_reason": rank_reason,
+            "liquidity": "财报日历市值排序前列(%s)——大中盘默认可扛T+0;盘口复核价差" % (it.get("marketCap") or "n/a"),
+            "evidence": [{
+                "source": "earnings",
+                "item": "%s %s %s · %s · mcap %s" % (
+                    sym, day, sess, (it.get("name") or "")[:40], it.get("marketCap") or "?",
+                ),
+                "why": step,
+            }],
+            "key_levels": "跟盘初高低点;禁编具体价;突破确认前不进",
+            "strategy": {
+                "type": "单腿 call",
+                "strike_logic": "ATM 或轻度虚值(禁编权利金,以盘口为准)",
+                "expiry": "0DTE" if day == today else "本周五或最近到期",
+                "entry_condition": entry,
+                "stop": "权利金 -30% 或跌破开盘15分钟低点",
+                "abandon": abandon,
+                "earnings_note": "%s %s · 日历实读; %s" % (day, sess, step[:40]),
+                "t0_exit": "15:30 ET 前了结,不隔夜" if day == today else "公布前至少一个交易日清仓,不赌事件",
+            },
+        })
+    return picks
+
+
+def earnings_movers(payload, today):
+    """确定性财报异动榜(v3.11/v3.13):昨日AMC+今日BMO 取 tape,按|chg|排序前8。
+    晚班同样计算(全日K线更准)——修风险雷达引用不存在读数。"""
+    yd = fetchers.prev_trading_day(datetime.date.fromisoformat(today)).isoformat()
+    syms = []
+    for src in payload.get("results") or payload.get("sources") or []:
+        if src.get("source") != "earnings_calendar":
+            continue
+        for it in src.get("items") or []:
+            sym = (it.get("symbol") or "").upper().replace(".", "-")
+            if not re.fullmatch(r"[A-Z]{1,5}", sym):
+                continue
+            d, when = (it.get("date") or ""), (it.get("when") or "").lower()
+            # Nasdaq 常给 time-not-supplied——昨日整队仍是今晨最重要催化剂(TEAM 案例)
+            if d == yd and ("after" in when or "not-supplied" in when or not when.strip()):
+                syms.append((sym, "昨日AMC" if "after" in when else "昨日财报"))
+            elif d == today and ("pre" in when or "bmo" in when):
+                syms.append((sym, "今日BMO"))
+    seen, ordered = set(), []
+    for sym, tag in syms:
+        if sym in seen:
+            continue
+        seen.add(sym)
+        ordered.append((sym, tag))
+        if len(ordered) >= 24:
+            break
+    snaps = fetchers.alpaca_snapshots([s for s, _ in ordered])
+    out = []
+    for sym, tag in ordered:
+        r = snaps.get(sym) or fetchers._stooq_daily(sym.lower() + ".us", sym, "earnings_movers")
+        if r and r.get("chg_pct") is not None:
+            out.append({
+                "symbol": sym, "when": tag, "chg_pct": r["chg_pct"],
+                "close_loc": r.get("close_loc"), "rsi14": r.get("rsi14"),
+            })
+    out.sort(key=lambda x: -abs(x["chg_pct"]))
+    return out[:8]
+
+
+def apply_liquidity_gate(data):
+    """爬虫#11:候选+对冲腿实测市值/量,盖 liquidity_check 章(不删卡)。"""
+    if not isinstance(data, dict):
+        return data
+    legs = list(data.get("candidates") or []) + list((data.get("hedge") or {}).get("legs") or [])
+    syms = sorted({
+        (l.get("ticker") or "").upper()
+        for l in legs if isinstance(l, dict)
+        and re.fullmatch(r"[A-Z]{1,5}", (l.get("ticker") or "").upper())
+    })
+    if not syms:
+        return data
+    res = fetchers.fetch_ticker_liquidity(syms)
+    m = {i["symbol"]: i for i in (res.get("items") or [])}
+    floor = fetchers.LIQ_MCAP_FLOOR_B
+    for l in legs:
+        if not isinstance(l, dict):
+            continue
+        i = m.get((l.get("ticker") or "").upper())
+        if not i:
+            l["liquidity_check"] = {
+                "mcap_b": None, "floor_b": floor,
+                "verdict": "无实测——DS 的 liquidity 按估计对待",
+            }
+        else:
+            ok = i["mcap_b"] is not None and i["mcap_b"] >= floor
+            l["liquidity_check"] = {
+                "mcap_b": i["mcap_b"], "avg_vol": i.get("avg_vol"), "floor_b": floor,
+                "verdict": ("过闸" if ok else ("未过闸(<$%.1fB)——谨慎,拍板在 Lyra" % floor)),
+            }
+    return data
+
+
+def ensure_movers_funnel(data, cross=None):
+    """|chg|≥8% movers 必须在 candidates 或 rejected——禁止无痕跳过。"""
+    if not isinstance(data, dict):
+        return data
+    movers = [
+        m for m in ((cross or {}).get("earnings_movers") or [])
+        if abs(m.get("chg_pct") or 0) >= 8
+    ]
+    if not movers:
+        return data
+    cands = data.get("candidates") if isinstance(data.get("candidates"), list) else []
+    rej = data.get("rejected") if isinstance(data.get("rejected"), list) else []
+    data["rejected"] = rej
+    have = {str(c.get("ticker") or "").upper() for c in cands if isinstance(c, dict)}
+    have |= {str(r.get("ticker") or "").upper() for r in rej if isinstance(r, dict)}
+    for m in movers:
+        sym = str(m.get("symbol") or "").upper()
+        if not sym or sym in have:
+            continue
+        rej.append({
+            "ticker": sym,
+            "reason": (
+                "【引擎】earnings_movers |chg|≥8%% (%+.1f%% %s)——DS 未评估,"
+                "响亮入淘汰漏斗待复核" % (m.get("chg_pct") or 0, m.get("when") or "")
+            ),
+        })
+        have.add(sym)
+        print("[scout] movers 漏斗补 rejected:", sym, m.get("chg_pct"), m.get("when"))
+    return data
+
+
+def ensure_earnings_notes(data, raw=None):
+    """v3.8:earnings_note 必须以爬虫#10 为准——日历未列则禁写「今日财报/推测」。"""
+    if not isinstance(data, dict):
+        return data
+    idx = _earnings_index(raw)
+    for c in data.get("candidates") or []:
+        if not isinstance(c, dict):
+            continue
+        t = str(c.get("ticker") or "").upper().replace(".", "-")
+        st = c.get("strategy") if isinstance(c.get("strategy"), dict) else {}
+        st = dict(st)
+        hits = idx.get(t) or []
+        if hits:
+            h = hits[0]
+            sess = _session_label(str(h.get("when") or ""))
+            st["earnings_note"] = (
+                "%s %s · 日历实读;按财报两步手册核对"
+                % (h.get("date") or "?", sess)
+            )
+        else:
+            note = str(st.get("earnings_note") or "").strip()
+            if note and note != "无" and any(
+                k in note for k in ("财报", "BMO", "AMC", "earnings", "推测")
+            ):
+                print("[scout] earnings_note 无日历锚 → 抹推测:", t, note[:50])
+                st["earnings_note"] = "无"
+            elif not note:
+                st["earnings_note"] = "无"
+        c["strategy"] = st
+    return data
+
+
+def _has_earnings_candidate(cands, raw) -> bool:
+    """仅认「今日」日历财报卡——昨日AMC异动股在日历里不得挡住今日AMC上菜单。"""
+    today = fetchers.trading_date().isoformat()
+    idx = _earnings_index(raw)
+    for c in cands:
+        t = str((c or {}).get("ticker") or "").upper().replace(".", "-")
+        for h in idx.get(t) or []:
+            if str(h.get("date") or "")[:10] == today:
+                return True
+        for e in (c or {}).get("evidence") or []:
+            if not isinstance(e, dict):
+                continue
+            if str(e.get("source") or "").lower() not in ("earnings", "earnings_calendar"):
+                continue
+            item = str(e.get("item") or "")
+            if today in item or "今日AMC" in item or "今日BMO" in item:
+                return True
+    return False
+
+
+def today_amc_watch(payload, today):
+    """今日 AMC 队列:不进 movers(movers=昨AMC/今BMO),但必须上菜单或进淘汰漏斗。"""
+    out = []
+    for src in (payload or {}).get("results") or (payload or {}).get("sources") or []:
+        if src.get("source") != "earnings_calendar":
+            continue
+        for it in src.get("items") or []:
+            sym = (it.get("symbol") or "").upper().replace(".", "-")
+            if not re.fullmatch(r"[A-Z]{1,5}", sym):
+                continue
+            if str(it.get("date") or "")[:10] != today:
+                continue
+            when = (it.get("when") or "").lower()
+            if "after" not in when and "amc" not in when and "post" not in when:
+                continue
+            out.append({
+                "symbol": sym, "when": "今日AMC",
+                "name": (it.get("name") or "")[:40],
+                "marketCap": it.get("marketCap"),
+            })
+    return out[:20]
+
+
+def _amc_menu_card(w: dict) -> dict:
+    """手册②·今日AMC 股票卡(进 candidates,不是 rejected)。"""
+    sym = str(w.get("symbol") or "").upper()
+    step = "手册②尾声·今日AMC:可做日内预期,铁律=收盘前清仓,绝不拿隔夜赌财报"
+    return {
+        "ticker": sym,
+        "direction": "call",
+        "_tier": candidate_tier(sym, None) or "B",
+        "rank_reason": "【财报call】今日AMC·日历实读——run-up尾声,收盘前必须离场",
+        "liquidity": "财报日历市值排序前列(%s)——大中盘默认可扛T+0;盘口复核价差"
+                     % (w.get("marketCap") or "n/a"),
+        "evidence": [{
+            "source": "earnings",
+            "item": "%s 今日AMC · %s · mcap %s" % (
+                sym, (w.get("name") or "")[:40], w.get("marketCap") or "?",
+            ),
+            "why": step,
+        }],
+        "key_levels": "跟盘初高低点;禁编具体价;突破确认前不进",
+        "strategy": {
+            "type": "单腿 call",
+            "strike_logic": "ATM 或轻度虚值(禁编权利金,以盘口为准)",
+            "expiry": "0DTE",
+            "entry_condition": "盘初回踩不破均价且未提前定价过度;权利金不过热",
+            "stop": "权利金 -30% 或跌破开盘15分钟低点",
+            "abandon": "盘中已一次性出尽预期/收盘前无法平仓窗口——直接作废",
+            "earnings_note": "今日 AMC · 日历实读; %s" % step[:40],
+            "t0_exit": "15:30 ET 前了结,不隔夜",
+        },
+    }
+
+
+def ensure_today_amc_on_menu(data, raw=None, amc_watch=None, *, slots=1):
+    """今日AMC至少 slots 张进主菜股票卡(优先 TEAM / 层A/C);其余进 rejected。
+    禁止原油/ETF 占满股票卡而 TEAM 只出现在淘汰附录。"""
+    if not isinstance(data, dict):
+        return data
+    today = fetchers.trading_date().isoformat()
+    amc = list(amc_watch or [])
+    if not amc and raw is not None:
+        amc = today_amc_watch(raw, today)
+    if not amc:
+        return data
+    cands = data.get("candidates") if isinstance(data.get("candidates"), list) else []
+    data["candidates"] = cands
+    rej = data.get("rejected") if isinstance(data.get("rejected"), list) else []
+    data["rejected"] = rej
+    amc_syms = {w["symbol"] for w in amc}
+    on_menu = {
+        str(c.get("ticker") or "").upper()
+        for c in cands if isinstance(c, dict)
+        and str(c.get("ticker") or "").upper() in amc_syms
+    }
+
+    def _prio(w):
+        sym = w["symbol"]
+        if sym == "TEAM":
+            return (0, sym)
+        if in_equity_universe(sym):
+            return (1, sym)
+        if sym in _ADR_MEGA:
+            return (2, sym)
+        return (3, sym)
+
+    ordered = sorted(amc, key=_prio)
+    need = max(0, int(slots) - len(on_menu))
+    injected = []
+    for w in ordered:
+        if need <= 0:
+            break
+        sym = w["symbol"]
+        if sym in on_menu or sym in _BAN or sym in _SHELL_TICKERS:
+            continue
+        card = _amc_menu_card(w)
+        # 引擎卡优先;日历卡池若已有同名则用引擎完整版
+        pool = _engine_earnings_cards(raw, limit=40, exclude=set()) if raw else []
+        for p in pool:
+            if p.get("ticker") == sym:
+                card = p
+                break
+        cands[:] = [card] + [c for c in cands if str(c.get("ticker") or "").upper() != sym]
+        on_menu.add(sym)
+        injected.append(sym)
+        need -= 1
+        print("[scout] 【今日AMC上菜单】", sym)
+    if injected:
+        tag = "【引擎·今日AMC上菜单】%s——手册②收盘前离场,待复核" % ",".join(injected)
+        note = str(data.get("conclusion") or "")
+        if "今日AMC上菜单" not in note:
+            data["conclusion"] = ((note + " " + tag).strip() if note else tag)
+    cands[:] = _assign_ranks(cands[:CANDIDATE_RANK_N])
+    data["candidates"] = cands
+    have = {
+        str(c.get("ticker") or "").upper() for c in cands if isinstance(c, dict)
+    }
+    have |= {str(r.get("ticker") or "").upper() for r in rej if isinstance(r, dict)}
+    for w in ordered:
+        sym = w["symbol"]
+        if sym in have:
+            continue
+        rej.append({
+            "ticker": sym,
+            "reason": (
+                "【引擎】今日AMC队列(%s)·日历实读——未进主菜席;"
+                "手册②收盘前须离场/不赌盘后"
+                % (w.get("marketCap") or w.get("name") or "")
+            ),
+        })
+        have.add(sym)
+        print("[scout] 今日AMC漏斗补 rejected:", sym)
+    return data
+
+
+def ensure_candidates(data, raw=None, *, min_n=None, amc_watch=None):
+    """主菜硬闸(v3.8):恰 3 张;三层宇宙 A/B/C;当日财报日历硬优先至少1张。
+    对冲腿不经此函数。"""
+    if not isinstance(data, dict):
+        return data
+    need = int(min_n if min_n is not None else CANDIDATE_RANK_N)
+    cands = data.get("candidates") if isinstance(data.get("candidates"), list) else []
+    data["candidates"] = cands
+    kept, dropped_ban, dropped = [], [], []
+    seen = set()
+    for c in cands:
+        if not isinstance(c, dict):
+            continue
+        t = str(c.get("ticker") or "").strip().upper().replace(".", "-")
+        if not t or t in seen:
+            continue
+        if t in _BAN:
+            dropped_ban.append(t)
+            continue
+        tier = candidate_tier(t, c)
+        if not tier:
+            dropped.append(t)
+            continue
+        c["ticker"] = t
+        c["_tier"] = tier
+        seen.add(t)
+        kept.append(c)
+    if dropped_ban:
+        print("[scout] 否决票剔除(不算主菜):", dropped_ban)
+    if dropped:
+        print("[scout] 三层闸剔除(壳/微盘无流动性说明/无事件证据;对冲腿勿进 candidates):", dropped)
+    cands[:] = kept
+
+    # 财报硬优先:日历有当日/近窗大中盘,但主菜零「今日」财报名 → 引擎插入至少1张
+    earn_pool = _engine_earnings_cards(raw, limit=2, exclude=set())
+    if earn_pool and not _has_earnings_candidate(cands, raw):
+        n_inject = 1 if len(earn_pool) == 1 else min(2, need)
+        inject = earn_pool[:n_inject]
+        print("[scout] 【财报硬优先】主菜缺 earnings call → 引擎插入",
+              [c["ticker"] for c in inject])
+        merged = inject + [c for c in cands if c.get("ticker") not in {x["ticker"] for x in inject}]
+        cands[:] = merged[:need] if len(merged) >= need else merged
+        tag = "【引擎·财报硬优先】日历有实读但DS未点名——已插入财报call卡,待复核"
+        note = str(data.get("conclusion") or "")
+        if "财报硬优先" not in note:
+            data["conclusion"] = ((note + " " + tag).strip() if note else tag)
+
+    if len(cands) < need:
+        filled = _engine_candidate_cards(
+            raw, limit=need - len(cands), exclude={c["ticker"] for c in cands}
+        )
+        if filled:
+            cands.extend(filled)
+            tag = ("【引擎补位】主菜不足 %d/%d——"
+                   "已用层A EDGAR/宏观补 %d 张弱证据卡,待复核"
+                   % (len(cands) - len(filled), need, len(filled)))
+            note = str(data.get("conclusion") or "")
+            if "引擎补位" not in note:
+                data["conclusion"] = ((note + " " + tag).strip() if note else tag)
+            print("[scout]", tag, [c["ticker"] for c in filled])
+    cands[:] = _assign_ranks(cands[:need])
+    data["candidates"] = cands
+    # 今日AMC必须占主菜席(TEAM案例)——在凑满3张之后仍可顶掉末位非今日AMC
+    data = ensure_today_amc_on_menu(data, raw, amc_watch, slots=1)
+    if len(data.get("candidates") or []) >= need:
+        data["no_candidate_reason"] = ""
+    else:
+        data["no_candidate_reason"] = (
+            "三层宇宙可锚定证据不足 %d/%d——已输出现有排名;"
+            "禁止无流动性微盘凑数;对冲腿另见 hedge" % (len(data.get("candidates") or []), need)
+        )
+        print("[scout] 【响亮】主菜排名不足:", len(data.get("candidates") or []), "/", need)
+    return data
+
+
+def _review_files():
+    b = os.path.join(OUT, "briefs")
+    if not os.path.isdir(b):
+        return []
+    return sorted(f for f in os.listdir(b) if f.endswith("-review.json"))
+
+
+def build_review(date):
+    """v3.8 确定性复盘(晚班):逐腿收盘涨跌/close_loc/RSI14/方向命中 → review.json。"""
+    mp = os.path.join(OUT, "briefs", "%s-morning.json" % date)
+    if not os.path.exists(mp):
+        return None
+    doc = json.load(open(mp, encoding="utf-8"))
+    ds = doc.get("ds") or doc
+    legs = list(ds.get("candidates") or []) + list((ds.get("hedge") or {}).get("legs") or [])
+    out = []
+    for l in legs:
+        t = (l.get("ticker") or "").upper()
+        if not re.fullmatch(r"[A-Z]{1,5}", t or ""):
+            print("[scout] 复盘跳过非常规代码:", t)
+            continue
+        d = fetchers._stooq_daily(t.lower() + ".us", t, "review")
+        if not d:
+            continue
+        direction = (l.get("direction") or "call").lower()
+        chg = d.get("chg_pct") or 0
+        out.append({
+            "ticker": t, "direction": direction, "chg_pct": d.get("chg_pct"),
+            "close_loc": d.get("close_loc"), "rsi14": d.get("rsi14"),
+            "hit": chg > 0 if direction == "call" else chg < 0,
+        })
+    if not out:
+        return None
+    nh = sum(1 for x in out if x["hit"])
+    rev = {
+        "date": date, "legs": out, "hit": "%d/%d" % (nh, len(out)),
+        "hit_rate": round(nh / len(out), 2),
+        "basis": "收盘对昨收判定方向命中;非盘中入场路径复现",
+    }
+    os.makedirs(os.path.join(OUT, "briefs"), exist_ok=True)
+    with open(os.path.join(OUT, "briefs", "%s-review.json" % date), "w", encoding="utf-8") as f:
+        json.dump(rev, f, ensure_ascii=False, indent=1)
+    print("[scout] 复盘落盘 %s hit=%s" % (date, rev["hit"]))
+    return rev
+
+
+def load_prev_review(today):
+    files = [f for f in _review_files() if f[:10] < today]
+    if not files:
+        return None
+    return json.load(open(os.path.join(OUT, "briefs", files[-1]), encoding="utf-8"))
+
+
+def rolling_summary(upto_incl):
+    files = [f for f in _review_files() if f[:10] <= upto_incl][-5:]
+    tot = hit = 0
+    for fn in files:
+        r = json.load(open(os.path.join(OUT, "briefs", fn), encoding="utf-8"))
+        for l in r.get("legs") or []:
+            tot += 1
+            hit += 1 if l.get("hit") else 0
+    return {"days": len(files), "legs": tot,
+            "hit_rate_pct": round(100 * hit / tot, 1) if tot else None} if files else None
+
+
+_RISK_RANK = {"低": 0, "中": 1, "高": 2}
+
+
+def ensure_hedge(data, raw=None, cross=None):
+    """v3.4 对冲铁律硬闸:hedge 永不空白;引擎风险地板;中/高缺腿 → 引擎补腿。"""
+    if not isinstance(data, dict):
+        return data
+    hd = data.get("hedge")
+    if not isinstance(hd, dict):
+        data["hedge"] = {
+            "distribution_risk": "低",
+            "regime": "无明显风险",
+            "basis": "DS 未输出 hedge 段——按铁律响亮补位为低,待复核",
+            "legs": [],
+            "note": "原稿缺 hedge;已禁止「什么都不写」",
+        }
+        print("[scout] hedge 段缺失 → 响亮补位")
+        hd = data["hedge"]
+    risk = str(hd.get("distribution_risk") or "").strip() or "低"
+    # 引擎地板:三灯读数抬升 DS 过低的 distribution_risk
+    cx = cross or {}
+    hint = str(cx.get("distribution_hint") or "").strip()
+    if hint in _RISK_RANK and _RISK_RANK.get(risk, 0) < _RISK_RANK[hint]:
+        print("[scout] distribution_risk 地板抬升:", risk, "→", hint,
+              "|", cx.get("distribution_basis"))
+        risk = hint
+        basis = str(hd.get("basis") or "")
+        floor_tag = "【引擎地板】" + str(cx.get("distribution_basis") or hint)
+        if floor_tag not in basis:
+            hd["basis"] = (basis + " " + floor_tag).strip() if basis else floor_tag
+        if hint in ("中", "高") and not str(hd.get("regime") or "").strip():
+            hd["regime"] = "轮动"
+        elif hint in ("中", "高") and hd.get("regime") in ("", "无明显风险", None):
+            hd["regime"] = "轮动"
+    hd["distribution_risk"] = risk
+    legs = hd.get("legs") if isinstance(hd.get("legs"), list) else []
+    hd["legs"] = legs
+    if not (hd.get("basis") or hd.get("note") or legs):
+        hd["note"] = "风险低暂不对冲(原稿空白已按铁律补 note)"
+        print("[scout] hedge 内容全空 → 补 note")
+    if risk in ("中", "高") and not legs:
+        filled = _engine_hedge_legs(raw, limit=2)
+        if filled:
+            hd["legs"] = filled
+            legs = filled
+            tag = ("【引擎补位】DS 风险%s 但漏腿——已用 hedge_assets/indices 实测补 %d 条,待复核"
+                   % (risk, len(filled)))
+            hd["note"] = ((hd.get("note") or "") + " " + tag).strip()
+            print("[scout]", tag)
+        else:
+            warn = "【响亮】风险%s 但 legs 为空且引擎无可用对冲读数——违反对冲铁律,待复核" % risk
+            hd["note"] = ((hd.get("note") or "") + " " + warn).strip()
+            print("[scout]", warn)
+    # 风险低也必须有 note(铁律:永不空白)
+    if risk == "低" and not str(hd.get("note") or "").strip():
+        hd["note"] = "风险低暂不对冲——须引用引擎三灯/VIX/恐贪说明(原稿缺 note 已补)"
+    # 入口卡 chip 依赖 regime——缺则按引擎/腿推断(不许长期 —)
+    if not str(hd.get("regime") or "").strip():
+        tickers = {str(x.get("ticker") or "").upper() for x in (hd.get("legs") or [])}
+        overseas = tickers & {"FXI", "KWEB", "EWZ", "EWJ", "EEM", "BABA", "YINN"}
+        if cx.get("liquidation_watch"):
+            hd["regime"] = "全线下跌"
+        elif overseas or (cx.get("rotation_divergence") or []):
+            hd["regime"] = "资金迁徙(海外)"
+        elif risk in ("中", "高"):
+            hd["regime"] = "轮动"
+        else:
+            hd["regime"] = "无明显风险"
+        print("[scout] hedge.regime 缺失 → 推断为", hd["regime"])
+    data["hedge"] = hd
+    return data
+
+
+def _extract_json(text):
+    """从 DS 回复抽 JSON(容忍围栏/前后杂讯);抽不出返回 None,上游响亮降级。"""
+    t = text or ""
+    i, j = t.find("{"), t.rfind("}")
+    if i >= 0 and j > i:
+        try:
+            return json.loads(t[i:j + 1])
+        except Exception:
+            return None
+    return None
+
+
+def _archive_prior_briefs(bdir: str, date: str, mode: str) -> None:
+    """重跑累加:先把现用三件套挪到时间戳副本,禁止整份抹掉。"""
+    stamp = datetime.datetime.now().strftime("%H%M%S")
+    for name in (
+        "%s-%s.md" % (date, mode),
+        "%s-%s.html" % (date, mode),
+        "%s-%s.json" % (date, mode),
+        "%s_morning_task.md" % date if mode == "morning" else "",
+        "%s-morning-final.md" % date if mode == "morning" else "",
+        "%s-morning-final-expanded.md" % date if mode == "morning" else "",
+        "%s-morning-final-glm.md" % date if mode == "morning" else "",
+        "%s-morning-ab-compare.md" % date if mode == "morning" else "",
+        "%s-evening-final.md" % date if mode == "evening" else "",
+        "%s-evening-final-expanded.md" % date if mode == "evening" else "",
+        "%s-evening-final-glm.md" % date if mode == "evening" else "",
+        "%s-evening-ab-compare.md" % date if mode == "evening" else "",
+    ):
+        if not name:
+            continue
+        src = os.path.join(bdir, name)
+        if not os.path.isfile(src):
+            continue
+        root, ext = os.path.splitext(name)
+        dest = os.path.join(bdir, "%s.%s%s" % (root, stamp, ext))
+        if os.path.exists(dest):
+            dest = os.path.join(bdir, "%s.%s.%s%s" % (root, stamp, os.getpid(), ext))
+        os.replace(src, dest)
+        print("[scout] 归档前次(累加,非替代):", dest)
+
+
+# ---- review/编译(本机接线:默认 EXPANDED,驳回 Aster;不改下方渲染器) ----
+def review_origin_label(*, primary_label: str = "", expanded_meta: dict | None = None) -> str:
+    """标明 review/编译真实来源(Lyra):
+    - Grid 本地 substrate 编译 → expanded-本地
+    - 借用 GLM 底座(glm52_cloud 等) → expanded-GLM
+    以编排回执 substrate 为准,不以「走了 expanded 路由」冒充。
+    """
+    meta = expanded_meta or {}
+    primary = (primary_label or "").strip().lower()
+    sub = str(meta.get("substrate") or "").strip().lower()
+    via = str(meta.get("via") or "")
+    if meta.get("error") or via == "fallback_ds":
+        return "ds(expanded失败)"
+    # EXPANDED 编排回执:只认 local vs GLM 两种署名
+    if sub.startswith("local"):
+        return "expanded-本地"
+    if "glm" in sub:
+        return "expanded-GLM"
+    if primary == "expanded" or via.startswith("b11:"):
+        # 走了 EXPANDED 但 substrate 未回传——响亮标未知,禁止默认真 GLM
+        return "expanded-未知"
+    if primary == "glm":
+        return "glm-直连"
+    return "ds"
+
+
+def build_review_prompt(
+    mode: str, ds_draft: str, data, indices_snap, *, reviewer: str
+) -> str:
+    idx = json.dumps(indices_snap, ensure_ascii=False) if indices_snap else "无"
+    if mode == "morning":
+        must = (
+            "上游已是 JSON 结构化晨会单(开盘后约15分钟·盘初 tape)。你输出更清晰的 Markdown 终稿给 Lyra:\n"
+            "- 保留个股卡结构;默认 T+0 单腿 CALL;禁多腿;禁编权利金/假 $ 报价\n"
+            "- 【指数实读】有 VIX close 时禁止写「VIX 缺失」,必须引用数字\n"
+            "- 盘初口径:当日 chg_pct/tape_flag/close_loc 是部分K线,正文须标「盘初」,"
+            "禁止写成全日收盘形态;挤兑硬判据留给晚报完整日线\n"
+            "- SPY/QQQ 仅大盘环境;主菜=个股\n"
+            "- synthetic GEX 不得洗成真盘\n"
+            "- 主菜=恰3张个股卡,保留 rank/rank_reason/liquidity/earnings_note\n"
+            "- 宇宙=三层(A主池/B事件+流动性/C ADR巨头);勿改回「仅成分池」\n"
+            "- 对冲腿(贵金属/原油/海外ETF)不进主菜壳禁令,勿删 hedge\n"
+            "- 禁止编造采集未出现的 ticker;禁编权利金\n"
+            "- hedge 段永不空白:保留 distribution_risk/basis/legs 或 note"
+        )
+    else:
+        must = (
+            "上游是晚报 Markdown 参谋作业。你输出更清晰的 Markdown 终稿给 Lyra:\n"
+            "- 严格保留 ## 分节:要闻催化 / 赔率变化 / 明日日历 / 明日方向 / 风险雷达 / 晨会复盘与明日调优\n"
+            "- 风险雷达永不空白:命中拉高出货/资金迁徙/全线下跌须点名工具;未命中明写未见\n"
+            "- 晨会复盘须引用确定性 review 逐腿命中;财报名单引用 earnings_calendar\n"
+            "- 禁止补编采集中没有的数字;禁止编造个股催化\n"
+            "- 分析作业≠下单指令;口径给 Lyra 拍板"
+        )
+    struct = json.dumps(data, ensure_ascii=False)[:9000] if data else ds_draft[:9000]
+    return f"""你是 Scout 流水线的 review / 编译官({reviewer}),不是首席决策官。
+Aster integrate 已驳回——你只做 review/编译,不扮演 Aster。
+{must}
+指数实读(权威):{idx}
+—— DeepSeek 原稿 ——
+{struct}
+输出只要最终 Markdown 正文。"""
+
+def build_glm_review_prompt(mode: str, ds_draft: str, data, indices_snap) -> str:
+    return build_review_prompt(
+        mode, ds_draft, data, indices_snap, reviewer="GLM 5.2 直连"
+    )
+
+def glm_review(mode: str, ds_draft: str, data, indices_snap) -> str:
+    prompt = build_glm_review_prompt(mode, ds_draft, data, indices_snap)
+    try:
+        r = _http(
+            GW + "/v1/chat/completions",
+            {
+                "model": GLM_MODEL,
+                "max_tokens": 2200,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+            },
+            timeout=300,
+        )
+        msg = (r.get("choices") or [{}])[0].get("message") or {}
+        text = (msg.get("content") or "").strip()
+        if not text:
+            raise RuntimeError(
+                "empty content finish=%s"
+                % (r.get("choices") or [{}])[0].get("finish_reason")
+            )
+        print("[scout] GLM review/编译完成 %d 字符 model=%s" % (len(text), GLM_MODEL))
+        return text
+    except Exception as e:
+        print("[scout] GLM review 失败(%s)→ 降级用 DS 原稿(响亮)" % e)
+        return ds_draft
+
+def expanded_review(mode: str, ds_draft: str, data, indices_snap) -> dict:
+    """b11 STUDIO·EXPANDED 同链:POST 8515 /gateway/task/expanded。
+
+    与 grid_workbench_b11 expandedOrchestrate 路径A 对齐:
+      {task, memory_node, assets, client_context} → workbench 代签 → 8501 编排
+    memory_node 用 scout-review,绝不写 workbench-b11。
+    """
+    if EXPANDED_MEMORY_NODE in {
+        "workbench-b11",
+        "cloud-glm52",
+        "cloud-kimi",
+        "field-particle",
+    }:
+        raise SystemExit(
+            "[scout] SCOUT_EXPANDED_MEMORY_NODE=%s 禁止(生产记忆 RED LINE)"
+            % EXPANDED_MEMORY_NODE
+        )
+    prompt = build_review_prompt(
+        mode,
+        ds_draft,
+        data,
+        indices_snap,
+        reviewer="Grid EXPANDED 大底座 · GLM-5.2 substrate · 驳回 Aster integrate",
+    )
+    # 长任务 → expanded classify 走 document/heavy → 云端 glm52 substrate
+    body = {
+        "task": prompt,
+        "memory_node": EXPANDED_MEMORY_NODE,
+        "assets": [],
+        "client_context": (
+            "scout_%s_review · expanded GLM-5.2 · skip_aster_integrate"
+            % (mode or "review")
+        ),
+        "cloud_enabled": True,
+        "skip_aster_integrate": SKIP_ASTER_INTEGRATE,
+    }
+    if not SKIP_ASTER_INTEGRATE:
+        raise SystemExit("[scout] SCOUT_SKIP_ASTER=0 已禁用——默认必须驳回 Aster(Lyra 拍板)")
+    url = WB + "/gateway/task/expanded"
+    try:
+        r = _http(url, body, timeout=420)
+        final = (r.get("final") or r.get("content") or "").strip()
+        if not final:
+            raise RuntimeError("expanded empty final keys=%s" % list(r.keys())[:12])
+        prov = r.get("provenance") or {}
+        meta = {
+            "substrate": r.get("substrate"),
+            "orchestrator": (prov.get("orchestrator") or r.get("orchestrator")),
+            "envelope": prov.get("envelope_summary"),
+            "memory_node": EXPANDED_MEMORY_NODE,
+            "via": "b11:/gateway/task/expanded",
+        }
+        meta["review_origin"] = review_origin_label(
+            primary_label="expanded", expanded_meta=meta
+        )
+        print(
+            "[scout] EXPANDED review/编译完成 %d 字符 origin=%s substrate=%s orch=%s"
+            % (len(final), meta.get("review_origin"), meta.get("substrate"),
+               meta.get("orchestrator"))
+        )
+        return {"text": final, "meta": meta}
+    except Exception as e:
+        print("[scout] EXPANDED review 失败(%s)→ 降级用 DS 原稿(响亮)" % e)
+        meta = {
+            "error": str(e),
+            "via": "fallback_ds",
+            "memory_node": EXPANDED_MEMORY_NODE,
+        }
+        meta["review_origin"] = review_origin_label(
+            primary_label="ds", expanded_meta=meta
+        )
+        return {"text": ds_draft, "meta": meta}
+
+
+# ---- 渲染层:结构照抄 brief sample hedge;色板=白底灰框(禁全黑偷懒) ----
+# 权威 UI 文件(已从 CloudDocs 样例结构生成,仅替换色板 token):
+_UI_BRIEF = _HERE / "briefs" / "_ui_brief_sample_hedge_paper.html"
+
+# ---- 渲染层(DESIGN_SPEC 同源 token;卡片式简报,不再糊墙) ----
+BRIEF_CSS = """
+:root{--bg:#07090e;--panel:rgba(17,22,34,.78);--line:rgba(126,148,190,.13);
+--ink:#e3eaf6;--dim:#8a97ad;--faint:#5a6478;--gold:#e2b95f;--grn:#57d19e;
+--red:#ef5f79;--f1:12px;--f2:14px;--f3:16px;--f6:28px;
+--sans:-apple-system,"PingFang SC","Hiragino Sans GB",sans-serif;
+--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;padding:0 0 60px;background:var(--bg);color:var(--ink);font:var(--f2)/1.65 var(--sans)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+header{position:sticky;top:0;display:flex;gap:12px;align-items:center;height:48px;padding:0 14px;
+background:rgba(7,9,14,.92);border-bottom:1px solid var(--line);z-index:5}
+header h1{font:700 var(--f3) var(--mono);letter-spacing:.18em;margin:0}
+header .sub{color:var(--faint);font-size:var(--f1)}
+.banner{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:12px;padding:9px 14px;
+border:1px solid var(--line);border-radius:10px;background:rgba(11,15,24,.72);font-size:var(--f1)}
+.banner b{font-size:var(--f2)}
+section{margin:0 12px 14px}
+h2{font-size:var(--f1);color:var(--dim);letter-spacing:.12em;margin:18px 2px 8px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+.badge{display:inline-block;border:1px solid var(--grn);color:var(--grn);border-radius:999px;
+padding:2px 12px;font:var(--f1) var(--mono)}
+.tick{display:flex;gap:12px;align-items:center;margin:8px 0 2px}
+.tick .sym{font:700 var(--f6) var(--mono);letter-spacing:.04em}
+.pill{border:1.5px solid var(--grn);color:var(--grn);border-radius:999px;padding:2px 14px;font:600 var(--f2) var(--mono)}
+.pill.put{border-color:var(--red);color:var(--red)}
+.kv{display:flex;justify-content:space-between;gap:14px;padding:4px 0;font-size:var(--f2);
+border-bottom:1px dashed rgba(126,148,190,.08)}
+.kv:last-child{border:0}
+.kv b{color:var(--dim);font-weight:500;white-space:nowrap}
+.kv span{text-align:right}
+details{margin-top:10px}
+summary{cursor:pointer;color:#7ea6e8;font-size:var(--f2)}
+.ev{border-left:2px solid var(--line);padding:6px 0 6px 12px;margin:8px 0}
+.ev .src{color:var(--gold);font:var(--f1) var(--mono)}
+.ev .why{color:var(--dim);font-size:var(--f1)}
+.empty{border:1px dashed var(--line);border-radius:12px;padding:20px;color:var(--dim);text-align:center;line-height:1.8}
+table{width:100%;border-collapse:collapse;font-size:var(--f1)}
+th{color:var(--dim);text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);font-weight:500}
+td{padding:5px 8px;border-bottom:1px solid rgba(126,148,190,.06);vertical-align:top}
+p{margin:7px 0}
+footer{margin:24px 12px 0;color:var(--faint);font-size:10px;font-family:var(--mono)}
+"""
+
+
+def _esc(x):
+    return html.escape(str(x if x is not None else ""))
+
+
+def _cand_card(c, tag, badge="SCOUT"):
+    d = (c.get("direction") or "call").lower()
+    st = c.get("strategy") or {}
+    evs = "".join(
+        '<div class="ev"><div class="src">%s</div><div>%s</div><div class="why">%s</div></div>'
+        % (_esc(e.get("source", "")), _esc(e.get("item", "")), _esc(e.get("why", "")))
+        for e in (c.get("evidence") or [])) or '<div class="ev">(无证据条目——按铁律本卡不应存在)</div>'
+    rank = c.get("rank")
+    rank_badge = ("#%s" % rank) if rank not in (None, "") else ""
+    rows = []
+    if rank_badge:
+        rows.append(("排名", rank_badge))
+    if c.get("rank_reason"):
+        rows.append(("排名理由", c.get("rank_reason")))
+    lc = c.get("liquidity_check") or {}
+    lc_txt = (
+        ("$%.2fB · %s" % (lc["mcap_b"], lc.get("verdict", "")))
+        if lc.get("mcap_b") is not None else lc.get("verdict")
+    )
+    # 字段序:形态→…→作废→财报→流动性(DS)→流动性实测(引擎)→T+0→关键位
+    rows += [("形态", st.get("type")), ("行权价逻辑", st.get("strike_logic")),
+             ("到期", st.get("expiry")), ("入场条件", st.get("entry_condition")),
+             ("止损", st.get("stop")), ("作废条件", st.get("abandon")),
+             ("财报", st.get("earnings_note")), ("流动性(DS)", c.get("liquidity")),
+             ("流动性实测(引擎)", lc_txt),
+             ("T+0 平仓", st.get("t0_exit")), ("关键位", c.get("key_levels"))]
+    kvs = "".join('<div class="kv"><b>%s</b><span>%s</span></div>' % (l, _esc(v)) for l, v in rows if v)
+    badge_txt = ("%s %s" % (badge, rank_badge)).strip() if rank_badge and badge == "SCOUT" else badge
+    return ('<div class="card"><span class="badge">%s %s</span>'
+            '<div class="tick"><span class="sym">%s</span><span class="pill%s">%s</span></div>%s'
+            '<details><summary>展开解析(证据出处)</summary>%s</details></div>'
+            % (_esc(badge_txt), _esc(tag), _esc((c.get("ticker") or "?").upper()),
+               " put" if d == "put" else "", d.upper(), kvs, evs))
+
+
+def _render_structured(date, data):
+    m = data.get("macro") or {}
+    cands = data.get("candidates") or []
+    gaps = data.get("data_gaps") or []
+    hd = data.get("hedge") or {}
+    risk = hd.get("distribution_risk") or "—"
+    rc = {"高": "var(--red)", "中": "var(--gold)", "低": "var(--grn)"}.get(risk, "var(--dim)")
+    out = ['<div class="banner"><b>晨会交易任务单</b><span class="num">%s</span>'
+           '<span>SP500 <b>%s</b></span><span>NASDAQ <b>%s</b></span><span>置信 <b>%s</b></span>'
+           '<span>出货风险 <b style="color:%s">%s</b></span></div>'
+           % (_esc(date), _esc(m.get("sp500_bias", "—")), _esc(m.get("nasdaq_bias", "—")),
+              _esc(m.get("confidence", "—")), rc, _esc(risk))]
+    out.append('<section><h2>一 · 大盘方向</h2><div class="card">'
+               '<div class="kv"><b>逻辑</b><span>%s</span></div>'
+               '<div class="kv"><b>关键位</b><span>%s</span></div></div></section>'
+               % (_esc(m.get("logic", "")), _esc(m.get("key_levels", ""))))
+    if cands:
+        # 按 rank 排序展示
+        ordered = sorted(
+            [c for c in cands if isinstance(c, dict)],
+            key=lambda x: int(x.get("rank") or 99),
+        )
+        out.append('<section><h2>二 · 池内候选(排名1–3 · 三层宇宙 · T+0 单腿 CALL)</h2>%s</section>'
+                   % "".join(_cand_card(c, date) for c in ordered))
+    else:
+        out.append('<section><h2>二 · 池内候选</h2><div class="empty">今日池内无事件驱动候选'
+                   '<br><span style="font-size:var(--f1)">%s</span></div></section>'
+                   % _esc(data.get("no_candidate_reason", "")))
+    rej = data.get("rejected") or []
+    if rej:
+        out.append('<section><h2>二·附 · 已淘汰候选(漏斗可审)</h2><div class="card">%s</div></section>'
+                   % "".join('<div class="kv"><b>%s</b><span>%s</span></div>'
+                             % (_esc(r.get("ticker")), _esc(r.get("reason"))) for r in rej))
+    hcard = ('<div class="card"><div class="kv"><b>风险评估</b>'
+             '<span style="color:%s">%s</span></div>'
+             '<div class="kv"><b>依据</b><span>%s</span></div>%s</div>'
+             % (rc, _esc(risk), _esc(hd.get("basis", "")),
+                ('<div class="kv"><b>说明</b><span>%s</span></div>' % _esc(hd.get("note"))) if hd.get("note") else ""))
+    out.append('<section><h2>三 · 对冲(拉高出货/黑天鹅雷达)</h2>%s%s</section>'
+               % (hcard, "".join(_cand_card(l, date, "HEDGE") for l in (hd.get("legs") or []))))
+    if gaps:
+        out.append('<section><h2>四 · 数据缺失与矛盾标注</h2><div class="card"><table>'
+                   '<tr><th>项目</th><th>状态</th><th>处理</th></tr>%s</table></div></section>'
+                   % "".join("<tr><td>%s</td><td>%s</td><td>%s</td></tr>"
+                             % (_esc(g.get("item")), _esc(g.get("status")), _esc(g.get("handling")))
+                             for g in gaps))
+    if data.get("conclusion"):
+        out.append('<section><h2>五 · 结论</h2><div class="card">%s</div></section>'
+                   % _esc(data.get("conclusion")))
+    return "".join(out)
+
+
+def _md_fallback(text):
+    """markdown → 分节 HTML(晚报常规路径;晨会 JSON 解析失败的降级路径)。不再糊墙。"""
+    out, buf = [], []
+    def flush():
+        if buf:
+            out.append("<p>%s</p>" % "<br>".join(buf)); buf.clear()
+    for ln in (text or "").splitlines():
+        t = ln.strip()
+        if not t or t == "---":
+            flush(); continue
+        if t.startswith("#"):
+            flush(); out.append("<h2>%s</h2>" % _esc(t.lstrip("#").strip()))
+        else:
+            e = _esc(t)
+            e = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", e)
+            buf.append(e)
+    flush()
+    return '<section><div class="card">%s</div></section>' % "".join(out)
+
+
+def _engine_card(cross):
+    if not cross:
+        return ""
+    liq = cross.get("liquidation_watch")
+    downs = ",".join(cross.get("risk_assets_down") or []) or "无"
+    flags = ";".join("%s=%s" % kv for kv in (cross.get("tape_flags") or {}).items()) or "无"
+    leaders = " · ".join("%s %+.2f%%" % (x.get("name"), x.get("chg_pct"))
+                          for x in (cross.get("rotation_leaders") or []) if x.get("chg_pct") is not None) or "无读数"
+    div = ",".join(cross.get("rotation_divergence") or []) or "无"
+    lights = cross.get("distribution_lights") or {}
+    def _yn(v):
+        return "亮" if v else "灭"
+    triad = ("指数冲高回落=%s · 恐贪极值=%s(score=%s) · GLD强势=%s"
+             % (_yn(lights.get("index_distribution")),
+                _yn(lights.get("fear_greed_extreme")),
+                lights.get("fear_greed_score"),
+                _yn(lights.get("gld_bid"))))
+    rows = [("风险资产收跌", "%s / %s(%s)" % (cross.get("down_count"), cross.get("of"), downs)),
+            ("VIX 日变动", "%s%%" % cross.get("vix_chg_pct")),
+            ("TLT / UUP", "%s%% / %s%%" % (cross.get("tlt_chg_pct"), cross.get("uup_chg_pct"))),
+            ("资金迁徙(海外领涨)", leaders),
+            ("迁徙分化(美股跌而其涨)", div),
+            ("tape flags", flags),
+            ("出货三灯", triad),
+            ("出货风险地板", "%s — %s" % (cross.get("distribution_hint") or "—",
+                                   cross.get("distribution_basis") or "")),
+            ("全线下跌判据", "触发——商品 call 不是对冲,海外也不是避风港" if liq else "未触发")]
+    movers = " · ".join(
+        "%s %+.1f%%(%s)" % (x["symbol"], x["chg_pct"], x["when"])
+        for x in (cross.get("earnings_movers") or [])[:4]
+    ) or None
+    if movers:
+        rows.append(("财报异动(昨AMC/今BMO)", movers))
+    sl = cross.get("sector_leaders") or []
+    sg = cross.get("sector_laggards") or []
+    if sl:
+        rows.append(("板块热力", "领:%s · 尾:%s" % (
+            " ".join("%s %+.1f%%" % (x["name"], x["chg_pct"]) for x in sl),
+            " ".join("%s %+.1f%%" % (x["name"], x["chg_pct"]) for x in sg),
+        )))
+    pr = cross.get("prev_review") or cross.get("today_review")
+    if pr:
+        rows.append(("战绩 %s" % (pr.get("date") or ""),
+                     "%s 命中 · 滚动%s日 %s%%" % (
+                         pr.get("hit", "—"),
+                         (pr.get("rolling") or {}).get("days", "—"),
+                         (pr.get("rolling") or {}).get("hit_rate_pct", "—"))))
+    kvs = "".join('<div class="kv"><b>%s</b><span>%s</span></div>' % (l, _esc(v)) for l, v in rows)
+    return '<section><h2>〇 · 跨资产引擎读数(确定性)</h2><div class="card">%s</div></section>' % kvs
+
+
+def render_brief_html(date, mode, data, raw_text, cross=None, *, review_origin=""):
+    warn = ""
+    if (cross or {}).get("liquidation_watch"):
+        warn = ('<div class="banner" style="border-color:var(--red)">'
+                '<b style="color:var(--red)">全线下跌 WATCH</b>'
+                '<span>风险资产 %s/%s 收跌 · VIX %s%% · 商品 call 不是对冲</span></div>'
+                % (_esc(cross.get("down_count")), _esc(cross.get("of")), _esc(cross.get("vix_chg_pct"))))
+    origin = (review_origin or "").strip()
+    origin_chip = (
+        '<div class="banner"><b>review/编译</b><span class="num">%s</span></div>'
+        % _esc(origin)
+    ) if origin else ""
+    body = (warn + origin_chip + _engine_card(cross)
+            + (_render_structured(date, data) if data else _md_fallback(raw_text)))
+    asof = (
+        ("盘初 ET %s(当日行为部分K线)" % fetchers.et_now_hm())
+        if mode == "morning" else "收盘(全日K线)"
+    )
+    sub = ("%s · %s · 数据as-of %s · review %s · 参谋作业,Lyra 拍板"
+           % (mode, date, asof, origin) if origin else
+           "%s · %s · 数据as-of %s · 参谋作业,Lyra 拍板" % (mode, date, asof))
+    return ('<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"/>'
+            '<meta name="viewport" content="width=device-width,initial-scale=1"/>'
+            '<title>SCOUT · %s · %s</title><style>%s</style></head><body>'
+            '<header><h1>SCOUT</h1><span class="sub">%s</span></header>'
+            '%s<footer>build scout v3.13 · earnings_movers · 流动性闸 · 真实ET · 无证据不点名 · '
+            '合成 GEX 不作数 · 渲染:_render_structured/_cand_card/_md_fallback</footer></body></html>'
+            % (mode.upper(), _esc(date), BRIEF_CSS, _esc(sub), body))
+
+
+def render_console(title, body, date, mode, data=None, cross=None, *, review=None):
+    """DS 作业进 console 落档;HTML/JSON 用 DS structured(+_engine)。review 只写 md/终稿,不改渲染器。"""
+    review = review or {}
+    ds_id = glm_id = None
+    payload_doc = ("[DS 决策官作业·JSON(EXPANDED review/编译直接吃)] "
+                   + json.dumps(data, ensure_ascii=False)[:8000]) if data else \
+                  ("[DS 决策官作业,存档] " + body[:8000])
+    try:
+        if not CONSOLE_KEY:
+            raise RuntimeError("CONSOLE_KEY 未配置")
+        t = _http(CONSOLE + "/api/tasks",
+                  {"workspace": "trade", "title": title + " · DS原稿", "owner_node": "deepseek_lane",
+                   "risk_level": "read", "io_contract": payload_doc},
+                  {"X-Console-Key": CONSOLE_KEY})
+        ds_id = t.get("task_id")
+        print("[scout] console 任务 DS#%s(work_log 入魂器)" % ds_id)
+        exp = (review.get("expanded_final") or "").strip()
+        if exp:
+            t2 = _http(
+                CONSOLE + "/api/tasks",
+                {
+                    "workspace": "trade",
+                    "title": title + " · EXPANDED终稿",
+                    "owner_node": "glm_lane",
+                    "risk_level": "read",
+                    "deps": [ds_id] if ds_id else [],
+                    "io_contract": "[EXPANDED review 编译终稿,存档] mode=%s\n%s" % (mode, exp[:8000]),
+                },
+                {"X-Console-Key": CONSOLE_KEY},
+            )
+            glm_id = t2.get("task_id")
+            print("[scout] console EXPANDED#%s" % glm_id)
+    except Exception as e:
+        print("[scout] console 不可达(%s)→ 本地落盘" % e)
+    bdir = os.path.join(OUT, "briefs")
+    os.makedirs(bdir, exist_ok=True)
+    _archive_prior_briefs(bdir, date, mode)
+    bp = os.path.join(bdir, "%s-%s.md" % (date, mode))
+    sections = ["# %s\n" % title]
+    exp = (review.get("expanded_final") or "").strip()
+    glm = (review.get("glm_final") or "").strip()
+    meta = review.get("expanded_meta") or {}
+    origin = review_origin_label(
+        primary_label=str(review.get("primary_label") or ""),
+        expanded_meta=meta,
+    )
+    if meta and not meta.get("review_origin"):
+        meta["review_origin"] = origin
+    if exp:
+        sections.append(
+            "## EXPANDED 终稿(b11 STUDIO·EXPANDED 大底座 review/编译)\n\n"
+            "review_origin=%s · via=%s · substrate=%s · orch=%s · memory_node=%s\n\n%s\n"
+            % (origin, meta.get("via"), meta.get("substrate"), meta.get("orchestrator"),
+               meta.get("memory_node"), exp)
+        )
+    if glm:
+        sections.append("## GLM 直连终稿(8501 /v1 · %s)\n\n%s\n" % (GLM_MODEL, glm))
+    if not exp and not glm:
+        sections.append("## DS 原稿(无 review)\n\n%s\n" % body.strip())
+    else:
+        sections.append("---\n\n## DS 原稿(对照 · 勿当终稿)\n\n%s\n" % body.strip())
+    text = "\n".join(sections)
+    with open(bp, "w", encoding="utf-8") as f:
+        f.write(text)
+    primary = exp or glm or body
+    # 晨会 HTML 吃 DS structured;晚报无 JSON → HTML 展示 EXPANDED 终稿(有则优先)
+    html_src = body if data is not None else primary
+    hp = os.path.join(bdir, "%s-%s.html" % (date, mode))
+    with open(hp, "w", encoding="utf-8") as f:
+        f.write(render_brief_html(
+            date, mode, data, html_src, cross, review_origin=origin
+        ))
+    review_blob = {
+        "primary": review.get("primary_label") or "ds",
+        "review_origin": origin,
+        "glm_chars": len(glm),
+        "expanded_chars": len(exp),
+        "expanded_meta": meta,
+        "skip_aster_integrate": SKIP_ASTER_INTEGRATE,
+    }
+    if data is not None:
+        with open(os.path.join(bdir, "%s-%s.json" % (date, mode)), "w", encoding="utf-8") as f:
+            json.dump(
+                {"_engine": cross, "ds": data, "review": review_blob},
+                f,
+                ensure_ascii=False,
+                indent=1,
+            )
+    elif mode == "evening" and cross is not None:
+        # 晚报无 DS JSON,仍落 _engine+review 供入口/审计(累加)
+        with open(os.path.join(bdir, "%s-%s.json" % (date, mode)), "w", encoding="utf-8") as f:
+            json.dump({"_engine": cross, "review": review_blob}, f, ensure_ascii=False, indent=1)
+    if mode == "morning":
+        with open(os.path.join(bdir, "%s_morning_task.md" % date), "w", encoding="utf-8") as f:
+            f.write(text)
+        with open(os.path.join(bdir, "%s-morning-final.md" % date), "w", encoding="utf-8") as f:
+            f.write("# %s\n\n%s\n" % (title, primary.strip()))
+        if exp:
+            with open(os.path.join(bdir, "%s-morning-final-expanded.md" % date),
+                      "w", encoding="utf-8") as f:
+                f.write("# %s · EXPANDED\n\n%s\n" % (title, exp))
+        if glm and exp:
+            with open(os.path.join(bdir, "%s-morning-ab-compare.md" % date),
+                      "w", encoding="utf-8") as f:
+                f.write(
+                    "# Scout review A/B · %s\n\n"
+                    "## A · GLM 直连 (`%s`)\n\n%s\n\n---\n\n"
+                    "## B · b11 STUDIO·EXPANDED\n\n%s\n"
+                    % (date, GLM_MODEL, glm, exp)
+                )
+    elif mode == "evening":
+        with open(os.path.join(bdir, "%s-evening-final.md" % date), "w", encoding="utf-8") as f:
+            f.write("# %s\n\n%s\n" % (title, primary.strip()))
+        if exp:
+            with open(os.path.join(bdir, "%s-evening-final-expanded.md" % date),
+                      "w", encoding="utf-8") as f:
+                f.write("# %s · EXPANDED\n\n%s\n" % (title, exp))
+        if glm and exp:
+            with open(os.path.join(bdir, "%s-evening-ab-compare.md" % date),
+                      "w", encoding="utf-8") as f:
+                f.write(
+                    "# Scout evening review A/B · %s\n\n"
+                    "## A · GLM 直连 (`%s`)\n\n%s\n\n---\n\n"
+                    "## B · b11 STUDIO·EXPANDED\n\n%s\n"
+                    % (date, GLM_MODEL, glm, exp)
+                )
+    print("[scout] 落盘:", bp, "+", hp, "(+json)" if data is not None or mode == "evening" else "")
+    return bp, ds_id, glm_id
+
+
+def emit_aether_scout(
+    date, mode, title, primary, bp, *,
+    ds_draft="", expanded_final="", expanded_meta=None, glm_final="",
+    primary_label="expanded", ds_task_id=None, glm_task_id=None,
+    data=None, cross=None, ws=None,
+):
+    payload = {
+        "date": date,
+        "mode": mode,
+        "title": title,
+        "body": primary,
+        "glm_final": glm_final or "",
+        "expanded_final": expanded_final or "",
+        "expanded_meta": expanded_meta or {},
+        "primary_review": primary_label,
+        "review_origin": review_origin_label(
+            primary_label=primary_label, expanded_meta=expanded_meta or {}
+        ),
+        "ds_draft": ds_draft or "",
+        "via": "scout_v3_6_ds_expanded",
+        "brief_path": bp,
+        "workstation": ws,
+        "console_ds_task": ds_task_id,
+        "console_glm_task": glm_task_id,
+        "pipeline": "DS JSON→EXPANDED(skip Aster)·v3.6 cross-asset",
+        "review_default": DEFAULT_REVIEW,
+        "skip_aster_integrate": SKIP_ASTER_INTEGRATE,
+        "structured": {"_engine": cross, "ds": data} if data is not None else None,
+        "liquidation_watch": bool((cross or {}).get("liquidation_watch")),
+        "regime": ((data or {}).get("hedge") or {}).get("regime") if isinstance(data, dict) else None,
+    }
+    data_b = json.dumps(
+        {"source": "aether", "kind": "aether_scout_brief", "payload": payload},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        GW + "/store/events",
+        data=data_b,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            print("[scout] aether OPTION emit",
+                  "ok" if 200 <= resp.status < 300 else resp.status)
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        print("[scout] aether emit 失败(响亮):", e)
+
+
+def _raw_ok_count(path: str) -> int:
+    try:
+        j = json.load(open(path, encoding="utf-8"))
+        return sum(1 for r in (j.get("results") or []) if r.get("ok"))
+    except Exception:
+        return -1
+
+
+def _pick_day_raw(raw_dir: str, day: str) -> str | None:
+    """同日 raw 选优:ok 源数优先,同 ok 再比 mtime。0-ok 的 SSL 失败稿不得盖掉好稿。"""
+    cands = []
+    canonical = os.path.join(raw_dir, day + ".json")
+    if os.path.isfile(canonical):
+        cands.append(canonical)
+    try:
+        for name in os.listdir(raw_dir):
+            if name.startswith(day + "-") and name.endswith(".json"):
+                cands.append(os.path.join(raw_dir, name))
+    except OSError:
+        pass
+    if not cands:
+        return None
+    cands.sort(key=lambda p: (_raw_ok_count(p), os.path.getmtime(p)), reverse=True)
+    return cands[0]
+
+
+def _pick_today_raw(raw_dir: str, today: str) -> str | None:
+    """今日 raw 选优(与昨日对比共用 _pick_day_raw)。"""
+    return _pick_day_raw(raw_dir, today)
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Scout Agent v3.6(DS→默认 EXPANDED,驳回Aster)")
+    ap.add_argument("--mode", choices=["evening", "morning"], default="evening")
+    ap.add_argument("--dry-run", action="store_true")
+    # 默认复用 raw(本机 SSL/墙常让全采 0/9);要重采显式 --fetch
+    ap.add_argument("--fetch", action="store_true",
+                    help="强制重采网络源;默认复用今日 raw(或 SCOUT_SKIP_FETCH=1)")
+    ap.add_argument("--skip-fetch", action="store_true",
+                    help="兼容旧开关(=默认行为:有 raw 则复用)")
+    ap.add_argument("--review", choices=["glm", "expanded", "both", "none"],
+                    default=os.getenv("SCOUT_REVIEW", DEFAULT_REVIEW),
+                    help="review:expanded=默认B(驳回Aster);both=GLM A/B(仅显式要求时)")
+    a = ap.parse_args()
+    today = fetchers.trading_date().isoformat()
+    raw_dir = os.path.join(OUT, "raw")
+    os.makedirs(raw_dir, exist_ok=True)
+    raw_path = os.path.join(raw_dir, today + ".json")
+    env_skip = os.getenv("SCOUT_SKIP_FETCH", "1").strip().lower() not in ("0", "false", "no")
+    force_fetch = bool(a.fetch) or os.getenv("SCOUT_FORCE_FETCH", "").strip() in ("1", "true", "yes")
+    prefer_raw = (a.skip_fetch or env_skip) and not force_fetch
+    picked = _pick_today_raw(raw_dir, today)
+
+    if prefer_raw and picked:
+        payload = json.load(open(picked, encoding="utf-8"))
+        raw_path = picked
+        print("[scout] 默认复用 raw(%d ok) → %s  (重采请加 --fetch)"
+              % (_raw_ok_count(picked), picked))
+    else:
+        results = fetchers.run_all()
+        payload = {"results": results, "skips": fetchers.SKIPS}
+        stamp_path = raw_path
+        if os.path.exists(raw_path):
+            stamp_path = raw_path.replace(
+                ".json", "-" + datetime.datetime.now().strftime("%H%M") + ".json"
+            )
+        json.dump(payload, open(stamp_path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        # 成功采写回 canonical;全失败则不盖掉好 raw
+        ok = sum(1 for r in payload["results"] if r["ok"])
+        print("[scout] %s 源成功 %d/%d → %s" % (today, ok, len(payload["results"]), stamp_path))
+        for b in payload["results"]:
+            if not b["ok"]:
+                print("   ✗", b["source"], b.get("error", ""))
+        if ok > 0:
+            if stamp_path != raw_path:
+                json.dump(payload, open(raw_path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+                print("[scout] 写回 canonical raw →", raw_path)
+        else:
+            fallback = _pick_today_raw(raw_dir, today)
+            # stamp 刚写入的 0-ok 也在目录里——挑 ok>0 的
+            best = None
+            best_n = 0
+            for name in os.listdir(raw_dir):
+                if not (name.startswith(today) and name.endswith(".json")):
+                    continue
+                p = os.path.join(raw_dir, name)
+                if p == stamp_path:
+                    continue
+                n = _raw_ok_count(p)
+                if n > best_n:
+                    best_n, best = n, p
+            if best and best_n > 0:
+                payload = json.load(open(best, encoding="utf-8"))
+                raw_path = best
+                print("[scout] 全采失败 → 回退复用 raw(%d ok) %s" % (best_n, best))
+            else:
+                print("[scout] 全采失败且无可用 raw——继续空弹药(响亮)")
+
+    if a.dry_run:
+        print("[scout] --dry-run 止步于采集"); return
+
+    yday = yesterday_raw(today)
+    cross = cross_asset_summary(payload)
+    print("[scout] 引擎 cross down=%s/%s liq=%s tape=%s"
+          % (cross.get("down_count"), cross.get("of"), cross.get("liquidation_watch"),
+             list((cross.get("tape_flags") or {}).keys())[:6]))
+    if cross.get("liquidation_watch"):
+        print("[scout] 引擎:全线下跌判据触发", cross)
+    def _pick_primary(review, body, glm_final, expanded_final, expanded_meta):
+        exp_ok = bool(expanded_final) and not str(
+            expanded_meta.get("substrate") or ""
+        ).endswith("_error") and not expanded_final.startswith("cloud 不可用")
+        if review == "expanded" and exp_ok:
+            return expanded_final, "expanded"
+        if review == "glm":
+            return glm_final or body, "glm"
+        if review == "both" and exp_ok:
+            return expanded_final, "expanded"
+        if review == "both":
+            return glm_final or body, "glm"
+        return body, "ds"
+
+    def _run_review(mode, body, data):
+        """晨会/晚报共用:默认 EXPANDED,驳回 Aster;显式 both 才 GLM A/B。"""
+        glm_final = ""
+        expanded_final = ""
+        expanded_meta = {}
+        if a.review in ("glm", "both"):
+            glm_final = glm_review(mode, body, data, {})
+        if a.review in ("expanded", "both"):
+            if not SKIP_ASTER_INTEGRATE:
+                raise SystemExit("[scout] SCOUT_SKIP_ASTER=0 已禁用——evening/morning 均须驳回 Aster")
+            er = expanded_review(mode, body, data, {})
+            expanded_final = er.get("text") or ""
+            expanded_meta = er.get("meta") or {}
+            print("[scout] EXPANDED meta(%s)" % mode, expanded_meta)
+        primary, primary_label = _pick_primary(
+            a.review, body, glm_final, expanded_final, expanded_meta
+        )
+        return glm_final, expanded_final, expanded_meta, primary, primary_label
+
+    if a.mode == "morning":
+        cross["earnings_movers"] = earnings_movers(payload, today)
+        cross["today_amc_watch"] = today_amc_watch(payload, today)
+        print("[scout] earnings_movers", [
+            "%s%+.1f%%(%s)" % (m["symbol"], m["chg_pct"], m["when"])
+            for m in (cross["earnings_movers"] or [])[:4]
+        ])
+        print("[scout] today_amc_watch", [x["symbol"] for x in cross["today_amc_watch"][:8]])
+        prev = load_prev_review(today)
+        if prev:
+            prev["rolling"] = rolling_summary(prev["date"])
+            cross["prev_review"] = {
+                "date": prev["date"], "hit": prev["hit"], "rolling": prev["rolling"],
+            }
+            print("[scout] 昨日战绩", prev["date"], prev.get("hit"),
+                  "滚动", (prev.get("rolling") or {}).get("hit_rate_pct"))
+        ws = fetch_workstation_state()
+        egaps = engine_data_gaps(payload, yday, ws)
+        print("[scout] 引擎 data_gaps:", json.dumps(egaps, ensure_ascii=False)[:400])
+        title = "Scout 晨会交易任务单 · " + today
+        print("[scout] DS 决策官(JSON) · ET %s · review=%s…"
+              % (fetchers.et_now_hm(), a.review))
+        body = ds_call(build_trading_prompt(
+            payload, ws, yday, cross, engine_gaps=egaps, prev=prev,
+        ))
+        data = _extract_json(body)
+        if data is None:
+            print("[scout] DS 未按 JSON schema 输出——晨会单降级为文本分节渲染(响亮记录)")
+            data = {"data_gaps": egaps, "candidates": [], "hedge": {},
+                    "conclusion": "DS JSON 解析失败——仅引擎缺口入档"}
+            data = ensure_hedge(data, payload, cross)
+            data = ensure_candidates(
+                data, payload, min_n=CANDIDATE_RANK_N,
+                amc_watch=cross.get("today_amc_watch"),
+            )
+            data = ensure_earnings_notes(data, payload)
+            data = ensure_movers_funnel(data, cross)
+            data = apply_liquidity_gate(data)
+            data = ensure_data_gaps(data, egaps)
+        else:
+            data = ensure_hedge(data, payload, cross)
+            data = ensure_candidates(
+                data, payload, min_n=CANDIDATE_RANK_N,
+                amc_watch=cross.get("today_amc_watch"),
+            )
+            data = ensure_earnings_notes(data, payload)
+            data = ensure_movers_funnel(data, cross)
+            data = apply_liquidity_gate(data)
+            data = ensure_data_gaps(data, egaps)
+        glm_final, expanded_final, expanded_meta, primary, primary_label = _run_review(
+            "morning", body, data
+        )
+        bp, ds_id, glm_id = render_console(
+            title, body, today, "morning", data, cross,
+            review={
+                "expanded_final": expanded_final if a.review in ("expanded", "both") else "",
+                "glm_final": glm_final if a.review in ("glm", "both") else "",
+                "expanded_meta": expanded_meta,
+                "primary_label": primary_label,
+            },
+        )
+        emit_aether_scout(
+            today, "morning", title, primary, bp,
+            ds_draft=body, expanded_final=expanded_final, expanded_meta=expanded_meta,
+            glm_final=glm_final if a.review in ("glm", "both") else "",
+            primary_label=primary_label, ds_task_id=ds_id, glm_task_id=glm_id,
+            data=data, cross=cross, ws=ws,
+        )
+    else:
+        title = "Scout 晚报复盘 · " + today
+        print("[scout] DS 决策官(晚报 Markdown) · review=%s · skip_aster=%s…"
+              % (a.review, SKIP_ASTER_INTEGRATE))
+        # v3.13:晚班也算异动榜(全日K线)——风险雷达可点名
+        cross["earnings_movers"] = earnings_movers(payload, today)
+        print("[scout] earnings_movers(晚)", [
+            "%s%+.1f%%(%s)" % (m["symbol"], m["chg_pct"], m["when"])
+            for m in (cross["earnings_movers"] or [])[:4]
+        ])
+        rev = build_review(today)
+        if rev:
+            rev["rolling"] = rolling_summary(today)
+            cross["today_review"] = {
+                "date": today, "hit": rev["hit"], "rolling": rev["rolling"],
+            }
+        body = ds_call(build_evening_prompt(payload, yday, cross, rev))
+        glm_final, expanded_final, expanded_meta, primary, primary_label = _run_review(
+            "evening", body, None
+        )
+        bp, ds_id, glm_id = render_console(
+            title, body, today, "evening", None, cross,
+            review={
+                "expanded_final": expanded_final if a.review in ("expanded", "both") else "",
+                "glm_final": glm_final if a.review in ("glm", "both") else "",
+                "expanded_meta": expanded_meta,
+                "primary_label": primary_label,
+            },
+        )
+        emit_aether_scout(
+            today, "evening", title, primary, bp,
+            ds_draft=body, expanded_final=expanded_final, expanded_meta=expanded_meta,
+            glm_final=glm_final if a.review in ("glm", "both") else "",
+            primary_label=primary_label, ds_task_id=ds_id, glm_task_id=glm_id,
+            data=None, cross=cross, ws=None,
+        )
+
+
+if __name__ == "__main__":
+    main()

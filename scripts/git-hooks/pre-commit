@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Grid P0 infrastructure + chain integrity — hard block (not agent memory).
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
+echo "[pre-commit] local_gateway.py ABSOLUTE RED LINE…"
+python3 "$ROOT/scripts/grid_local_gateway_redline.py"
+
+echo "[pre-commit] Grid infrastructure lock…"
+python3 "$ROOT/scripts/grid_infrastructure_guard.py" check-staged
+
+echo "[pre-commit] Grid chain integrity static gate…"
+bash "$ROOT/scripts/verify_grid_chain_integrity.sh"
+
+echo "[pre-commit] OK"

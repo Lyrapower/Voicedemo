@@ -14,6 +14,8 @@ alwaysApply: true
 | UI | 8501 store node |
 |----|-----------------|
 | GRID-GLM 5.2 | **`cloud-glm52`** |
+| GLM 5.3 Flash | **`cloud-glm53`** |
+| GLM 5.3 | **`cloud-glm53-full`** |
 | Kimi K2.5 | **`cloud-kimi`** |
 
 推理在 **8501 `POST /task/cloud_chat`**（多轮 messages）；**持久化**在 **8501 `/store/conversations/cloud-*`**。b11 Cloud **禁止**走 8515 `/cloud/chat` 或 `/cloud/memory`。
@@ -35,16 +37,16 @@ alwaysApply: true
 
 ## 绝对禁止
 
-1. **`POST .../cloud-glm52/messages`** 写 `u0/a0` 循环、ping、验收探测
+1. **`POST .../cloud-glm52/messages`** 写 `u0/a0` 循环、ping、验收探测（同禁 **cloud-glm53** / **cloud-glm53-full** / **cloud-kimi**）
 2. **8515 `POST /cloud/memory/glm52/turn`** 写生产 GLM 记忆（8515 层已废弃给用户路径）
 3. 验收后留给用户删
 
 ## 合法验收
 
 - **读**：`GET /store/conversations/cloud-glm52`
-- **写验收**：临时 sqlite 或 **`smoke_node`**（若存在）；**不得** cloud-glm52 / cloud-kimi
+- **写验收**：临时 sqlite 或 **`smoke_node`**（若存在）；**不得** cloud-glm52 / cloud-glm53 / cloud-glm53-full / cloud-kimi
 
 ## 自检
 
-- [ ] 未 POST 验收消息到 **cloud-glm52** / **cloud-kimi**
+- [ ] 未 POST 验收消息到 **cloud-glm52** / **cloud-glm53** / **cloud-glm53-full** / **cloud-kimi**
 - [ ] 未宣称 Cloud 记忆在 8515（用户路径是 8501 store）

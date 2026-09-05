@@ -1,10 +1,21 @@
 {
  "kind": "rwa_onchain_evidence",
- "version": 2,
- "chain_id": 1,
- "block": 25843114,
- "rpc2_status": "ok",
- "read_ts": "2026-08-27T00:57:31.993022+00:00",
+ "version": 4,
+ "chains": {
+  "1": {
+   "block": 25843571,
+   "rpc2_status": "ok",
+   "policy": "required",
+   "confidence": "dual"
+  },
+  "56": {
+   "block": 118303733,
+   "rpc2_status": "absent",
+   "policy": "optional",
+   "confidence": "single"
+  }
+ },
+ "read_ts": "2026-08-27T02:28:55.017552+00:00",
  "cards": [
   {
    "symbol": "USYC",
@@ -16,20 +27,27 @@
    "decimals": 6,
    "total_supply": 54848167999336,
    "supply_units": 54848168.0,
-   "supply_usd_at_par": 54848168.0,
+   "supply_usd_at_par": null,
+   "nav_usd": null,
+   "supply_usd_at_nav": null,
    "nav_oracle": {
     "address": "0x74f2199AEb743f68f05943e5715A33EaF2b61f53",
-    "error": "rpc error: {'code': 3, 'message': 'execution reverted', 'data': '0x'}"
+    "error": "rpc error: {'code': 3, 'message': 'execution reverted'}"
    },
    "error": null,
-   "block": "0x18a55aa",
+   "block": "0x18a5773",
    "second_source": {
     "status": "ok",
     "total_supply": 54848167999336,
     "match": true
    },
-   "read_ts": "2026-08-27T00:57:29.689925+00:00",
-   "onchain_symbol": "USYC"
+   "confidence": "dual",
+   "read_ts": "2026-08-27T02:28:53.118702+00:00",
+   "onchain_symbol": "USYC",
+   "nav_source": {
+    "status": "absent",
+    "reason": "该 symbol 无可用 NAV oracle 读数,usd 不装数(不回退 par)"
+   }
   },
   {
    "symbol": "BUIDL",
@@ -42,15 +60,22 @@
    "total_supply": null,
    "supply_units": null,
    "supply_usd_at_par": null,
+   "nav_usd": null,
+   "supply_usd_at_nav": null,
    "nav_oracle": null,
    "error": "注册表无地址(待官方文档核实),拒读不猜",
-   "block": "0x18a55aa",
+   "block": "0x18a5773",
    "second_source": {
     "status": "pending",
     "total_supply": null,
     "match": null
    },
-   "read_ts": "2026-08-27T00:57:31.992984+00:00"
+   "confidence": null,
+   "read_ts": "2026-08-27T02:28:53.816594+00:00",
+   "nav_source": {
+    "status": "absent",
+    "reason": "该 symbol 无可用 NAV oracle 读数,usd 不装数(不回退 par)"
+   }
   },
   {
    "symbol": "OUSG",
@@ -63,15 +88,22 @@
    "total_supply": null,
    "supply_units": null,
    "supply_usd_at_par": null,
+   "nav_usd": null,
+   "supply_usd_at_nav": null,
    "nav_oracle": null,
    "error": "注册表无地址(待官方文档核实),拒读不猜",
-   "block": "0x18a55aa",
+   "block": "0x18a5773",
    "second_source": {
     "status": "pending",
     "total_supply": null,
     "match": null
    },
-   "read_ts": "2026-08-27T00:57:31.993009+00:00"
+   "confidence": null,
+   "read_ts": "2026-08-27T02:28:53.816609+00:00",
+   "nav_source": {
+    "status": "absent",
+    "reason": "该 symbol 无可用 NAV oracle 读数,usd 不装数(不回退 par)"
+   }
   },
   {
    "symbol": "USDY",
@@ -84,17 +116,138 @@
    "total_supply": null,
    "supply_units": null,
    "supply_usd_at_par": null,
+   "nav_usd": null,
+   "supply_usd_at_nav": null,
    "nav_oracle": null,
    "error": "注册表无地址(待官方文档核实),拒读不猜",
-   "block": "0x18a55aa",
+   "block": "0x18a5773",
    "second_source": {
     "status": "pending",
     "total_supply": null,
     "match": null
    },
-   "read_ts": "2026-08-27T00:57:31.993016+00:00"
+   "confidence": null,
+   "read_ts": "2026-08-27T02:28:53.816612+00:00",
+   "nav_source": {
+    "status": "absent",
+    "reason": "该 symbol 无可用 NAV oracle 读数,usd 不装数(不回退 par)"
+   }
+  },
+  {
+   "symbol": "USYC",
+   "issuer": "Circle (Hashnote)",
+   "chain": "bsc",
+   "address": "0x8D0fA28f221eB5735BC71d3a0Da67EE5bC821311",
+   "source_url": "https://developers.circle.com/tokenized/usyc/smart-contracts",
+   "verified_symbol": true,
+   "decimals": 6,
+   "total_supply": 2483937727947452,
+   "supply_units": 2483937727.95,
+   "supply_usd_at_par": null,
+   "nav_usd": null,
+   "supply_usd_at_nav": null,
+   "nav_oracle": null,
+   "error": null,
+   "block": "0x70d2bf5",
+   "second_source": {
+    "status": "absent",
+    "total_supply": null,
+    "match": null
+   },
+   "confidence": "single",
+   "read_ts": "2026-08-27T02:28:54.323839+00:00",
+   "onchain_symbol": "USYC",
+   "note": "单源读数(该链无第二源,policy=optional):可看,不算已核实",
+   "nav_source": {
+    "status": "absent",
+    "reason": "该 symbol 无可用 NAV oracle 读数,usd 不装数(不回退 par)"
+   }
   }
  ],
  "skipped": [],
- "n_verified": 1
+ "summary": {
+  "USYC": {
+   "chains": [
+    {
+     "chain": "ethereum",
+     "confidence": "dual",
+     "supply_units": 54848168.0,
+     "usd_at_nav": null,
+     "nav_source": "absent"
+    },
+    {
+     "chain": "bsc",
+     "confidence": "single",
+     "supply_units": 2483937727.95,
+     "usd_at_nav": null,
+     "nav_source": "absent"
+    }
+   ],
+   "supply_units_dual": 54848168.0,
+   "usd_at_nav_dual": 0.0,
+   "supply_units_single": 2483937727.95,
+   "usd_at_nav_single": 0.0,
+   "nav": null,
+   "reference": {
+    "source": "rwa.xyz 2026-08-17",
+    "total_usd_all_chains": 2995274835,
+    "nav_usd": 1.13,
+    "holders": 36
+   }
+  },
+  "BUIDL": {
+   "chains": [
+    {
+     "chain": "ethereum",
+     "confidence": null,
+     "supply_units": null,
+     "usd_at_nav": null,
+     "nav_source": "absent"
+    }
+   ],
+   "supply_units_dual": 0.0,
+   "usd_at_nav_dual": 0.0,
+   "supply_units_single": 0.0,
+   "usd_at_nav_single": 0.0,
+   "nav": null,
+   "reference": null
+  },
+  "OUSG": {
+   "chains": [
+    {
+     "chain": "ethereum",
+     "confidence": null,
+     "supply_units": null,
+     "usd_at_nav": null,
+     "nav_source": "absent"
+    }
+   ],
+   "supply_units_dual": 0.0,
+   "usd_at_nav_dual": 0.0,
+   "supply_units_single": 0.0,
+   "usd_at_nav_single": 0.0,
+   "nav": null,
+   "reference": null
+  },
+  "USDY": {
+   "chains": [
+    {
+     "chain": "ethereum",
+     "confidence": null,
+     "supply_units": null,
+     "usd_at_nav": null,
+     "nav_source": "absent"
+    }
+   ],
+   "supply_units_dual": 0.0,
+   "usd_at_nav_dual": 0.0,
+   "supply_units_single": 0.0,
+   "usd_at_nav_single": 0.0,
+   "nav": null,
+   "reference": null
+  }
+ },
+ "n_dual": 1,
+ "n_single": 1,
+ "n_unverified": 0
 }

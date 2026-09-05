@@ -4,7 +4,7 @@ substrates:
   compile_layer:
     base_model: "qwen/qwen3.5-9b"
     lm_studio_model: "qwen/qwen3.5-9b"
-    ollama_tag: "compile_layer"
+    ollama_tag: "qwen2.5-coder:7b"  # RETIRED 2026-08-22 — coder_routing_enabled=false in gateway_config.json; tag dormant, model uninstalled from Ollama
     purpose: "compile"
     temperature: 0.3
     top_p: 0.9

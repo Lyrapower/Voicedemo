@@ -38,6 +38,8 @@ from aether_shared import (  # noqa: E402
     IB_PORT,
     LIVE_PORT,
     LIVE_TRADING_ENABLED,
+    CAPITAL_DAEMON_COMMANDS,
+    capital_execution_allowed,
     MAX_DELTA,
     MAX_IV_ABS,
     MAX_POSITIONS,
@@ -617,6 +619,11 @@ class TradingEngine:
         return None
 
     def check_and_buy(self) -> None:
+        ok, reason = capital_execution_allowed(broker_connected=self.broker.connected)
+        if not ok:
+            self.add_log(f"R4 v2 DENY check_and_buy: {reason}")
+            logger.warning("R4 v2 DENY check_and_buy: %s", reason)
+            return
         real_positions = self.get_positions()
         if len(real_positions) >= MAX_POSITIONS:
             return
@@ -773,6 +780,11 @@ class TradingEngine:
             send_notification(fail_msg, priority="critical")
 
     def emergency_close_all(self) -> None:
+        ok, reason = capital_execution_allowed(broker_connected=self.broker.connected)
+        if not ok:
+            self.add_log(f"R4 v2 DENY emergency_close: {reason}")
+            logger.warning("R4 v2 DENY emergency_close: %s", reason)
+            return
         for pos in self.get_positions():
             self._close_position(pos, 0, 0, "EMERGENCY_CLOSE")
         self.add_log("Emergency close-all executed")
@@ -862,8 +874,18 @@ class AetherDaemon:
 
     def _handle_commands(self) -> None:
         for cmd in poll_commands():
-            cmd_name = cmd.get("cmd", "")
+            cmd_name = str(cmd.get("cmd") or "")
+            # Forged metadata in the .cmd JSON is not authority.
+            _ignored = {k: cmd.get(k) for k in ("authorized", "role", "source", "benchmark") if k in cmd}
+            if _ignored:
+                logger.info("R4 v2 ignore client metadata on cmd=%s keys=%s", cmd_name, sorted(_ignored))
             self.engine.add_log(f"Manual command received: {cmd_name}")
+            if cmd_name in CAPITAL_DAEMON_COMMANDS:
+                ok, reason = capital_execution_allowed(broker_connected=self.broker.connected)
+                if not ok:
+                    logger.warning("R4 v2 DENY capital cmd=%s reason=%s", cmd_name, reason)
+                    self.engine.add_log(f"R4 v2 DENY {cmd_name}: {reason}")
+                    continue
             if cmd_name == "scan":
                 self.engine.refresh_candidates(notify=True)
             elif cmd_name == "buy":
@@ -873,12 +895,36 @@ class AetherDaemon:
             elif cmd_name == "emergency_close":
                 self.engine.emergency_close_all()
 
+    def _ib_trading_required(self) -> bool:
+        """Dryrun scan-only + live trading off → skip IB connect loop (Alpaca scans on nexus-dryrun)."""
+        return LIVE_TRADING_ENABLED or IB_SCAN_SOURCE != "dryrun"
+
     def run(self) -> None:
-        logger.info("Aether Nexus Daemon starting (IB_SCAN_SOURCE=%s)", IB_SCAN_SOURCE)
+        logger.info(
+            "Aether Nexus Daemon starting (IB_SCAN_SOURCE=%s live=%s ib_required=%s)",
+            IB_SCAN_SOURCE,
+            LIVE_TRADING_ENABLED,
+            self._ib_trading_required(),
+        )
         notified_connected = False
+        ib_skip_logged = False
 
         while self.running:
             try:
+                if not self._ib_trading_required():
+                    if not ib_skip_logged:
+                        logger.info(
+                            "IB connect skipped — dryrun scan path uses Alpaca via nexus-dryrun "
+                            "(set LIVE_TRADING_ENABLED=true to enable IB trading leg)"
+                        )
+                        ib_skip_logged = True
+                    self._write_status(connected=False)
+                    self._handle_commands()
+                    self.engine.load_candidates_from_dryrun()
+                    self._write_state()
+                    time.sleep(10)
+                    continue
+
                 if not self.broker.connected:
                     self._write_status(connected=False)
                     if self.broker.connect():
@@ -927,4 +973,7 @@ class AetherDaemon:
 
 
 if __name__ == "__main__":
+    from aether_shared import attach_nexus_live_log, logger as nexus_logger  # noqa: E402
+
+    attach_nexus_live_log(nexus_logger)
     AetherDaemon().run()

@@ -1,0 +1,93 @@
+# platform.db 写入红线 v3（2026-09-02）
+
+> 变更记录 v2→v3（并入戌两份回执 PLATFORM_DB_CORRUPTION / PLATFORM_DB_VERSION_ALIGNMENT）：①根因定案——12:19 第二次损坏时 host 已无写入者，只剩容器 worker 写 + api 读，5 分钟即坏，证明问题不止"锁不互见"，是 bind mount 跨 VM 边界的锁与页缓存都不一致（host `rm`+重建文件时 api 容器仍持旧 inode），任何 host 触碰都是风险；②删掉 v1/v2 的"host backfill 前停 worker"路径——不再有 host 写路径可走；③驳回"跨版本 sqlite 3.46 vs 3.50 page 冲突"归因与"容器内编译 3.50.4"方案；④(b) iCloud 路径排除（db 在 ~/Projects，非同步目录）；⑤锁互见处决案降为附录，不再是判定前提。
+> v1→v2：DELETE journal 抗强杀、跨界禁 WAL、规则 1/4 冲突、lsof 点名文件、热日志检查。
+
+> 事故：9/2 09:19 host backfill 被强杀 → 10:38 worker 写 → malformed（#3）；12:17 host 重建+backfill 完成 integrity ok → 12:19 启 worker → 12:24 再 malformed（#4）；12:37 起改为容器内建库+容器内 backfill+worker 写，integrity ok，bars 在写。历史 #1 7/28、#2 8/16。
+
+## 根因（定案）
+
+- db 是 sqlite，bind mount `alpha-platform/data -> /data`，api-1 + worker-1 两容器与宿主机进程共享同一文件。
+- **强杀不是根因**：DELETE journal 抗强杀，热日志由下一个连接回滚。
+- **跨版本不是根因**：sqlite 文件格式自 3.0 起前后兼容，3.46 与 3.50 读写同一文件无 page 结构差异；戌自己的证据也反证——容器 3.46 只读 host 3.50 建的库 integrity ok 且读全 157206 行。"容器自建就没事"的真原因是那段时间 host 没碰过文件，不是版本。
+- **根因 = bind mount 跨 VM 边界的 dual-access**：macOS 进程与 Docker Linux VM 之间，文件锁不互见、页缓存不互通。表现两种：
+  - 两侧同时写（#3）：各改各页。
+  - host 改文件（写、`rm`+重建、甚至 `integrity_check` 这类只读打开）后容器再写（#4）：容器侧 api 容器 12:06→12:19 一直 Up 且持有旧 db 的 fd/缓存，host 换了文件，worker 起来写的是"容器视角里的旧页 + host 视角里的新文件"的混合体。
+- `db.py:72` 作者注释"avoid WAL (corrupts with dual access)"说明 dual-access 早被知道但只降了概率没消灭；#1、#2 就是低概率累积。
+
+## 绝对禁止
+
+> **命名卷落地(2026-09-02)后,红线 1/2 的对象(bind mount 活库)已不存在;host `data/` 目录只放 `.bak` 备份,不放活库。**
+
+1. **宿主机任何进程打开 `platform.db`**（对象 = 容器当前挂载的库；host 上的 `.bak` 不在范围内）。写不行，读也不行（sqlite3 CLI `integrity_check`、python 脚本、first_real_ic、lineage 全算）。要看数据：走 API，或 `docker cp` 出一份副本在副本上查。
+2. **host 侧 `rm`/`cp`/`mv` 该文件**，除非两个容器都已 stop。损坏处置前先 stop 两容器再动文件。
+3. **跨界开 WAL**：wal-index 靠 mmap 的 `-shm`，host 与 VM 各一份互不可见，比 DELETE 坏得更快。写入者全在容器侧后才可评估。
+4. **agent 擅自 `docker stop/start`**：除非 Lyra 逐字授权。
+5. **新增出网/编译类修复**：容器内源码编译 sqlite 3.50.4（wget sqlite.org + build-essential）不做——它修的是不存在的根因，且是未拍板的出网链路与新依赖。
+6. **`docker cp` 脚本进容器当长期部署**：容器重建即丢。backfill / first_real_ic 进 build context（`COPY . .` 覆盖的目录），随镜像走。
+
+## 必须
+
+- 所有写 `platform.db` 的任务在容器内跑：`docker exec alpha-platform-worker-1 python3 /app/<script> --db /data/platform.db …`。worker 是常驻写入者，同容器同内核，锁互见；跑 backfill 前不需要停 worker，靠 busy_timeout 排队（见长期修复）。
+- 用 api 容器跑一次性脚本也算"容器侧"，可接受；但 api 容器无 FMP key，需 `-e FMP_API_KEY`，优先用 worker 容器。
+- backfill 脚本不能从零建库（`existing()` 从 `daily_bars` 读已有 symbol，空库 `first={}` → `todo=0`）：全量建库先插 universe 种子行（`src='seed'`），完成后 `DELETE FROM daily_bars WHERE src='seed'`。
+- 损坏处置顺序：`docker stop` 两容器 → 备份 corrupt db（`platform.db.corrupt-YYYYMMDD.bak`，此时 host 可动文件）→ 弃库 → `docker start api-1` → 容器内 `from db import conn; conn()` 建干净库 → 容器内种子 → 容器内 backfill → 删种子 → 容器内 `PRAGMA integrity_check`（`docker exec … sqlite3` 或 python）→ 容器内 first_real_ic → 启 worker → 验 worker 日志 + 5 分钟后再 integrity_check。每步留证。
+
+## 长期修复（待 Lyra 一字，agent 不擅改）
+
+| 项 | 建议 | 说明 |
+|---|---|---|
+| 命名卷 | docker-compose `/data` 从 bind mount 改为 named volume | host 物理上再也打不开这个文件，红线 1/2 由拓扑保证而非纪律保证；host 看数据走 API 或 `docker cp` 只读副本。默认做，她否决即回到纪律保证 |
+| busy_timeout | `db.py` 连接 `timeout=30` 或 `PRAGMA busy_timeout=30000` | 容器内 backfill 与 worker 同时写靠排队，不停进程 |
+| journal_mode | 命名卷落地后可迁 WAL（同内核多进程正是 WAL 的适用场景） | 之前禁 |
+| 脚本入镜像 | backfill / first_real_ic 放进 backend 目录随 `COPY . .` 进镜像 | 消灭 docker cp |
+| Postgres | 不做 | 命名卷 + WAL 已消灭根因，Postgres 是新依赖新端口 |
+
+排序：命名卷 > busy_timeout > 脚本入镜像 > WAL。前四项零成本零新依赖零出网。
+
+## 独立问题（戌已报，另单修）
+
+- worker 日志打印完整请求 URL 含 `apikey=`。修法：httpx/urllib3 logger 降到 WARNING，或请求日志脱敏 query string。不在本红线范围。
+- worker `base=[]`（WATCHLIST env 空）时静默 0，应 log ERROR 一行 `"WATCHLIST empty"`。不动代码，记债。
+- docker compose warning `volume "alpha-platform_platform_data" already exists but was not created by Docker Compose`（手动 create 为 cp 数据）。下次停容器窗口处理（需 Lyra 一字）：`docker compose down`（不带 -v）→ compose 建带标签新卷（`platform_data_v2` 或改名腾位）→ `docker run --rm -v 旧卷:/from -v 新卷:/to alpine cp -a /from/. /to/` → `docker compose up -d` → 容器内 integrity_check + 行数核对 → 旧卷留一周再 `docker volume rm`。不加 `external: true`。
+
+## 附录：锁互见处决案（不再是判定前提，想看跨界锁到底传不传时跑；盘外，两个宿主机终端）
+
+终端 1（host 持写锁 30s，**违反红线 1，仅此实验一次，跑完立即 `integrity_check` 在容器内做**）：
+
+```
+python3 -c "
+import sqlite3,time
+c=sqlite3.connect('$REPO/alpha-platform/data/platform.db',timeout=0)
+c.execute('BEGIN IMMEDIATE'); print('host holds RESERVED lock'); time.sleep(30); c.rollback()"
+```
+
+终端 2（10s 内）：
+
+```
+docker exec alpha-platform-worker-1 python3 -c "
+import sqlite3
+c=sqlite3.connect('/data/platform.db',timeout=0)
+try:
+    c.execute('BEGIN IMMEDIATE'); c.rollback(); print('FAIL: lock not visible across mount')
+except sqlite3.OperationalError as e: print('OK: blocked ->', e)"
+```
+
+建议不跑：结论不改变红线，且实验本身是一次 host 打开文件。命名卷落地后此实验无意义。
+
+## 交叉引用
+
+- 损坏回执：`aether_nexus/docs/PLATFORM_DB_CORRUPTION_2026-09-02.md`（含 12:19 第二次）
+- 版本对齐回执：`aether_nexus/docs/PLATFORM_DB_VERSION_ALIGNMENT_2026-09-02.md`（§1 归因与 §3 方案本文件驳回，§2 短期方案=本文件"必须"段，已执行）
+- 初值回执：`aether_nexus/docs/FIRST_REAL_IC_2026-09-02.md`
+- canonical schema：`alpha-platform/backend/db.py:30-58`；journal 注释 `db.py:72-73`
+- backfill 脚本：`~/Library/Mobile Documents/com~apple~CloudDocs/backfill daily bars v1.py`（`run()` line 104，`existing()` line 30）→ 迁入 backend 目录后更新此行
+- 历史：`platform.db.corrupt-20260728.bak` · `-20260816-seams.bak` · `-20260902.bak`
+
+## 自检（任何写 platform.db 的任务前）
+
+- [ ] 命令以 `docker exec` 开头；不是 → 停
+- [ ] `lsof alpha-platform/data/platform.db` 只见 `com.apple.Virtualization.VirtualMachine`，无 python/sqlite3 host 进程
+- [ ] 容器内无热日志（`docker exec worker-1 ls /data/platform.db-journal` 不存在）
+- [ ] backfill 用 `--symbols` + 种子（若空库）
+- [ ] 完工：容器内 `integrity_check` = ok，worker 日志正常，5 分钟后再 check 一次

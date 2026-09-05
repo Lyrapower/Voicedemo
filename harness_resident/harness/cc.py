@@ -1,8 +1,60 @@
 from __future__ import annotations
-import asyncio, json
+import asyncio, json, os, sys, hashlib
 from pathlib import Path
 from typing import Any
 from .config import Config
+
+
+# Canonical provenance 接入(砥段三 item 5/6):cc 每次执行写 action + receipt,
+# metadata 固定分离 transport_locality vs model_execution_locality(不折叠成单 Boolean)。
+_DEMO_ROOT = Path(__file__).resolve().parents[2]  # demo/  (cc.py → harness → harness_resident → demo)
+if str(_DEMO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_DEMO_ROOT))
+
+
+def _execution_locality(model: str) -> str:
+    """Ollama model 名 → 执行地:`:cloud`/`-cloud` 后缀 = CLOUD(ollama.com 远程),否则 LOCAL。"""
+    m = (model or "").lower()
+    return "CLOUD" if (":cloud" in m or "-cloud" in m) else "LOCAL"
+
+
+def _record_cc_provenance(job: dict[str, Any], model: str, endpoint: str,
+                          prompt: str, response: str, ok: bool, status: str,
+                          error: str = "") -> None:
+    """记一笔 cc 执行的 action + receipt 到 canonical provenance 链。truthful:import 失败即抛。"""
+    from app.harness.action_envelope import ActionEnvelope, FactualReceipt
+    from app.harness import provenance
+    mission_id = str(job["job_id"])
+    action_id = f"cc:{mission_id}:{hashlib.sha256(prompt.encode()).hexdigest()[:8]}"
+    request_hash = hashlib.sha256((prompt + "|" + model).encode()).hexdigest()[:16]
+    response_hash = hashlib.sha256((response or "").encode()).hexdigest()[:16]
+    ActionEnvelope(
+        mission_id=mission_id, action_id=action_id,
+        decision_origin="GRID_LOCAL",
+        selected_resource=endpoint, operation="cc.execute",
+        arguments={"goal": job["goal"], "model": model, "executor": "claude_code"},
+        authorization_scope="local_write",
+    ).to_dict()
+    FactualReceipt(
+        mission_id=mission_id, action_id=action_id,
+        status=status, executed=ok,
+        result=(response or "")[:2000] if ok else None,
+        error=error,
+        evidence_pointer=f"ollama:{model}",
+        receipt_hash=response_hash,
+        metadata={
+            "executor_type": "claude_code",
+            "transport_provider": "ollama",
+            "transport_protocol": "anthropic_messages",
+            "endpoint": endpoint,
+            "transport_locality": "LOCAL_PROCESS",
+            "selected_model": model,
+            "model_execution_locality": _execution_locality(model),
+            "bridge": "NONE",
+            "request_hash": request_hash,
+            "response_hash": response_hash,
+        },
+    ).to_dict()
 
 
 # Claude Code 内建工具全集(v1.3.1 快照,deny-by-default 的分母;升级 CC 后核一次)
@@ -64,13 +116,24 @@ class CCExecutor:
             if str(p) in {".",""}:
                 continue  # job 目录本身即 cwd,无需加白
             argv+=["--add-dir",str(rp if rp.is_absolute() else (jd/rp).resolve())]
+        cc_model=getattr(self.cfg.cc,"model","")
+        cc_endpoint=getattr(self.cfg.cc,"ollama_endpoint","http://127.0.0.1:11434")
+        sub_env=None
+        if cc_model:
+            argv+=["--model",cc_model]
+            sub_env=dict(os.environ)
+            sub_env["ANTHROPIC_BASE_URL"]=cc_endpoint
+            sub_env["ANTHROPIC_AUTH_TOKEN"]="ollama"
         proc=await asyncio.create_subprocess_exec(
-            *argv,cwd=str(jd),
+            *argv,cwd=str(jd),env=sub_env,
             stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
         try:
             out,err=await asyncio.wait_for(proc.communicate(),timeout=self.cfg.cc.timeout_seconds)
         except asyncio.TimeoutError:
             proc.kill(); await proc.communicate()
+            if cc_model:
+                try: _record_cc_provenance(job, cc_model, cc_endpoint, prompt, "", False, "TIMEOUT", error="timeout")
+                except Exception: pass
             return {"ok":False,"error":"Claude Code timeout","job_dir":str(jd)}
         except asyncio.CancelledError:
             proc.kill(); await proc.communicate()
@@ -82,6 +145,11 @@ class CCExecutor:
                     "stderr":stderr_txt,"job_dir":str(jd)}
         rp=jd/"RESULT.md"
         result=rp.read_text(encoding="utf-8") if rp.exists() else out.decode("utf-8","replace")
-        return {"ok":proc.returncode==0,"returncode":proc.returncode,
+        ok=proc.returncode==0
+        if cc_model:
+            _record_cc_provenance(job, cc_model, cc_endpoint, prompt, result, ok,
+                                  status="EXECUTED" if ok else "FAILED",
+                                  error=stderr_txt if not ok else "")
+        return {"ok":ok,"returncode":proc.returncode,
                 "stdout":out.decode("utf-8","replace"),"stderr":err.decode("utf-8","replace"),
                 "result":result,"job_dir":str(jd)}

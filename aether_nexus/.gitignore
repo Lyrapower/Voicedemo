@@ -5,6 +5,11 @@ daemon.log
 state/*.json
 commands/*.cmd
 dryrun_state/
+state_test/
 dryrun.log
+logs/
+traces/
+*_state.json
+offpool_coach/state/
 __pycache__/
 *.pyc

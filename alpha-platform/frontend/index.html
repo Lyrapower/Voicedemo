@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alpha Platform · Phase 0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0D13; --panel:#121722; --line:#1E2634; --text:#E8ECF4; --dim:#8A94A6;
+    --gold:#E8B45A; --up:#4ADE80; --down:#F87171; --warn:#FBBF24;
+    --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+    --disp:"Space Grotesk",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;line-height:1.5;padding:14px;max-width:1080px;margin:0 auto}
+  h1{font-family:var(--disp);font-weight:700;font-size:18px;letter-spacing:.04em}
+  h1 small{color:var(--dim);font-weight:500;font-size:11px;margin-left:8px}
+  h2{font-family:var(--disp);font-weight:500;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:22px 0 8px}
+  /* —— 签名元素:链路灯带 · 数据→因子→PAPER→决策,全链路可视可控 —— */
+  .rail{display:flex;align-items:stretch;gap:0;margin:14px 0 4px;overflow-x:auto}
+  .node{flex:1;min-width:96px;background:var(--panel);border:1px solid var(--line);padding:8px 10px;position:relative}
+  .node+.node{margin-left:14px}
+  .node+.node::before{content:"";position:absolute;left:-14px;top:50%;width:14px;height:1px;background:var(--line)}
+  .node .k{font-size:10px;letter-spacing:.12em;color:var(--dim)}
+  .node .s{display:flex;align-items:center;gap:6px;margin-top:3px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+  .ok .dot{background:var(--up);animation:pulse 2.4s ease-in-out infinite}
+  .fail .dot{background:var(--down)} .skipped .dot{background:var(--warn)}
+  .node .age{color:var(--dim);font-size:10px}
+  @keyframes pulse{50%{opacity:.45}}
+  @media (prefers-reduced-motion: reduce){.ok .dot{animation:none}}
+  .panel{background:var(--panel);border:1px solid var(--line);padding:10px 12px}
+  table{width:100%;border-collapse:collapse}
+  th{color:var(--dim);font-weight:400;font-size:10px;letter-spacing:.1em;text-align:left;padding:4px 6px;border-bottom:1px solid var(--line)}
+  td{padding:5px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  .num{font-variant-numeric:tabular-nums}
+  .up{color:var(--up)} .down{color:var(--down)} .gold{color:var(--gold)}
+  .tag{border:1px solid var(--line);color:var(--dim);font-size:10px;padding:1px 6px;border-radius:2px}
+  .note{color:var(--dim);font-size:11px;margin-top:6px}
+  .stamp{float:right;color:var(--dim);font-size:10px}
+  #err{color:var(--down);font-size:11px;margin-top:8px}
+</style>
+</head>
+<body>
+<h1>ALPHA PLATFORM <small>Phase 0 · paper only · broker=false</small><span class="stamp" id="stamp"></span></h1>
+
+<div class="rail" id="rail"></div>
+<div class="note">链路灯带:每环显示数据年龄;任何一环变红,后续所有数字都不可信——先修链路再看盘。</div>
+
+<h2>今日决策 · v0 参数未回测</h2>
+<div class="panel"><table id="decisions"><thead><tr>
+<th>窗口</th><th>合约</th><th>Entry</th><th>Stop</th><th>Target</th><th>score</th><th>Δ</th><th>IV</th>
+</tr></thead><tbody></tbody></table>
+<div class="note">来源:BFS R5.4.1 候选(只读)。entry=bid/ask 中价;stop/target 为占位乘数,回测框架落地(Phase 1)之前仅作展示。</div></div>
+
+<h2>市场脉搏 · 1–5 分钟刷新</h2>
+<div class="panel"><table id="pulse"><thead><tr>
+<th>标的</th><th>最新</th><th>ret_5m</th><th>ret_30m</th><th>vol_1m</th><th>range</th>
+</tr></thead><tbody></tbody></table></div>
+
+<h2>BFS R5.4.1 · 今日</h2>
+<div class="panel" id="bfs"></div>
+<div id="err"></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const fmt=(v,d=2)=>v==null?"—":Number(v).toFixed(d);
+const pct=v=>v==null?"—":(v*100).toFixed(2)+"%";
+const cls=v=>v>0?"up":v<0?"down":"";
+const age=s=>s<90?s+"s":s<5400?Math.round(s/60)+"m":Math.round(s/3600)+"h";
+const RAIL=[["data_crypto","加密数据"],["data_equity","美股数据"],["watchlist","观察名单"],["factor","因子 v0"],["grid_store","BFS→决策"],["worker","循环"]];
+
+async function j(u){const r=await fetch(u);if(!r.ok)throw new Error(u+" "+r.status);return r.json()}
+
+async function refresh(){
+  try{
+    const [h,p,d,b]=await Promise.all([j("/api/health"),j("/api/pulse"),j("/api/decisions"),j("/api/bfs")]);
+    $("#stamp").textContent=new Date().toLocaleTimeString();
+    $("#rail").innerHTML=RAIL.map(([k,label])=>{
+      const c=h.components[k]||{status:"skipped",age_s:null,detail:"未上报"};
+      const detail=k==="watchlist"&&c.detail?`<div class="note" style="margin-top:4px;font-size:9px;line-height:1.35">${c.detail}</div>`:"";
+      return `<div class="node ${c.status}"><div class="k">${label}</div>
+        <div class="s"><span class="dot"></span><span>${c.status}</span>
+        <span class="age">${c.age_s==null?"":age(c.age_s)}</span></div>${detail}</div>`;
+    }).join("");
+    $("#decisions tbody").innerHTML=(d.rows.length?d.rows:[]).map(r=>
+      `<tr><td>${r.window}</td><td class="gold">${r.contract}</td>
+       <td class="num">$${fmt(r.entry)}</td><td class="num down">$${fmt(r.stop)}</td>
+       <td class="num up">$${fmt(r.target)}</td><td class="num">${fmt(r.meta.score,1)}</td>
+       <td class="num">${fmt(r.meta.delta,3)}</td><td class="num">${fmt(r.meta.iv,3)}</td></tr>`
+    ).join("")||`<tr><td colspan="8" class="note">今日暂无决策——等待 BFS 扫描窗口(09:45 / 15:35 ET)。</td></tr>`;
+    const eq=p.equity.map(e=>{const f=e.factors||{};return `<tr><td>${e.symbol}</td>
+      <td class="num">$${fmt(e.last)}</td><td class="num ${cls(f.ret_5m)}">${pct(f.ret_5m)}</td>
+      <td class="num ${cls(f.ret_30m)}">${pct(f.ret_30m)}</td><td class="num">${pct(f.vol_1m)}</td>
+      <td class="num">${fmt(f.range_pos,2)}</td></tr>`});
+    const cr=p.crypto.map(t=>`<tr><td>${t.symbol}</td><td class="num">$${fmt(t.price)}</td>
+      <td colspan="4" class="note">bid ${fmt(t.extra.bid)} · ask ${fmt(t.extra.ask)}</td></tr>`);
+    $("#pulse tbody").innerHTML=[...eq,...cr].join("")||`<tr><td colspan="6" class="note">等待首个采集周期…</td></tr>`;
+    $("#bfs").innerHTML=!b.available?`<div class="note">grid_store 未挂载。</div>`
+      :["AM","PM"].map(w=>{const win=b.windows[w];
+        if(!win)return `<div class="note">${w}:未扫</div>`;
+        return `<div><span class="tag">${w}</span> <span class="note">universe ${win.universe_size} · status ${win.status} · #${win.event_id}</span>
+          ${win.rows.map(r=>`<div>${r.sym} <span class="num gold">${fmt(r.score,1)}</span>
+          <span class="note">Δ${fmt(r.delta,3)} · IV ${fmt(r.iv,3)} · ${r.strike?("C"+r.strike+" "+(r.expiry||"")):""}</span></div>`).join("")}</div>`;
+      }).join("");
+    $("#err").textContent="";
+  }catch(e){$("#err").textContent="刷新失败: "+e.message}
+}
+refresh();setInterval(refresh,30000);
+</script>
+</body>
+</html>

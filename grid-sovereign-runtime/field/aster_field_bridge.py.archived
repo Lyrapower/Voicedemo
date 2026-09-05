@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+"""
+ASTER FIELD Bridge v1 — 状态旁路桥 (:8790)
+================================================================
+职责 (只此三件, 零下单逻辑):
+  1. POST /chat  : 转发到 gateway :8501 (stream), 转发途中派生真实状态机
+                   thinking / working / output → served_by 指纹原样透传
+  2. GET  /state : SSE 广播状态事件给粒子前端
+  3. GET  /      : 伺服 aster_field_v1.html (同目录)
+
+融合口:
+  :8787 Voice Garden 遥测若可达, 每 2s 拉取; coherence 字段缺席则静默降级
+
+宪法红线:
+  - 本进程为只读旁路, 禁止 kill 任何端口 (launchctl 管理本进程)
+  - /chat 只透传, 不改写 gateway 内容
+
+运行:
+  python3 aster_field_bridge.py   # http://127.0.0.1:8790
+"""
+from __future__ import annotations
+
+import asyncio
+import datetime as dt
+import json
+import os
+import time
+from contextlib import suppress
+from pathlib import Path
+
+import httpx
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+
+FIELD_DIR = Path(__file__).resolve().parent
+
+CFG = {
+    "port": int(os.getenv("ASTER_FIELD_PORT", "8790")),
+    "gateway": os.getenv(
+        "ASTER_FIELD_GATEWAY_URL",
+        "http://127.0.0.1:8501/v1/chat/completions",
+    ),
+    "gateway_model": os.getenv("ASTER_FIELD_GATEWAY_MODEL", "demo/aster"),
+    "garden_health": os.getenv(
+        "ASTER_FIELD_GARDEN_HEALTH",
+        "http://127.0.0.1:8787/health",
+    ),
+    "garden_poll_s": float(os.getenv("ASTER_FIELD_GARDEN_POLL_S", "2.0")),
+    "html": str(FIELD_DIR / "aster_field_v1.html"),
+    "max_tokens": int(os.getenv("ASTER_FIELD_MAX_TOKENS", "400")),
+    "temperature": float(os.getenv("ASTER_FIELD_TEMPERATURE", "0.7")),
+}
+
+app = FastAPI(title="aster-field-bridge", version="1.0.0")
+
+
+class Bus:
+    def __init__(self) -> None:
+        self.subs: set[asyncio.Queue] = set()
+        self.snapshot = {
+            "state": "idle",
+            "tokens": 0,
+            "coherence": 0.72,
+            "links": {"bridge": True, "gateway": False, "garden": False},
+            "ts": 0.0,
+        }
+
+    async def pub(self, **kw: object) -> None:
+        self.snapshot.update(kw)
+        self.snapshot["ts"] = time.time()
+        dead: list[asyncio.Queue] = []
+        for q in self.subs:
+            try:
+                q.put_nowait(dict(self.snapshot))
+            except asyncio.QueueFull:
+                dead.append(q)
+        for q in dead:
+            self.subs.discard(q)
+
+
+BUS = Bus()
+
+
+async def garden_poller() -> None:
+    async with httpx.AsyncClient(timeout=3.0) as cli:
+        while True:
+            ok, coh = False, None
+            with suppress(Exception):
+                r = await cli.get(CFG["garden_health"])
+                if r.status_code == 200:
+                    ok = True
+                    if r.headers.get("content-type", "").startswith("application/json"):
+                        coh = r.json().get("coherence")
+            links = dict(BUS.snapshot["links"])
+            links["garden"] = ok
+            kw: dict[str, object] = {"links": links}
+            if coh is not None:
+                kw["coherence"] = float(coh)
+            await BUS.pub(**kw)
+            await asyncio.sleep(CFG["garden_poll_s"])
+
+
+async def gateway_health_poller() -> None:
+    url = CFG["gateway"].rsplit("/v1/", 1)[0] + "/health"
+    async with httpx.AsyncClient(timeout=3.0) as cli:
+        while True:
+            ok = False
+            with suppress(Exception):
+                ok = (await cli.get(url)).status_code == 200
+            links = dict(BUS.snapshot["links"])
+            links["gateway"] = ok
+            await BUS.pub(links=links)
+            await asyncio.sleep(5.0)
+
+
+@app.on_event("startup")
+async def _start() -> None:
+    await BUS.pub(links={**BUS.snapshot["links"], "bridge": True})
+    asyncio.create_task(garden_poller())
+    asyncio.create_task(gateway_health_poller())
+
+
+@app.get("/state")
+async def state_sse():
+    q: asyncio.Queue = asyncio.Queue(maxsize=64)
+    BUS.subs.add(q)
+
+    async def gen():
+        try:
+            yield f"data: {json.dumps(BUS.snapshot)}\n\n"
+            while True:
+                item = await q.get()
+                yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+        finally:
+            BUS.subs.discard(q)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/chat")
+async def chat(req: Request):
+    body = await req.json()
+    msg = (body.get("message") or "").strip()
+    if not msg:
+        return JSONResponse({"error": "empty message"}, status_code=400)
+    payload = {
+        "model": CFG["gateway_model"],
+        "stream": True,
+        "max_tokens": CFG["max_tokens"],
+        "temperature": CFG["temperature"],
+        "messages": [{"role": "user", "content": msg}],
+    }
+    await BUS.pub(state="thinking", tokens=0)
+
+    async def relay():
+        full: list[str] = []
+        n_tok = 0
+        served_by = None
+        finish = None
+        state = "thinking"
+        t0 = time.time()
+        try:
+            async with httpx.AsyncClient(timeout=180.0) as cli:
+                async with cli.stream("POST", CFG["gateway"], json=payload) as r:
+                    async for line in r.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[5:].strip()
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                        except json.JSONDecodeError:
+                            continue
+                        served_by = chunk.get("served_by", served_by)
+                        ch = (chunk.get("choices") or [{}])[0]
+                        delta = ch.get("delta") or {}
+                        finish = ch.get("finish_reason") or finish
+                        if delta.get("tool_calls") and state != "working":
+                            state = "working"
+                            await BUS.pub(state="working")
+                        if delta.get("reasoning_content") and state == "thinking":
+                            n_tok += 1
+                            if n_tok % 8 == 0:
+                                await BUS.pub(state="thinking", tokens=n_tok)
+                        c = delta.get("content")
+                        if c:
+                            if state != "output":
+                                state = "output"
+                                await BUS.pub(state="output")
+                            full.append(c)
+                            n_tok += 1
+                            await BUS.pub(state="output", tokens=n_tok)
+                            yield f"data: {json.dumps({'token': c}, ensure_ascii=False)}\n\n"
+            coh = 0.85
+            if finish == "length":
+                coh -= 0.25
+            if not full:
+                coh -= 0.35
+            if time.time() - t0 > 60:
+                coh -= 0.10
+            if BUS.snapshot["links"].get("garden") and isinstance(
+                BUS.snapshot.get("coherence"), (int, float)
+            ):
+                coh = float(BUS.snapshot["coherence"])
+            await BUS.pub(state="idle", coherence=round(max(coh, 0.05), 2))
+            yield (
+                "data: "
+                + json.dumps(
+                    {
+                        "done": True,
+                        "served_by": served_by,
+                        "finish_reason": finish,
+                        "truncated": finish == "length",
+                        "text": "".join(full),
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n\n"
+            )
+        except Exception as exc:
+            await BUS.pub(state="error")
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+            await asyncio.sleep(0.6)
+            await BUS.pub(state="idle")
+
+    return StreamingResponse(
+        relay(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/")
+async def index():
+    return FileResponse(CFG["html"], media_type="text/html")
+
+
+@app.get("/health")
+async def health():
+    return {
+        "ok": True,
+        "service": "aster-field-bridge",
+        "version": "1.0.0",
+        "links": BUS.snapshot["links"],
+        "ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=CFG["port"], log_level="warning")

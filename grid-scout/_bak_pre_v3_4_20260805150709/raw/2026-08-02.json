@@ -1,0 +1,534 @@
+[
+ {
+  "source": "treasury_yields",
+  "ok": true,
+  "ts": "2026-08-02T22:47:04.122239-07:00",
+  "items": [
+   {
+    "field": "Date",
+    "value": "07/31/2026"
+   },
+   {
+    "field": "\"1 Mo\"",
+    "value": "3.78"
+   },
+   {
+    "field": "\"1.5 Month\"",
+    "value": "3.80"
+   },
+   {
+    "field": "\"2 Mo\"",
+    "value": "3.85"
+   },
+   {
+    "field": "\"3 Mo\"",
+    "value": "3.83"
+   },
+   {
+    "field": "\"4 Mo\"",
+    "value": "3.92"
+   },
+   {
+    "field": "\"6 Mo\"",
+    "value": "3.98"
+   },
+   {
+    "field": "\"1 Yr\"",
+    "value": "4.08"
+   },
+   {
+    "field": "\"2 Yr\"",
+    "value": "4.28"
+   },
+   {
+    "field": "\"3 Yr\"",
+    "value": "4.34"
+   },
+   {
+    "field": "\"5 Yr\"",
+    "value": "4.45"
+   },
+   {
+    "field": "\"7 Yr\"",
+    "value": "4.59"
+   },
+   {
+    "field": "\"10 Yr\"",
+    "value": "4.75"
+   },
+   {
+    "field": "\"20 Yr\"",
+    "value": "5.28"
+   },
+   {
+    "field": "\"30 Yr\"",
+    "value": "5.27"
+   }
+  ]
+ },
+ {
+  "source": "fred_macro",
+  "ok": false,
+  "ts": "2026-08-02T22:47:04.429210-07:00",
+  "error": "FRED_API_KEY 未配置——可选源,跳过(免费注册后填 .env 即启)",
+  "items": []
+ },
+ {
+  "source": "edgar_ma_8k",
+  "ok": true,
+  "ts": "2026-08-02T22:47:04.429935-07:00",
+  "items": [
+   {
+    "company": "Planet 13 Holdings Inc.  (PLNH)  (CIK 0001813452)",
+    "form": "8-K",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "ELECTRO SENSORS INC  (ELSE)  (CIK 0000351789)",
+    "form": "8-K",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "Planet 13 Holdings Inc.  (PLNH)  (CIK 0001813452)",
+    "form": "EX-10.1",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "Planet 13 Holdings Inc.  (PLNH)  (CIK 0001813452)",
+    "form": "EX-10.2",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "SkyWater Technology, Inc  (SKYT)  (CIK 0001819974)",
+    "form": "8-K",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "QUALCOMM INC/DE  (QCOM)  (CIK 0000804328)",
+    "form": "EX-4.1",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "Jasper Therapeutics, Inc.  (JSPR, JSPRW)  (CIK 0001788028)",
+    "form": "8-K",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "Galera Therapeutics, Inc.  (GRTX, GRTXD)  (CIK 0001563577)",
+    "form": "8-K",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "EQUITY RESIDENTIAL  (EQR)  (CIK 0000906107)",
+    "form": "EX-99.4",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "IonQ, Inc.  (IONQ, IONQ-WT)  (CIK 0001824920)",
+    "form": "8-K",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "Open Lending Corp  (LPRO)  (CIK 0001806201)",
+    "form": "8-K",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "AVALONBAY COMMUNITIES INC  (AVB)  (CIK 0000915912)",
+    "form": "8-K",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "EQUITY RESIDENTIAL  (EQR)  (CIK 0000906107)",
+    "form": "8-K",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "EQUITY RESIDENTIAL  (EQR)  (CIK 0000906107)",
+    "form": "8-K",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "Paramount Skydance Corp  (PSKY)  (CIK 0002041610)",
+    "form": "EX-99.3",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "TEREX CORP  (TEX)  (CIK 0000097216)",
+    "form": "EX-99.2",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "TEREX CORP  (TEX)  (CIK 0000097216)",
+    "form": "EX-99.1",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "Paramount Skydance Corp  (PSKY)  (CIK 0002041610)",
+    "form": "8-K",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "EQUITY RESIDENTIAL  (EQR)  (CIK 0000906107)",
+    "form": "EX-99.1",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "SkyWater Technology, Inc  (SKYT)  (CIK 0001819974)",
+    "form": "EX-3.4",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "DOMINION ENERGY, INC  (D)  (CIK 0000715957)",
+    "form": "EX-99",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "NEUROCRINE BIOSCIENCES INC  (NBIX)  (CIK 0000914475)",
+    "form": "EX-99.3",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "Profusa, Inc.  (PFSA, NVACW)  (CIK 0001859807)",
+    "form": "8-K",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "AbbVie Inc.  (ABBV)  (CIK 0001551152)",
+    "form": "EX-99.1",
+    "filed": "2026-07-31"
+   },
+   {
+    "company": "Planet 13 Holdings Inc.  (PLNH)  (CIK 0001813452)",
+    "form": "EX-2.1",
+    "filed": "2026-07-31"
+   }
+  ]
+ },
+ {
+  "source": "fda_press",
+  "ok": true,
+  "ts": "2026-08-02T22:47:04.777287-07:00",
+  "items": [
+   {
+    "title": "FDA Licenses First-Ever Freeze-Dried Plasma Product in the U.S.",
+    "date": "Wed, 29 Jul 2026 12:10:31 EDT"
+   },
+   {
+    "title": "FDA Announces First Participant Selected for TEMPO for Digital Health Devices Pilot",
+    "date": "Wed, 22 Jul 2026 13:57:57 EDT"
+   },
+   {
+    "title": "FDA Takes Further Steps to Remove Outdated Authorizations for Color Additives in Food",
+    "date": "Wed, 22 Jul 2026 09:10:58 EDT"
+   },
+   {
+    "title": "FDA Approves First Oral PCSK9 Inhibitor to Lower LDL Cholesterol in Adults with High Cholesterol",
+    "date": "Fri, 17 Jul 2026 11:01:17 EDT"
+   },
+   {
+    "title": "FDA Issues Emergency Use Authorization for Drug for Short-Term Prevention of New World Screwworm in Horses",
+    "date": "Wed, 15 Jul 2026 17:04:45 EDT"
+   },
+   {
+    "title": "FDA Proposes Rule to Modernize Drug Manufacturing Registration",
+    "date": "Fri, 10 Jul 2026 09:07:06 EDT"
+   },
+   {
+    "title": "FDA Approves First Gene Therapy for Young Children with Sickle Cell Disease",
+    "date": "Wed, 01 Jul 2026 17:29:41 EDT"
+   },
+   {
+    "title": "FDA Approves New Treatment That Uses Donor Immune Cells to Prevent Serious Complications in Blood Cancer Patients",
+    "date": "Tue, 30 Jun 2026 17:29:30 EDT"
+   },
+   {
+    "title": "FDA Selects Seven Participants for PreCheck Pilot Program to Advance U.S. Drug Manufacturing",
+    "date": "Mon, 29 Jun 2026 16:16:10 EDT"
+   },
+   {
+    "title": "FDA Proposes Rule That Would Help Hold Foreign Tobacco Product Manufacturers Accountable, Protect Public Health",
+    "date": "Fri, 26 Jun 2026 08:58:49 EDT"
+   },
+   {
+    "title": "FDA Approves First Single-Dose Generic Treatment for Influenza",
+    "date": "Wed, 17 Jun 2026 17:32:27 EDT"
+   },
+   {
+    "title": "FDA Broadens Access to Over-the-Counter Naloxone Nasal Spray for Opioid Overdose",
+    "date": "Tue, 16 Jun 2026 08:41:20 EDT"
+   },
+   {
+    "title": "FDA Approves New Indication for Tzield (teplizumab) for Certain Pediatric Patients with Recently Diagnosed Stage 3 Type 1 Diabetes",
+    "date": "Mon, 15 Jun 2026 16:44:15 EDT"
+   },
+   {
+    "title": "FDA Clears First Over-the-Counter Continuous Glucose Monitor for Children",
+    "date": "Fri, 12 Jun 2026 15:39:25 EDT"
+   },
+   {
+    "title": "FDA Issues Emergency Use Authorization for Generic Over-the-Counter Drug to Treat New World Screwworm in Dogs and Cats",
+    "date": "Thu, 11 Jun 2026 08:21:28 EDT"
+   },
+   {
+    "title": "FDA Expands Sunscreen Options for the First Time in 20 Years",
+    "date": "Tue, 09 Jun 2026 10:05:25 EDT"
+   },
+   {
+    "title": "FDA Issues Draft Guidance to Help Accelerate Cell and Gene Therapies for Patients",
+    "date": "Tue, 02 Jun 2026 09:03:59 EDT"
+   },
+   {
+    "title": "FDA Issues Draft Guidance to Cut Unnecessary Animal Testing for Cancer Drugs",
+    "date": "Fri, 29 May 2026 09:13:39 EDT"
+   },
+   {
+    "title": "FDA Approves First Treatment for Chronic Hepatitis Delta Virus (HDV) Infection",
+    "date": "Fri, 22 May 2026 13:16:56 EDT"
+   },
+   {
+    "title": "FDA Warns Retailers Selling Illegal Tobacco Products That Look Like Everyday Products",
+    "date": "Wed, 20 May 2026 09:53:58 EDT"
+   }
+  ]
+ },
+ {
+  "source": "commodities",
+  "ok": false,
+  "ts": "2026-08-02T22:47:05.008622-07:00",
+  "error": "HTTP Error 404: Not Found",
+  "items": []
+ },
+ {
+  "source": "polymarket_odds",
+  "ok": true,
+  "ts": "2026-08-02T22:47:06.069369-07:00",
+  "items": [
+   {
+    "q": "Mubadala Citi DC Open: Jessica Pegula vs Alexandra Eala",
+    "implied": [
+     "0.805",
+     "0.195"
+    ],
+    "vol24h": 1673855,
+    "ends": "2026-08-09"
+   },
+   {
+    "q": "Will the U.S. invade Iran before 2027?",
+    "implied": [
+     "0.205",
+     "0.795"
+    ],
+    "vol24h": 963197,
+    "ends": "2026-12-31"
+   },
+   {
+    "q": "Will Tucker Carlson win the 2028 Republican presidential nomination?",
+    "implied": [
+     "0.016",
+     "0.984"
+    ],
+    "vol24h": 794491,
+    "ends": "2028-11-07"
+   },
+   {
+    "q": "Strait of Hormuz traffic returns to normal by August 31?",
+    "implied": [
+     "0.125",
+     "0.875"
+    ],
+    "vol24h": 751919,
+    "ends": "2026-08-31"
+   },
+   {
+    "q": "Canadian Open: Aleksandar Kovacevic vs Nuno Borges",
+    "implied": [
+     "0.245",
+     "0.755"
+    ],
+    "vol24h": 625488,
+    "ends": "2026-08-10"
+   },
+   {
+    "q": "Strait of Hormuz traffic returns to normal by August 15?",
+    "implied": [
+     "0.0255",
+     "0.9745"
+    ],
+    "vol24h": 484737,
+    "ends": "2026-08-15"
+   },
+   {
+    "q": "Mubadala Citi DC Open: Taylor Fritz vs Rafael Jodar",
+    "implied": [
+     "0.615",
+     "0.385"
+    ],
+    "vol24h": 460729,
+    "ends": "2026-08-09"
+   },
+   {
+    "q": "US x Iran Effective Ceasefire by July 31?",
+    "implied": [
+     "0.59",
+     "0.41"
+    ],
+    "vol24h": 435768,
+    "ends": "2026-07-31"
+   },
+   {
+    "q": "Israel x Iran ceasefire continues through August 2?",
+    "implied": [
+     "0.9995",
+     "0.0005"
+    ],
+    "vol24h": 423138,
+    "ends": "2026-08-02"
+   },
+   {
+    "q": "National Bank Open: Michael Zheng vs Miomir Kecmanovic",
+    "implied": [
+     "0.59",
+     "0.41"
+    ],
+    "vol24h": 396305,
+    "ends": "2026-08-09"
+   },
+   {
+    "q": "Philadelphia Phillies vs. Baltimore Orioles",
+    "implied": [
+     "0.9995",
+     "0.0005"
+    ],
+    "vol24h": 382856,
+    "ends": "2026-08-09"
+   },
+   {
+    "q": "Israel x Iran ceasefire continues through August 3?",
+    "implied": [
+     "0.9975",
+     "0.0025"
+    ],
+    "vol24h": 326346,
+    "ends": "2026-08-03"
+   },
+   {
+    "q": "Will the Fed increase interest rates by 25 bps after the September 2026 meeting?",
+    "implied": [
+     "0.565",
+     "0.435"
+    ],
+    "vol24h": 304501,
+    "ends": "2026-09-16"
+   },
+   {
+    "q": "Israel x Iran ceasefire continues through July 31?",
+    "implied": [
+     "0.9995",
+     "0.0005"
+    ],
+    "vol24h": 254153,
+    "ends": "2026-07-31"
+   },
+   {
+    "q": "Strait of Hormuz traffic returns to normal by September 30?",
+    "implied": [
+     "0.235",
+     "0.765"
+    ],
+    "vol24h": 247845,
+    "ends": "2026-09-30"
+   },
+   {
+    "q": "Israel x Iran ceasefire continues through August 9?",
+    "implied": [
+     "0.905",
+     "0.095"
+    ],
+    "vol24h": 247097,
+    "ends": "2026-08-09"
+   },
+   {
+    "q": "Will there be no change in Fed interest rates after the September 2026 meeting?",
+    "implied": [
+     "0.415",
+     "0.585"
+    ],
+    "vol24h": 229094,
+    "ends": "2026-09-16"
+   },
+   {
+    "q": "Trump out as President by August 31?",
+    "implied": [
+     "0.0095",
+     "0.9905"
+    ],
+    "vol24h": 214918,
+    "ends": "2026-08-31"
+   },
+   {
+    "q": "Strait of Hormuz traffic returns to normal by December 31?",
+    "implied": [
+     "0.565",
+     "0.435"
+    ],
+    "vol24h": 203998,
+    "ends": "2026-12-31"
+   },
+   {
+    "q": "Strait of Hormuz traffic returns to normal by July 31?",
+    "implied": [
+     "0.0005",
+     "0.9995"
+    ],
+    "vol24h": 193244,
+    "ends": "2026-07-31"
+   },
+   {
+    "q": "Will the Iranian regime fall before 2027?",
+    "implied": [
+     "0.075",
+     "0.925"
+    ],
+    "vol24h": 192921,
+    "ends": "2026-12-31"
+   },
+   {
+    "q": "Will Thomas Massie win the 2028 US Presidential Election?",
+    "implied": [
+     "0.0165",
+     "0.9835"
+    ],
+    "vol24h": 181574,
+    "ends": "2028-11-07"
+   },
+   {
+    "q": "Will WTI Crude Oil (WTI) hit (HIGH) $90 in July?",
+    "implied": [
+     "0.0005",
+     "0.9995"
+    ],
+    "vol24h": 179406,
+    "ends": "2026-08-01"
+   },
+   {
+    "q": "Israel x Iran ceasefire continues through August 4?",
+    "implied": [
+     "0.9855",
+     "0.0145"
+    ],
+    "vol24h": 177323,
+    "ends": "2026-08-04"
+   },
+   {
+    "q": "Will Trump speak to Emmanuel Macron in July?",
+    "implied": [
+     "0.3575",
+     "0.6425"
+    ],
+    "vol24h": 166266,
+    "ends": "2026-07-31"
+   }
+  ]
+ }
+]

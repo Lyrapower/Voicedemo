@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""One-shot: copy 8515 cloud_memory glm52 → 8501 store cloud-glm52 (user-authorized restore).
+
+Does NOT touch workbench-b11. Skips duplicate (role, content, ts) triples already on 8501.
+"""
+from __future__ import annotations
+
+import json
+import sys
+import urllib.request
+
+SRC = "http://127.0.0.1:8515/cloud/memory/glm52"
+DST_LIST = "http://127.0.0.1:8501/store/conversations/cloud-glm52?limit=2000"
+DST_POST = "http://127.0.0.1:8501/store/conversations/cloud-glm52/messages"
+
+
+def _get(url: str):
+    with urllib.request.urlopen(url, timeout=30) as r:
+        return json.loads(r.read().decode())
+
+
+def _post(url: str, body):
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode(),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read().decode())
+
+
+def main() -> int:
+    dry = "--dry-run" in sys.argv
+    src = _get(SRC)
+    rows = list(src.get("archive") or []) + list(src.get("active") or [])
+    rows.sort(key=lambda m: float(m.get("ts") or 0))
+    existing = _get(DST_LIST)
+    if not isinstance(existing, list):
+        existing = existing.get("messages") or []
+    have = {
+        (m.get("role"), str(m.get("content") or ""), float(m.get("ts") or 0))
+        for m in existing
+    }
+    to_write = []
+    for m in rows:
+        role = m.get("role")
+        content = str(m.get("content") or "")
+        ts = float(m.get("ts") or 0)
+        if role not in ("user", "assistant", "system") or not content.strip():
+            continue
+        key = (role, content, ts)
+        if key in have:
+            continue
+        to_write.append({"role": role, "content": content, "ts": ts})
+        have.add(key)
+    print(
+        f"[restore] 8515 total={len(rows)} already_8501={len(existing)} "
+        f"to_write={len(to_write)} dry_run={dry}"
+    )
+    if dry or not to_write:
+        if to_write[:3]:
+            for m in to_write[:3]:
+                print("  sample", m["role"], str(m["content"])[:80].replace("\n", " "))
+        return 0
+    # batch to avoid huge posts
+    last = None
+    for i in range(0, len(to_write), 40):
+        chunk = to_write[i : i + 40]
+        last = _post(DST_POST, chunk)
+        print(f"  posted {i+len(chunk)}/{len(to_write)} last_id={last.get('last_id')}")
+    after = _get(DST_LIST)
+    n = len(after) if isinstance(after, list) else len(after.get("messages") or [])
+    print(f"[restore] done cloud-glm52 now={n}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

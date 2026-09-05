@@ -1,15 +1,44 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
+from pydantic import BaseModel
 
 from scripts.garden_services import (
     music_catalog,
     resolve_music_file,
 )
 
-app = FastAPI(title="Garden Fallback Runtime", version="0.2")
+_DEMO_ROOT = Path(__file__).resolve().parents[1]
+_REPO = _DEMO_ROOT / "repo"
+for _p in (_DEMO_ROOT, _REPO):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+
+app = FastAPI(title="Garden Fallback Runtime", version="0.3")
+
+_AUDIO8_URL = os.environ.get("GARDEN_AUDIO8_URL", "http://127.0.0.1:8631").rstrip("/")
+
+
+class Audio8Body(BaseModel):
+    input: str | None = None
+    text: str | None = None
+    voice: str | None = None
+
+
+def _pick_audio8_voice(text: str) -> str:
+    for ch in text:
+        if "\u4e00" <= ch <= "\u9fff":
+            return os.environ.get("GARDEN_AUDIO8_VOICE_ZH", "grid_zh")
+    return os.environ.get("GARDEN_AUDIO8_VOICE_EN", "grid_en")
 
 HTML = """<!doctype html>
 <html lang="en">
@@ -293,6 +322,36 @@ HTML = """<!doctype html>
     }
     .mic:hover{border-color:rgba(245,240,232,.34)}
     .mic.is-recording{border-color:rgba(91,159,191,.72);box-shadow:0 0 12px rgba(100,181,246,.45)}
+    .voice-btn{
+      position:relative;left:auto;bottom:auto;transform:none;z-index:1;
+      width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.14);
+      background:rgba(255,255,255,.08);display:grid;place-items:center;
+      color:var(--text-secondary);font:600 14px/1 "SF Mono",Menlo,monospace;cursor:pointer;
+      transition:border-color 250ms var(--ease),box-shadow 250ms var(--ease),color 250ms var(--ease);
+    }
+    .voice-btn:hover{border-color:rgba(245,240,232,.34)}
+    .voice-btn.is-on{color:var(--accent-cyan);border-color:rgba(91,159,191,.72);
+      box-shadow:0 0 12px rgba(100,181,246,.45)}
+    .voice-barge{
+      width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.12);
+      background:rgba(255,255,255,.05);color:var(--text-muted);font:12px/1 "SF Mono",Menlo,monospace;
+      cursor:pointer;display:none;-webkit-tap-highlight-color:transparent;
+    }
+    .voice-barge.is-on{display:grid;place-items:center;color:var(--accent-warm);
+      border-color:rgba(255,215,0,.45)}
+    .voice-kh{display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap}
+    .voice-kh input{
+      flex:1;min-width:100px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.10);
+      border-radius:4px;padding:4px 6px;color:var(--text-secondary);font:10px "SF Mono",Menlo,monospace;
+    }
+    .voice-kh button{
+      border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:var(--text-secondary);
+      font:600 9px "SF Mono",Menlo,monospace;letter-spacing:.08em;padding:4px 8px;border-radius:4px;cursor:pointer;
+    }
+    .voice-kh button:hover{color:var(--accent-cyan)}
+    #voiceKhSt{font:10px "SF Mono",Menlo,monospace;color:var(--text-muted)}
+    #voiceSt,#voiceAs,#voiceDeg{font:10px "SF Mono",Menlo,monospace;color:var(--text-muted);line-height:1.35}
+    #voiceDeg{color:var(--danger-soft)}
     .analysis{
       position:fixed;left:40px;bottom:40px;z-index:22;width:280px;padding:16px 20px;
       border-radius:6px;background:rgba(10,10,15,.75);border:1px solid rgba(100,181,246,.20);
@@ -320,6 +379,11 @@ HTML = """<!doctype html>
       transition:width .2s ease;
       box-shadow:0 0 8px rgba(100,181,246,.60);
     }
+    .analysis-divider{font:10px ui-monospace,Menlo,monospace;color:var(--text-muted);letter-spacing:.08em;margin:10px 0 4px;opacity:.85}
+    .anchor-bar{width:100%;height:3px;background:rgba(255,215,120,.10);border-radius:2px;margin:2px 0 8px;overflow:hidden}
+    .anchor-fill{height:100%;width:0%;background:linear-gradient(90deg,rgba(255,215,120,.55),rgba(134,214,163,.85));transition:width .35s ease}
+    .analysis-row .v.state-held{color:#e8c878}
+    .analysis-row .v.state-deep{color:var(--accent-green)}
     #specCanvas{
       display:block;width:100%;height:72px;margin:10px 0 8px;border-radius:10px;
       background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.06);
@@ -334,6 +398,28 @@ HTML = """<!doctype html>
     .band.low i{background:var(--accent-green)}
     .band.mid i{background:var(--accent-cyan)}
     .band.high i{background:var(--accent-warm)}
+    .zone-edge-glow{
+      position:fixed;inset:0;pointer-events:none;z-index:3;opacity:0;
+      background:radial-gradient(circle at 50% 46%,transparent 58%,rgba(134,214,163,.07) 72%,rgba(255,215,120,.06) 88%,transparent 100%);
+      transition:opacity 1.2s ease;
+    }
+    .zone-edge-glow.is-green{opacity:1;animation:zoneBreath 6.5s ease-in-out infinite}
+    @keyframes zoneBreath{0%,100%{opacity:.55}50%{opacity:1}}
+    .zone-recall{
+      position:fixed;inset:0;pointer-events:none;z-index:3;opacity:0;
+      background:radial-gradient(circle at 50% 46%,rgba(255,215,120,.12) 0%,transparent 42%);
+      transition:opacity .4s ease;
+    }
+    .zone-recall.pulse{opacity:1;animation:recallRipple 3s ease-out forwards}
+    @keyframes recallRipple{0%{transform:scale(.6);opacity:.35}100%{transform:scale(1.35);opacity:0}}
+    .grass-sketch{display:flex;align-items:flex-end;gap:3px;height:56px;margin:8px 0 12px;padding:4px 2px}
+    .grass-sketch i{display:block;width:5px;border-radius:2px 2px 0 0;background:rgba(255,255,255,.18);min-height:4px}
+    .grass-sketch i.z-green{background:linear-gradient(180deg,rgba(134,214,163,.85),rgba(255,215,120,.45))}
+    .grass-sketch i.z-yellow{background:linear-gradient(180deg,rgba(255,215,120,.75),rgba(232,200,120,.35))}
+    .grass-sketch i.z-red{background:linear-gradient(180deg,rgba(120,90,60,.75),rgba(80,60,40,.45))}
+    .analysis-row .v.zone-green{color:var(--accent-green)}
+    .analysis-row .v.zone-yellow{color:#e8c878}
+    .analysis-row .v.zone-red{color:rgba(180,150,110,.85)}
     .hud{
       position:fixed;left:24px;top:60px;z-index:22;
       padding:10px 14px;border-radius:6px;
@@ -382,6 +468,8 @@ HTML = """<!doctype html>
 <body>
   <canvas id="scene"></canvas>
   <div class="field-vignette" aria-hidden="true"></div>
+  <div class="zone-edge-glow" id="zoneEdgeGlow" aria-hidden="true"></div>
+  <div class="zone-recall" id="zoneRecall" aria-hidden="true"></div>
   <div id="stateBadge" class="state-badge" aria-hidden="true"></div>
   <div class="topbar">
     <div class="topbar-left">
@@ -429,6 +517,7 @@ HTML = """<!doctype html>
       </div>
       <div class="memory-body">
         <div id="memoryMeta" class="memory-meta">loading…</div>
+        <div id="grassSketch" class="grass-sketch" aria-label="30-day resonance sketch"></div>
         <pre id="memoryPreview" class="memory-preview">—</pre>
         <div class="panel-head"><span>Local snapshots</span></div>
         <div id="sessionList" class="session-list"></div>
@@ -440,6 +529,11 @@ HTML = """<!doctype html>
     <canvas id="specCanvas" width="248" height="72" aria-label="frequency spectrum"></canvas>
     <div class="analysis-row"><span class="k">mic</span><span id="aMic" class="v">idle</span></div>
     <div class="analysis-row"><span class="k">presence</span><span id="aPresence" class="v stub">off</span></div>
+    <div class="analysis-divider">── voice (8501) ────────</div>
+    <div class="analysis-row"><span class="k">talk</span><span id="aVoiceChat" class="v stub">off</span></div>
+    <div id="voiceSt"></div>
+    <div id="voiceAs"></div>
+    <div id="voiceDeg"></div>
     <div class="analysis-row"><span class="k">voice Hz</span><span id="aVoice" class="v">—</span></div>
     <div class="analysis-row"><span class="k">ai Hz</span><span id="aAi" class="v">—</span></div>
     <div class="analysis-row"><span class="k">coherence</span><span id="aCoh" class="v">—</span></div>
@@ -447,6 +541,13 @@ HTML = """<!doctype html>
     <div class="analysis-row"><span class="k">state</span><span id="aState" class="v">—</span></div>
     <div class="analysis-row"><span class="k">energy</span><span id="aEnergy" class="v">—</span></div>
     <div class="coherence-bar" aria-hidden="true"><div id="cohFill" class="coherence-fill"></div></div>
+    <div class="analysis-divider">── anchor ──────────────</div>
+    <div class="analysis-row"><span class="k">coherence</span><span id="aAnchorCoh" class="v">—</span></div>
+    <div class="analysis-row"><span class="k">state</span><span id="aAnchorState" class="v">—</span></div>
+    <div class="analysis-row"><span class="k">breath sync</span><span id="aBreathSync" class="v">—</span></div>
+    <div class="analysis-row"><span class="k">today peak</span><span id="aTodayPeak" class="v">—</span></div>
+    <div class="analysis-row"><span class="k">zone</span><span id="aZone" class="v">—</span></div>
+    <div class="anchor-bar" aria-hidden="true"><div id="anchorFill" class="anchor-fill"></div></div>
     <div class="band-row">
       <div class="band low"><i id="bLow"></i></div>
       <div class="band mid"><i id="bMid"></i></div>
@@ -455,14 +556,150 @@ HTML = """<!doctype html>
   </div>
   <div id="hud" class="hud">starting...</div>
   <div class="bottom-dock">
-    <button id="micBtn" class="mic" type="button" aria-label="Microphone off"></button>
+    <button id="micBtn" class="mic" type="button" aria-label="Analyzer mic off" title="Analyzer · anchor FFT"></button>
+    <button id="voiceBtn" class="voice-btn" type="button" aria-label="Grid voice off" title="Grid voice · 8501 /voice">◉</button>
+    <button id="voiceBargeBtn" class="voice-barge" type="button" aria-label="Barge-in" title="按住打断 TTS">⏸</button>
     <button id="speakBtn" class="presence-btn" type="button">Presence</button>
     <button id="echoTestBtn" class="presence-btn" type="button" title="Trigger TTS · thinking → speaking">Echo</button>
     <button id="saveMemory" class="save-memory" type="button">Save Memory</button>
   </div>
   <script type="module">
     import * as THREE from "three";
-    console.info("[Garden] blue-gold v2.1 · phase-accum + wired field morph");
+    console.info("[Garden] blue-gold v2.5 · voice-field-link v1 (2026-07-23)");
+    const VOICE_JS_VER = "2026-08-26-audio8";
+    const ANCHOR_OFF = new URLSearchParams(location.search).get("anchor") === "off";
+    const ANCHOR_G = 1.6;
+    const ANCHOR_MIN_DIST = 8.0;
+    const ANCHOR_BREATH_MS = 6500;
+    const ZONE_NOISE = 0.025;
+    const anchorApiBase = () => (location.port === "5173") ? "http://127.0.0.1:8787" : location.origin;
+    let anchorCoherenceEma = null, anchorCoherenceDisplay = null, anchorState = "idle";
+    let breathSyncDisplay = 0, darkLakeStrength = 0, voiceStreamStrength = 0;
+    let anchorTouchCount = 0, lastAnchorPost = 0, lastAnchorCompute = 0;
+    let lowEnergySince = 0, micAmpHist = 0, micAmpVar = 0, touchGlow = 0, touchRipple = 0;
+    let todayPeakLocal = 0, todayPeakAtLocal = "";
+    // v2.1 zone — ripple not depth; red never penalizes coherence/B3 (zero punishment invariant)
+    let zoneDisplay = null, zoneMicActiveSince = 0, zonePending = null, zonePendingSince = 0;
+    let redLowSince = 0, lastZoneAccTs = 0;
+    let zoneSessionSec = {green:0, yellow:0, red:0};
+    let breathSyncAccum = 0, breathSyncSamples = 0, heldSec = 0, deepSec = 0, sessionStartTs = performance.now();
+    let nextRecallAt = 0;
+    let zoneMod = {speed:1, bright:1, scatter:1, axisAlpha:1, streamJitter:0, lakePulse:1};
+    const aAnchorCoh = document.getElementById("aAnchorCoh");
+    const aAnchorState = document.getElementById("aAnchorState");
+    const aBreathSync = document.getElementById("aBreathSync");
+    const aTodayPeak = document.getElementById("aTodayPeak");
+    const aZone = document.getElementById("aZone");
+    const anchorFill = document.getElementById("anchorFill");
+    const zoneEdgeGlow = document.getElementById("zoneEdgeGlow");
+    const zoneRecall = document.getElementById("zoneRecall");
+    const grassSketch = document.getElementById("grassSketch");
+    function energyGate(energy){ return Math.max(0.05, Math.min(1, energy * 4)); }
+    function anchorStateFromCoherence(coh){
+      if(coh == null || coh < 0.3) return "idle";
+      if(coh >= 0.75) return "deep";
+      if(coh >= 0.55) return "held";
+      return "gathering";
+    }
+    function updateZone(ts, coh, micActive, energy){
+      if(ANCHOR_OFF){
+        zoneDisplay = null;
+        zoneMod = {speed:1, bright:1, scatter:1, axisAlpha:1, streamJitter:0, lakePulse:1};
+        zoneEdgeGlow?.classList.remove("is-green");
+        return null;
+      }
+      const dt = lastZoneAccTs > 0 ? Math.min(2, (ts - lastZoneAccTs) / 1000) : 0;
+      lastZoneAccTs = ts;
+      const active = micActive && energy > ZONE_NOISE;
+      if(!active){
+        zoneMicActiveSince = 0;
+        zoneDisplay = null;
+        zonePending = null;
+        redLowSince = 0;
+        zoneMod = {speed:1, bright:1, scatter:1, axisAlpha:1, streamJitter:0, lakePulse:1};
+        zoneEdgeGlow?.classList.remove("is-green");
+        return null;
+      }
+      if(!zoneMicActiveSince) zoneMicActiveSince = ts;
+      if(ts - zoneMicActiveSince < 5000) return null;
+      if(zoneDisplay && dt > 0){
+        zoneSessionSec[zoneDisplay] = (zoneSessionSec[zoneDisplay] || 0) + dt;
+      }
+      if(coh == null) return zoneDisplay;
+      let candidate = zoneDisplay;
+      if(coh >= 0.75) candidate = "green";
+      else if(coh >= 0.35 && coh < 0.55) candidate = "yellow";
+      else if(coh < 0.20){
+        if(!redLowSince) redLowSince = ts;
+        if(ts - redLowSince >= 30000) candidate = "red";
+        else candidate = zoneDisplay;
+      } else {
+        redLowSince = 0;
+        if((coh >= 0.55 && coh < 0.75) || (coh >= 0.20 && coh < 0.35)) candidate = zoneDisplay;
+      }
+      if(candidate !== zoneDisplay){
+        if(zonePending !== candidate){ zonePending = candidate; zonePendingSince = ts; }
+        const hold = candidate === "red" ? 30000 : 10000;
+        if(ts - zonePendingSince >= hold){ zoneDisplay = candidate; zonePending = null; }
+      } else { zonePending = null; }
+      if(zoneDisplay === "green"){
+        zoneMod = {speed:1, bright:1, scatter:1, axisAlpha:1, streamJitter:0, lakePulse:1.3};
+        zoneEdgeGlow?.classList.add("is-green");
+      } else if(zoneDisplay === "yellow"){
+        zoneMod = {speed:1, bright:1, scatter:1, axisAlpha:0.5, streamJitter:0.35, lakePulse:1};
+        zoneEdgeGlow?.classList.remove("is-green");
+      } else if(zoneDisplay === "red"){
+        zoneMod = {speed:0.8, bright:0.85, scatter:1.25, axisAlpha:1, streamJitter:0, lakePulse:1};
+        zoneEdgeGlow?.classList.remove("is-green");
+        if(!nextRecallAt) nextRecallAt = ts + 18000 + Math.random() * 6000;
+        if(ts >= nextRecallAt){
+          nextRecallAt = ts + 18000 + Math.random() * 6000;
+          if(zoneRecall){
+            zoneRecall.classList.remove("pulse");
+            void zoneRecall.offsetWidth;
+            zoneRecall.classList.add("pulse");
+          }
+        }
+      } else {
+        zoneMod = {speed:1, bright:1, scatter:1, axisAlpha:1, streamJitter:0, lakePulse:1};
+        zoneEdgeGlow?.classList.remove("is-green");
+      }
+      return zoneDisplay;
+    }
+    async function pushAnchorTelemetry(extra={}){
+      if(ANCHOR_OFF) return;
+      const now = performance.now();
+      if(now - lastAnchorPost < 480) return;
+      lastAnchorPost = now;
+      try{
+        await fetch(`${anchorApiBase()}/api/anchor`, {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            anchor_coherence: anchorCoherenceDisplay,
+            anchor_state: anchorState,
+            breath_sync: breathSyncDisplay,
+            zone: ANCHOR_OFF ? null : zoneDisplay,
+            presence: presenceOn,
+            state: displayedState || "idle",
+            coherence: driveRef.coherence > 0 ? driveRef.coherence : null,
+            beat_hz: lastBeatHz > 0 ? lastBeatHz : null,
+            energy: driveRef.energy,
+            voice_hz: driveRef.voiceHz > 0 ? driveRef.voiceHz : null,
+            ai_hz: driveRef.aiHz > 0 ? driveRef.aiHz : null,
+            touches: anchorTouchCount,
+            green_seconds: zoneSessionSec.green,
+            yellow_seconds: zoneSessionSec.yellow,
+            red_seconds: zoneSessionSec.red,
+            ...extra
+          })
+        });
+      }catch(_e){}
+    }
+    let driveRef = {coherence:0, energy:0, voiceHz:0, aiHz:0, hasMic:false};
+    let localPeakHist = [];
+    let ttsOutflowStrength = 0;
+    let bargeRippleT = 0;
     const canvas = document.getElementById("scene");
     const hud = document.getElementById("hud");
     const analysis = document.getElementById("analysis");
@@ -509,8 +746,8 @@ HTML = """<!doctype html>
     syncControlLabels();
 
     let mouseX=0, mouseY=0;
-    const FIGURE_X = -38.0;
-    const VIEW_AIM_X = FIGURE_X + 34.0;
+    const FIGURE_X = -20.0;
+    const VIEW_AIM_X = FIGURE_X;
     const renderer = new THREE.WebGLRenderer({canvas, antialias:false, alpha:false, powerPreference:"high-performance"});
     renderer.setPixelRatio(Math.min(2,window.devicePixelRatio));
     renderer.setClearColor(0x030408,1);
@@ -518,7 +755,7 @@ HTML = """<!doctype html>
     renderer.toneMappingExposure = 2.92;
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(53,window.innerWidth/window.innerHeight,0.1,520);
-    camera.position.set(VIEW_AIM_X, 0, 98);
+    camera.position.set(VIEW_AIM_X, 0, 112);
     const setRenderSize = () => {
       const rect = canvas.getBoundingClientRect();
       const w = Math.max(1, Math.floor(rect.width));
@@ -530,39 +767,71 @@ HTML = """<!doctype html>
     setRenderSize();
     canvas.style.opacity = "1";
     window.addEventListener("pointermove",(e)=>{mouseX=(e.clientX/window.innerWidth-0.5)*2;mouseY=(e.clientY/window.innerHeight-0.5)*2;});
+    canvas.addEventListener("pointerdown", async (e)=>{
+      if(ANCHOR_OFF || darkLakeStrength < 0.25) return;
+      const rect = canvas.getBoundingClientRect();
+      const nx = (e.clientX - rect.left) / Math.max(1, rect.width) - 0.5;
+      const ny = (e.clientY - rect.top) / Math.max(1, rect.height) - 0.5;
+      if(Math.hypot(nx, ny) > 0.14) return;
+      touchGlow = 1;
+      touchRipple = 1;
+      anchorTouchCount++;
+      try{ await fetch(`${anchorApiBase()}/api/anchor/touch`, {method:"POST"}); }catch(_e){}
+    });
 
     function profile(t){
-      const shoulder = 19.5*(1-Math.min(1,Math.abs(t+0.54)*1.22));
-      const torso = 13.8*(1-Math.abs(t)*0.56);
-      const crown = 9.2*Math.exp(-((t-0.13)*(t-0.13))*8.2);
-      const face = 4.1*Math.exp(-((t-0.24)*(t-0.24))*58);
-      const throat = -2.4*Math.exp(-((t+0.42)*(t+0.42))*38);
-      const waist = 2.8*Math.exp(-((t+0.08)*(t+0.08))*22);
-      return Math.max(3.4, torso + shoulder + crown + face + throat + waist);
+      const shoulder = 22.0*(1-Math.min(1,Math.abs(t+0.54)*1.12));
+      const torso = 16.8*(1-Math.abs(t)*0.50);
+      const crown = 10.2*Math.exp(-((t-0.13)*(t-0.13))*7.6);
+      const face = 4.6*Math.exp(-((t-0.24)*(t-0.24))*52);
+      const throat = -2.1*Math.exp(-((t+0.42)*(t+0.42))*36);
+      const waist = 4.0*Math.exp(-((t+0.08)*(t+0.08))*18);
+      const hips = 5.8*Math.exp(-((t+0.30)*(t+0.30))*13);
+      return Math.max(5.8, torso + shoulder + crown + face + throat + waist + hips);
     }
 
     function makeLayer(count, spread, zSpread, mode="field"){
       const pos = new Float32Array(count*3);
       const base = new Float32Array(count*3);
       const phase = new Float32Array(count);
+      const isBody = mode === "core" || mode === "halo";
+      const isDust = mode === "dust";
+      const isEdge = mode === "edge" || mode === "edgeCyan" || mode === "edgeCoral";
       let xBias = 0;
-      if(mode === "edge"){ xBias = -spread * 2.6; }
-      else if(mode === "edgeCyan"){ xBias = spread * 1.6; }
-      else if(mode === "edgeCoral"){ xBias = -spread * 1.2; }
-      const surfacePow = mode === "dust" ? 0.86 : 0.48;
+      if(mode === "edge"){ xBias = -spread * 3.2; }
+      else if(mode === "edgeCyan"){ xBias = spread * 2.4; }
+      else if(mode === "edgeCoral"){ xBias = -spread * 1.8; }
+      const surfacePow = isDust ? 0.92 : (isBody ? 0.14 : 0.36);
+      const jitter = isBody ? 1.1 : isDust ? 2.8 : 3.2;
       for(let i=0;i<count;i++){
         const t = Math.random()*2-1;
         const y = t*56;
         const shell = profile(t);
         const surface = Math.pow(Math.random(), surfacePow);
-        const angle = (Math.random() * Math.PI * 2.0) + Math.sin(t*3.2)*0.35;
-        const squash = mode === "core" ? 0.34 : mode === "halo" ? 0.48 : 0.62;
-        const bodyBias = mode === "edge" || mode === "edgeCyan" || mode === "edgeCoral" ? 0.78 : 0.55;
-        const edgePull = mode === "edge" || mode === "edgeCyan" || mode === "edgeCoral" ? 0.72 : 0.38;
-        const x = (Math.cos(angle)*shell*spread*squash*surface) + shell*spread*bodyBias*edgePull + (Math.random()-0.5)*(4.2*spread) + xBias;
-        const z = Math.sin(angle)*zSpread*surface + (Math.random()-0.5)*zSpread*0.18 + Math.sin(i*0.001)*4;
+        let x, z;
+        if(isDust){
+          const ringR = shell * spread * (1.25 + Math.random() * 0.95);
+          const angle = Math.random() * Math.PI * 2.0;
+          x = Math.cos(angle) * ringR + (Math.random()-0.5) * spread * 0.65;
+          z = Math.sin(angle) * zSpread * surface * 0.48 + (Math.random()-0.5) * zSpread * 0.24;
+        }else if(isBody){
+          const frontWide = mode === "core" ? 1.08 : 1.18;
+          const depthThin = mode === "core" ? 0.10 : 0.14;
+          const sideSign = Math.random() < 0.5 ? -1 : 1;
+          x = sideSign * shell * spread * frontWide * (0.78 + surface * 0.22) + (Math.random()-0.5) * jitter;
+          z = (Math.random()-0.5) * zSpread * depthThin;
+        }else if(isEdge){
+          const angle = (Math.random() * Math.PI * 0.92) + (mode === "edgeCyan" ? -0.42 : 0.42) + Math.sin(t*3.0)*0.28;
+          const edgeWide = mode === "edgeCyan" ? 1.22 : 1.05;
+          x = Math.cos(angle) * shell * spread * edgeWide * surface + shell * spread * 0.62 + (Math.random()-0.5) * jitter + xBias;
+          z = Math.sin(angle) * zSpread * surface * 0.42 + (Math.random()-0.5) * zSpread * 0.14;
+        }else{
+          const angle = (Math.random() * Math.PI * 2.0) + Math.sin(t*3.2)*0.35;
+          x = Math.cos(angle) * shell * spread * 0.52 * surface + (Math.random()-0.5) * jitter + xBias;
+          z = Math.sin(angle) * zSpread * surface + (Math.random()-0.5) * zSpread * 0.18;
+        }
         const idx=i*3;
-        pos[idx]=x; pos[idx+1]=y+(Math.random()-0.5)*1.6; pos[idx+2]=z;
+        pos[idx]=x; pos[idx+1]=y+(Math.random()-0.5)*(isBody ? 0.9 : 1.6); pos[idx+2]=z;
         base[idx]=pos[idx]; base[idx+1]=pos[idx+1]; base[idx+2]=pos[idx+2];
         phase[i]=Math.random()*6.283;
       }
@@ -591,7 +860,7 @@ HTML = """<!doctype html>
           varying float vBeat;
           void main(){
             vec4 mv = modelViewMatrix * vec4(position,1.0);
-            vSide = smoothstep(-2.0, 11.0, position.x + uFieldBias * 5.0);
+            vSide = smoothstep(-14.0, 14.0, position.x + uFieldBias * 8.5);
             vSpark = fract(sin(dot(position.xy, vec2(127.1, 311.7))) * 43758.5453);
             vBeat = fract(sin(dot(position.yz, vec2(41.7, 89.1))) * 23421.631);
             float h = fract(sin(dot(position.xy, vec2(127.1, 311.7))) * 43758.5453);
@@ -600,13 +869,13 @@ HTML = """<!doctype html>
             else if(uKind < 2.5){ sizeJitter *= mix(1.0, 1.55, h); }
             else if(uKind > 4.5){ sizeJitter *= mix(0.48, 0.88, h); }
             float depthScale = clamp((220.0 + mv.z) / 220.0, 0.32, 1.85);
-            float k = 0.48;
-            if(uKind < 0.5){ k = 0.68; }
-            else if(uKind < 1.5){ k = 0.88; }
-            else if(uKind < 4.5){ k = 0.82; }
-            else { k = 0.34; }
+            float k = 0.52;
+            if(uKind < 0.5){ k = 1.02; }
+            else if(uKind < 1.5){ k = 1.18; }
+            else if(uKind < 4.5){ k = 0.92; }
+            else { k = 0.28; }
             float pulseSize = 1.0 + sin(uTime * 3.2 + vSpark * 6.283) * 0.08 * (0.5 + uAmp);
-            gl_PointSize = uSize * k * sizeJitter * pulseSize * (196.0 / max(20.0, -mv.z)) * depthScale * (1.0 + uAmp*0.45);
+            gl_PointSize = uSize * k * sizeJitter * pulseSize * (228.0 / max(20.0, -mv.z)) * depthScale * (1.0 + uAmp*0.52);
             vDepth = clamp((-mv.z)/220.0,0.0,1.0);
             gl_Position = projectionMatrix * mv;
           }
@@ -643,7 +912,7 @@ HTML = """<!doctype html>
             float pin = exp(-r * r * 36.0);
             float goldRing = exp(-pow((r - 0.24) * 5.5, 2.0));
             float blueRing = exp(-pow((r - 0.20) * 5.5, 2.0));
-            float depthFade = mix(1.22, 0.74, vDepth);
+            float depthFade = mix(1.48, 0.88, vDepth);
             float side = clamp(vSide, 0.0, 1.0);
             float goldSide = 1.0 - side;
             float life = 0.52 + 0.48 * sin(uTime * 2.6 + vSpark * 6.283);
@@ -674,13 +943,13 @@ HTML = """<!doctype html>
             blueCol += vec3(0.28, 0.78, 1.55) * peakB * 1.08;
             blueCol += vec3(0.18, 0.58, 1.22) * fire * shard * 0.32 * side;
             float blueA = (veil * 0.12 + peakB * 0.62) * (0.38 + uAmp * 0.46) * depthFade;
-            vec3 col = mix(goldCol, blueCol, side) * 1.08;
-            float a = mix(goldA, blueA, side);
+            vec3 col = mix(goldCol, blueCol, smoothstep(0.18, 0.82, side)) * 1.22;
+            float a = mix(goldA, blueA, smoothstep(0.12, 0.88, side));
             if(uKind > 2.5 && uKind < 3.5){
-              col = mix(col, vec3(0.08, 0.78, 1.68), 0.68 * side);
-              a *= mix(1.05, 1.42, side);
+              col = mix(col, vec3(0.06, 0.82, 1.82), 0.78 * side);
+              a *= mix(1.12, 1.55, side);
             }else if(uKind > 4.5){
-              a *= mix(0.68, 0.30, side);
+              a *= mix(0.42, 0.18, side);
             }
             if(a < 0.004) discard;
             gl_FragColor = vec4(col, a);
@@ -690,11 +959,11 @@ HTML = """<!doctype html>
       });
     }
 
-    const mCore = material(0, 0.0);
-    const mHalo = material(1, 0.0);
-    const mGreen = material(2, -0.35);
-    const mCyan = material(3, 0.72);
-    const mCoral = material(4, -0.25);
+    const mCore = material(0, -0.55);
+    const mHalo = material(1, -0.42);
+    const mGreen = material(2, -1.0);
+    const mCyan = material(3, 1.0);
+    const mCoral = material(4, -0.72);
     const mDust = material(5, 0.0);
     const particleMats = [mCore, mHalo, mGreen, mCyan, mCoral, mDust];
     const pCore = new THREE.Points(core.geo,mCore);
@@ -708,13 +977,87 @@ HTML = """<!doctype html>
     window.addEventListener("resize",()=>{ setRenderSize(); });
 
     const key = new THREE.PointLight(0xfff0d8,3.8,520); key.position.set(-8,22,28); scene.add(key);
-    const rimGreen = new THREE.PointLight(0x86d6a3,0.65,340); rimGreen.position.set(-18,-12,36); scene.add(rimGreen);
-    const rimCyan = new THREE.PointLight(0x70d8ff,2.35,360); rimCyan.position.set(18,10,32); scene.add(rimCyan);
-    const rimGold = new THREE.PointLight(0xff9020,1.35,340); rimGold.position.set(-28,8,28); scene.add(rimGold);
+    const rimGreen = new THREE.PointLight(0x86d6a3,0.55,340); rimGreen.position.set(-22,-12,36); scene.add(rimGreen);
+    const rimCyan = new THREE.PointLight(0x48c8ff,3.1,380); rimCyan.position.set(34,10,32); scene.add(rimCyan);
+    const rimGold = new THREE.PointLight(0xffa020,2.2,360); rimGold.position.set(-34,8,28); scene.add(rimGold);
     const rimCoral = new THREE.PointLight(0xd8c38a,0.45,290); rimCoral.position.set(-20,9,24); scene.add(rimCoral);
 
     const PARTICLE_COUNT = 42000 + 32000 + 15000 + 15000 + 9000 + 52000;
     const MAX_FREQ_HZ = 8000;
+    class Audio8TtsQueue {
+      constructor(hooks, ttsUrl){
+        this.hooks = hooks || {};
+        this.ttsUrl = ttsUrl || (location.origin + "/api/tts/audio8");
+        this.pending = "";
+        this.queue = [];
+        this.active = false;
+        this._currentAudio = null;
+      }
+      feed(text){
+        this.pending += text || "";
+        const parts = this.pending.split(/([。！？!?…\\n]+)/);
+        if(parts.length < 2) return;
+        let chunk = "";
+        for(let i = 0; i < parts.length - 1; i += 2){
+          chunk = (parts[i] || "") + (parts[i + 1] || "");
+          if(chunk.trim()) this.queue.push(chunk.trim());
+        }
+        this.pending = parts[parts.length - 1] || "";
+        this._drain();
+      }
+      flush(){
+        this.pending = "";
+        this.queue = [];
+        this.active = false;
+        if(this._currentAudio){
+          try{ this._currentAudio.pause(); }catch(_e){}
+          this._currentAudio = null;
+        }
+      }
+      flushPending(){
+        const tail = (this.pending || "").trim();
+        this.pending = "";
+        if(tail){
+          this.queue.push(tail);
+          this._drain();
+        }
+      }
+      _drain(){
+        if(this.active || !this.queue.length) return;
+        this.active = true;
+        const text = this.queue.shift();
+        (async ()=>{
+          try{
+            if(this.hooks.onStart) this.hooks.onStart({ engine: "audio8", text });
+            const voice = /[\\u4e00-\\u9fff]/.test(text) ? "grid_zh" : "grid_en";
+            const r = await fetch(this.ttsUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ input: text, voice }),
+            });
+            if(!r.ok) throw new Error("audio8 " + r.status);
+            const blob = await r.blob();
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            this._currentAudio = audio;
+            await new Promise((resolve, reject)=>{
+              audio.onended = ()=>{ URL.revokeObjectURL(url); resolve(); };
+              audio.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error("audio play failed")); };
+              audio.play().catch(reject);
+            });
+            if(this.hooks.onEnd) this.hooks.onEnd({ metrics: { engine: "audio8" } });
+          }catch(err){
+            console.warn("[Garden Audio8 TTS]", err);
+          }finally{
+            this._currentAudio = null;
+            this.active = false;
+            if(this.queue.length) this._drain();
+            else if(this.hooks.onIdle) this.hooks.onIdle();
+          }
+        })();
+      }
+    }
+
     const API_BASE = (location.port === "5173") ? "http://127.0.0.1:8787" : location.origin;
     const TELEMETRY_URL = `${API_BASE}/api/telemetry`;
     const VOICE_URL = `${API_BASE}/api/voice`;
@@ -770,7 +1113,7 @@ HTML = """<!doctype html>
       const hasMic = micActive && voiceHzMic > 30;
       const hasTelVoice = tel.voiceSource === "mic" && (tel.voiceFreq || 0) > 30;
       const voiceHz = hasMic ? voiceHzMic : (hasTelVoice ? tel.voiceFreq : 0);
-      const aiActive = !!(tel.speaking || tel.aiSource === "macos_say" || tel.aiSource === "kokoro" || tel.aiSource === "presence_echo");
+      const aiActive = !!(tel.speaking || tel.aiSource === "macos_say" || tel.aiSource === "kokoro" || tel.aiSource === "audio8" || tel.aiSource === "presence_echo");
       const aiHz = aiActive ? (tel.aiFreq || 0) : 0;
       const aiAmplitude = aiActive ? (tel.aiAmplitude || 0) : 0;
       const coherence = (voiceHz > 0 && aiHz > 0) ? coherenceSimple(voiceHz, aiHz) : 0;
@@ -798,6 +1141,7 @@ HTML = """<!doctype html>
     let micCtx = null;
     let micAnalyser = null;
     let micData = null;
+    let micStream = null;
     const specPeaks = new Float32Array(48); // 频谱 peak-hold 状态
     let lastBeatHz = 0;
     // aiState 四态权重(平滑过渡,避免状态切换时画面跳变)
@@ -812,6 +1156,12 @@ HTML = """<!doctype html>
     let presenceOn = false;
     let lastVoicePost = 0;
     const micBtn = document.getElementById("micBtn");
+    const voiceBtn = document.getElementById("voiceBtn");
+    const voiceBargeBtn = document.getElementById("voiceBargeBtn");
+    const voiceSt = document.getElementById("voiceSt");
+    const voiceAs = document.getElementById("voiceAs");
+    const voiceDeg = document.getElementById("voiceDeg");
+    const aVoiceChat = document.getElementById("aVoiceChat");
     const speakBtn = document.getElementById("speakBtn");
     const echoTestBtn = document.getElementById("echoTestBtn");
     const specCanvas = document.getElementById("specCanvas");
@@ -832,10 +1182,155 @@ HTML = """<!doctype html>
     if(!micBtn || !speakBtn){
       console.error("[Garden] missing mic or presence button in DOM");
     }
+
+    const VOICE_HIST_KEY = "garden-voice-hist-v1";
+    let gardenVoice = null;
+    let voiceOn = false;
+    let voiceTurnState = null;
+    function resolveGardenGw(){
+      if(location.hostname.endsWith(".ts.net")) return location.origin + "/v1";
+      return "http://127.0.0.1:8501/v1";
+    }
+    function gardenGwBase(){
+      return String(resolveGardenGw() || "").replace(/\/v1\/?$/i, "");
+    }
+    async function loadVoiceScript(src){
+      return new Promise((resolve, reject)=>{
+        if(document.querySelector(`script[src="${src}"]`)){ resolve(); return; }
+        const s = document.createElement("script");
+        s.src = src;
+        s.onload = ()=>resolve();
+        s.onerror = ()=>reject(new Error("script load failed: " + src));
+        document.head.appendChild(s);
+      });
+    }
+    async function ensureVoiceScripts(){
+      const ver = VOICE_JS_VER;
+      if(typeof GridVoice !== "undefined" && window.__GRID_VOICE_JS_VER === ver) return;
+      document.querySelectorAll('script[src*="grid_voice.js"]').forEach(el=>el.remove());
+      try{ delete window.GridVoice; }catch(_e){ window.GridVoice = undefined; }
+      const base = gardenGwBase();
+      await loadVoiceScript(base + "/app/grid_voice.js?v=" + encodeURIComponent(ver));
+      window.__GRID_VOICE_JS_VER = ver;
+    }
+    function voiceHist(){
+      try{
+        const h = JSON.parse(localStorage.getItem(VOICE_HIST_KEY) || "[]");
+        return Array.isArray(h) ? h.slice(-40) : [];
+      }catch(e){ return []; }
+    }
+    function pushVoiceHist(role, content){
+      const h = voiceHist();
+      h.push({role, content: String(content || "")});
+      try{ localStorage.setItem(VOICE_HIST_KEY, JSON.stringify(h.slice(-40))); }catch(e){}
+    }
+    function applyVoiceUi(){
+      voiceBtn?.classList.toggle("is-on", voiceOn);
+      voiceBargeBtn?.classList.toggle("is-on", voiceTurnState === "speaking");
+      if(aVoiceChat){
+        aVoiceChat.textContent = voiceOn ? (voiceTurnState || "listening") : "off";
+        aVoiceChat.className = "v " + (voiceOn ? "live" : "stub");
+      }
+    }
+    async function stopGardenVoice(){
+      if(gardenVoice){
+        try{ await gardenVoice.stop(); }catch(e){}
+      }
+      voiceOn = false;
+      voiceTurnState = null;
+      applyVoiceUi();
+      if(voiceSt) voiceSt.textContent = "";
+      if(voiceAs) voiceAs.textContent = "";
+      if(voiceDeg) voiceDeg.textContent = "";
+    }
+    async function toggleGardenVoice(){
+      if(voiceOn){
+        await stopGardenVoice();
+        return;
+      }
+      if(micReady){ stopMic(); }
+      try{
+        await ensureVoiceScripts();
+        if(!gardenVoice){
+          const gw = resolveGardenGw();
+          gardenVoice = new GridVoice({
+            gwV1: gw,
+            getHistory: voiceHist,
+            onTurnState(s){
+              voiceTurnState = s || "idle";
+              applyVoiceUi();
+            },
+            onState(s){ voiceTurnState = s || voiceTurnState; applyVoiceUi(); },
+            onAudioSession(line){ if(voiceAs) voiceAs.textContent = line || ""; },
+            onDegrade(msg){ if(voiceDeg) voiceDeg.textContent = msg || ""; },
+            onAsr(text){
+              if(text){
+                pushVoiceHist("user", text);
+                if(voiceSt) voiceSt.textContent = "asr · " + text.slice(0, 80);
+              }
+            },
+            onSubtitle(t){
+              if(t && gardenVoice && gardenVoice.turnState === "thinking" && voiceSt){
+                voiceSt.textContent = t.slice(0, 120);
+              }
+            },
+            onTtsStart(msg){
+              const snippet = (msg.text || "").slice(0, 60);
+              if(voiceSt) voiceSt.textContent = "tts:" + (msg.engine || "speechSynthesis") + " · " + snippet;
+            },
+            onTtsEnd(){},
+            onAssistant(text, meta){
+              if(!text) return;
+              if(meta && meta.interrupt){
+                for(let i = voiceHist().length - 1; i >= 0; i--){
+                  const h = voiceHist();
+                  if(h[i] && h[i].role === "assistant"){
+                    h[i].content = text;
+                    try{ localStorage.setItem(VOICE_HIST_KEY, JSON.stringify(h)); }catch(e){}
+                    break;
+                  }
+                }
+              }else{
+                pushVoiceHist("assistant", text);
+              }
+            },
+            onError(msg){ if(voiceSt) voiceSt.textContent = msg || "voice error"; },
+          });
+          gardenVoice.tts = new Audio8TtsQueue({
+            onStart: (msg)=> gardenVoice.onTtsStart(msg),
+            onEnd: ()=> gardenVoice.onTtsEnd({ metrics: { engine: "audio8" } }),
+            onIdle: ()=> gardenVoice._afterSpeak(),
+          }, `${location.origin}/api/tts/audio8`);
+        }
+        voiceOn = await gardenVoice.toggle();
+        applyVoiceUi();
+        if(voiceOn && typeof gridVoiceAudioSessionStatus === "function"){
+          if(voiceAs) voiceAs.textContent = gridVoiceAudioSessionStatus();
+        }
+        if(!voiceOn){
+          voiceTurnState = null;
+          if(voiceSt) voiceSt.textContent = "";
+        }
+      }catch(err){
+        voiceOn = false;
+        voiceTurnState = null;
+        applyVoiceUi();
+        if(voiceSt) voiceSt.textContent = "voice: " + (err.message || err);
+        console.warn("[Garden voice]", err);
+      }
+    }
+    voiceBtn?.addEventListener("click", ()=>{ void toggleGardenVoice(); });
+    if(voiceBargeBtn){
+      const doBarge = ()=>{ if(gardenVoice) gardenVoice.interrupt(); };
+      voiceBargeBtn.addEventListener("pointerdown", doBarge);
+      voiceBargeBtn.addEventListener("click", doBarge);
+    }
+
     async function startMic(){
       if(micReady){ return; }
       try{
-        const stream = await navigator.mediaDevices.getUserMedia({audio:true, video:false});
+        const stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}, video:false});
+        micStream = stream;
         micCtx = new (window.AudioContext || window.webkitAudioContext)();
         if(micCtx.state === "suspended"){ await micCtx.resume(); }
         const src = micCtx.createMediaStreamSource(stream);
@@ -859,7 +1354,22 @@ HTML = """<!doctype html>
         console.warn("[Garden mic]", err);
       }
     }
-    micBtn?.addEventListener("click", startMic);
+    function stopMic(){
+      micReady = false;
+      if(micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream = null; }
+      if(micCtx){ micCtx.close().catch(()=>{}); micCtx = null; }
+      micAnalyser = null; micData = null;
+      micBtn?.classList.remove("is-recording");
+      micBtn?.setAttribute("aria-label", "Microphone off");
+      if(aMic){ aMic.textContent = "idle"; aMic.className = "v stub"; }
+      analysis?.classList.remove("is-live");
+    }
+    async function toggleMic(){
+      if(voiceOn){ await stopGardenVoice(); }
+      if(micReady){ stopMic(); return; }
+      await startMic();
+    }
+    micBtn?.addEventListener("click", toggleMic);
     function applyPresenceUi(){
       if(!speakBtn){ return; }
       speakBtn.textContent = presenceOn ? "Presence ON" : "Presence";
@@ -993,7 +1503,7 @@ HTML = """<!doctype html>
       fieldControls?.toggleAttribute("hidden", !isGarden);
       memoryPanel?.classList.toggle("is-open", view === "memory");
       memoryPanel?.toggleAttribute("hidden", view !== "memory");
-      if(view === "memory"){ loadCompiledMemory(); renderSessions(); }
+      if(view === "memory"){ loadCompiledMemory(); renderSessions(); loadGrassSketch(); }
       setRenderSize();
     }
     navTabs.forEach((tab)=>{
@@ -1001,6 +1511,50 @@ HTML = """<!doctype html>
     });
     document.body.dataset.view = "garden";
 
+    async function loadGrassSketch(){
+      if(!grassSketch) return;
+      try{
+        const r = await fetch(`${anchorApiBase()}/api/anchor/sketch`);
+        if(!r.ok) throw new Error(String(r.status));
+        const days = await r.json();
+        grassSketch.innerHTML = "";
+        for(const d of (days || []).slice(-30)){
+          const el = document.createElement("i");
+          const peak = Math.max(0, Math.min(1, Number(d.peak_coherence || 0)));
+          const held = Math.max(0, Number(d.held_seconds || 0));
+          el.style.height = `${Math.max(4, 8 + peak * 36 + Math.min(held / 60, 1) * 12)}px`;
+          const dom = d.dominant_zone || "";
+          if(dom === "green") el.className = "z-green";
+          else if(dom === "yellow") el.className = "z-yellow";
+          else if(dom === "red") el.className = "z-red";
+          el.title = `${d.day || ""} peak ${peak.toFixed(2)}`;
+          grassSketch.appendChild(el);
+        }
+      }catch(_e){
+        grassSketch.innerHTML = "";
+      }
+    }
+    async function flushAnchorLog(){
+      if(ANCHOR_OFF) return;
+      const dur = Math.max(0, (performance.now() - sessionStartTs) / 1000);
+      const payload = {
+        duration: dur,
+        peak_coherence: todayPeakLocal || null,
+        held_seconds: heldSec,
+        deep_seconds: deepSec,
+        breath_sync_avg: breathSyncSamples ? breathSyncAccum / breathSyncSamples : null,
+        touches: anchorTouchCount,
+        green_seconds: zoneSessionSec.green,
+        yellow_seconds: zoneSessionSec.yellow,
+        red_seconds: zoneSessionSec.red,
+      };
+      try{
+        await fetch(`${anchorApiBase()}/api/anchor/log`, {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify(payload)
+        });
+      }catch(_e){}
+    }
     function readSessions(){
       try{
         const raw = localStorage.getItem(SESSIONS_KEY);
@@ -1126,6 +1680,7 @@ HTML = """<!doctype html>
       saveMemoryBtn.classList.add("is-busy");
       saveMemoryBtn.textContent = "Saving…";
       try{
+        await flushAnchorLog();
         await compileMemory();
         const id = snapshotSession();
         saveMemoryBtn.textContent = "Saved";
@@ -1374,7 +1929,7 @@ HTML = """<!doctype html>
       }
     }
 
-    function animateLayer(layer, ts, dtMs, amp, freq, gain, depthGain, driftX, coherence, micLow, micHigh, morph={radial:1, yPull:0, think:0, speak:0, listen:0}){
+    function animateLayer(layer, ts, dtMs, amp, freq, gain, depthGain, driftX, coherence, micLow, micHigh, morph={radial:1, yPull:0, think:0, speak:0, listen:0}, anchor=null){
       const pos = layer.geo.attributes.position;
       const breathWave = Math.sin(ts * 0.00028) * (0.22 + micLow * 0.18) * (0.85 + amp * 0.35);
       const breathWave2 = Math.sin(ts * 0.00019 + 1.2) * 0.12 * (1.0 + amp * 0.25);
@@ -1385,6 +1940,13 @@ HTML = """<!doctype html>
       const inward = (morph.think || 0) * 0.34 + (morph.listen || 0) * 0.16;
       const outward = (morph.speak || 0) * 0.42;
       const flowMul = (1 - (morph.think || 0) * 0.38) * (1 + (morph.speak || 0) * 0.32);
+      const anchorOn = anchor && anchor.enabled;
+      const eg = anchorOn ? anchor.energyGate : 0;
+      const anchorPull = anchorOn ? (ANCHOR_G * eg * 0.0055) : 0;
+      const darkLake = anchorOn ? (anchor.darkLake || 0) : 0;
+      const voiceStream = anchorOn ? (anchor.voiceStream || 0) : 0;
+      const catchBand = anchorOn ? (anchor.catchBand || 0) : 0;
+      const zm = anchorOn ? (anchor.zoneMod || {speed:1, bright:1, scatter:1, streamJitter:0}) : {speed:1, bright:1, scatter:1, streamJitter:0};
       // 相位逐帧累积(修复:原 flowT = ts*0.00024*gain 在 gain 被状态/音频调制时,
       // 相位 = 绝对时间×增益会瞬间扫过几十弧度 → 整场抽搐"放鞭炮"。
       // 累积式下,gain 变化只改变此刻的转速,过去的相位是既成事实 —— 减速可见且丝滑)
@@ -1403,22 +1965,115 @@ HTML = """<!doctype html>
         const rNorm = Math.min(1, radial / 110);
         const pinch = inward * rNorm * radial * 0.0048;
         const bloom = outward * (1 - rNorm * 0.3) * radial * 0.0058;
-        bx += -bx * pinch + bx * bloom * 0.2;
-        bz += -bz * pinch + bz * bloom * 0.22;
+        const ttsPush = ttsOutflowStrength * (1 - rNorm * 0.45) * radial * 0.0072;
+        bx += -bx * pinch + bx * bloom * 0.2 + bx * ttsPush * 0.35;
+        bz += -bz * pinch + bz * bloom * 0.22 + bz * ttsPush * 0.32;
+        if(bargeRippleT > 0 && (ts - bargeRippleT) < 900){
+          const rip = Math.sin((ts - bargeRippleT) * 0.022) * Math.exp(-(ts - bargeRippleT) / 420);
+          bx += bx * rip * 0.018;
+          bz += bz * rip * 0.018;
+        }
+        if(anchorPull > 0){
+          const dist = Math.max(ANCHOR_MIN_DIST, radial);
+          const pull = anchorPull / (dist * 0.04 + 1);
+          bx += -bx * pull * (1.1 - rNorm * 0.35);
+          bz += -bz * pull * (0.85 - rNorm * 0.25);
+        }
+        const spiralTight = micHigh > 0.45 ? 1.35 : 0.82;
+        const edgeInject = voiceStream * Math.max(0, rNorm - 0.48) * (0.55 + micLow * 0.35);
+        const voiceSpiral = edgeInject * Math.sin(flowT * spiralTight * 1.6 + ph * 2.1 + radialN * 14) * 4.2;
+        const voiceInward = edgeInject * Math.cos((flowT + ph + radialN * 9) * spiralTight) * 2.8;
+        const catchEase = catchBand * Math.max(0, 0.72 - rNorm) * 3.2;
+        const lakeDamp = darkLake > 0 && rNorm < 0.14 ? (1 - darkLake * 0.72) : 1;
         const swing = Math.sin(flowT + by*0.028 + ph) * 0.55 + Math.sin(flowT*1.37 + ph*0.6) * 0.28;
         const curl = Math.cos(flowT*0.88 + bx*0.034 + ph*0.45) * 0.48 + Math.sin(flowT*0.62 + by*0.02) * 0.22;
         const swirl = (morph.think || 0) * Math.sin(flowT*2.2 + ph + radialN*9) * 3.4;
         const drift = Math.sin(depthT + bx*0.05 + ph*0.35) * depthGain * controls.depthWave * 0.72;
         const tight = (1.0 - loose * 0.16) * (1 + (morph.think || 0) * 0.18);
-        const flowX = swing * (0.55 + controls.flowAmp*0.95 + amp*1.15) + breathWave * bx * 0.008 + ripple * radialN * Math.sin(ph + ts*0.0011) + swirl;
-        const flowY = curl * (0.32 + controls.dance*0.72 + amp*0.65) + (breathWave + breathWave2) * 0.42 + (morph.speak || 0) * Math.sin(flowT*1.7 + ph) * 0.72;
+        let flowX = swing * (0.55 + controls.flowAmp*0.95 + amp*1.15) + breathWave * bx * 0.008 + ripple * radialN * Math.sin(ph + ts*0.0011) + swirl;
+        flowX += voiceSpiral + voiceInward * 0.65 - bx * catchEase * 0.0022;
+        flowX += (Math.random() - 0.5) * zm.streamJitter * 0.4;
+        let flowY = curl * (0.32 + controls.dance*0.72 + amp*0.65) + (breathWave + breathWave2) * 0.42 + (morph.speak || 0) * Math.sin(flowT*1.7 + ph) * 0.72;
+        let flowZ = drift + ripple * radialN * 0.32 + voiceInward * 0.42 - bz * catchEase * 0.0018;
+        const zSpd = zm.speed || 1, zSc = zm.scatter || 1;
         pos.setXYZ(i,
-          bx + flowX * tight,
-          by + flowY * tight,
-          bz + drift + ripple * radialN * 0.32
+          bx + flowX * tight * lakeDamp * zSpd + (Math.random()-0.5)*zSc*0.15,
+          by + flowY * tight * lakeDamp * zSpd + (Math.random()-0.5)*zSc*0.12,
+          bz + flowZ * lakeDamp * zSpd + (Math.random()-0.5)*zSc*0.15
         );
       }
       pos.needsUpdate = true;
+    }
+
+    function updateAnchorLayer(drive, ts){
+      if(ANCHOR_OFF){
+        anchorCoherenceDisplay = null;
+        anchorState = "idle";
+        darkLakeStrength *= 0.92;
+        voiceStreamStrength *= 0.9;
+        return {enabled:false, globalBreath:1};
+      }
+      driveRef = drive;
+      const active = drive.hasMic && drive.energy > 0.025;
+      if(!active){
+        if(!lowEnergySince) lowEnergySince = ts;
+        if(ts - lowEnergySince > 10000){
+          anchorCoherenceDisplay = null;
+          anchorState = "idle";
+        }
+      }else{
+        lowEnergySince = 0;
+      }
+      if(ts - lastAnchorCompute >= 500){
+        lastAnchorCompute = ts;
+        const eg = energyGate(drive.energy);
+        micAmpVar = micAmpVar * 0.85 + Math.abs(micAmp - micAmpHist) * 0.15;
+        micAmpHist = micAmpHist * 0.9 + micAmp * 0.1;
+        const alignment = eg * (0.38 + drive.coherence * 0.35 + stateW.listening * 0.22);
+        const stability = 1 / (1 + micAmpVar * 28);
+        const edgeFlow = Math.min(1, micHigh * 0.55 + micMid * 0.25 + micLow * 0.12);
+        if(active){
+          const raw = 0.45 * alignment + 0.35 * stability + 0.20 * edgeFlow;
+          anchorCoherenceEma = anchorCoherenceEma == null ? raw : anchorCoherenceEma * 0.9 + raw * 0.1;
+          anchorCoherenceDisplay = anchorCoherenceEma;
+        }
+        anchorState = anchorStateFromCoherence(anchorCoherenceDisplay);
+        if(anchorState === "held") heldSec += 0.5;
+        if(anchorState === "deep") deepSec += 0.5;
+        if(breathSyncDisplay > 0){ breathSyncAccum += breathSyncDisplay; breathSyncSamples++; }
+        if(anchorCoherenceDisplay != null && anchorCoherenceDisplay > todayPeakLocal){
+          todayPeakLocal = anchorCoherenceDisplay;
+          todayPeakAtLocal = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+        }
+        pushAnchorTelemetry();
+      }
+      updateZone(ts, anchorCoherenceDisplay, active, drive.energy);
+      const coh = anchorCoherenceDisplay || 0;
+      const lakeTarget = coh > 0.55 ? Math.min(1, (coh - 0.55) / 0.25) * (zoneMod.lakePulse || 1) : 0;
+      darkLakeStrength += (lakeTarget - darkLakeStrength) * (lakeTarget > darkLakeStrength ? 0.045 : 0.022);
+      voiceStreamStrength += ((drive.hasMic && micAmp > VOICE_AMP_GATE ? 1 : 0) - voiceStreamStrength) * 0.08;
+      const catchBand = coh > 0.4 ? Math.min(1, (coh - 0.4) / 0.35) : 0;
+      const breathPhase = (ts % ANCHOR_BREATH_MS) / ANCHOR_BREATH_MS * Math.PI * 2;
+      const userPhase = (ts * 0.001) % (Math.PI * 2);
+      const phaseDelta = Math.abs(Math.sin(breathPhase) - Math.sin(userPhase));
+      if(coh > 0.55 && drive.energy > 0.03){
+        breathSyncDisplay = breathSyncDisplay * 0.92 + (1 - Math.min(1, phaseDelta / 0.4)) * 0.08;
+        if(phaseDelta < 0.2 && anchorCoherenceDisplay != null){
+          anchorCoherenceDisplay = Math.min(1, anchorCoherenceDisplay + 0.004);
+        }
+      }else{
+        breathSyncDisplay *= 0.96;
+      }
+      const globalBreath = coh > 0.55 ? (1 + Math.sin(breathPhase) * 0.08) : 1;
+      return {
+        enabled:true,
+        energyGate:energyGate(drive.energy),
+        darkLake:darkLakeStrength,
+        voiceStream:voiceStreamStrength,
+        catchBand,
+        globalBreath,
+        zoneMod
+      };
     }
 
     let frames=0,fps=0,t0=performance.now();
@@ -1475,12 +2130,35 @@ HTML = """<!doctype html>
       const teleFreq = telemetry.aiFreq || 220;
       const musicSig = readMusicSpectrum();
       const useMusic = musicPlaying && musicSig.amp > 0.02;
-      const blendAmp = useMusic ? Math.max(micAmp, musicSig.amp) : micAmp;
-      const blendFreq = useMusic && musicSig.amp >= micAmp * 0.7 ? musicSig.freq : micFreq;
-      const drive = computeParticleDrive(telemetry, micFreq, micReady, blendAmp, blendFreq);
+      const nowSec = ts / 1000;
+      localPeakHist = localPeakHist.filter(p => (nowSec - p.t) < 30);
+      if(micAmp > 0){ localPeakHist.push({t: nowSec, e: micAmp}); }
+      const localPeak = Math.max(0.015, ...(localPeakHist.length ? localPeakHist.map(p => p.e) : [0.015]));
+      const localNorm = micAmp / localPeak;
+      const remote = telemetry.field_link?.phone || {};
+      const remoteActive = !!remote.active;
+      const remoteNorm = remoteActive ? (remote.energy_norm || 0) : 0;
+      const mergedNorm = Math.max(localNorm, remoteNorm);
+      const useRemoteHz = remoteActive && remoteNorm >= localNorm && (remote.voice_hz || 0) > 30;
+      const localMicActive = micReady && micAmp >= VOICE_AMP_GATE;
+      if(aMic){
+        if(localMicActive && remoteActive){ aMic.textContent = "双源"; aMic.className = "v live"; }
+        else if(remoteActive){ aMic.textContent = "listening(phone)"; aMic.className = "v live"; }
+        else if(localMicActive){ aMic.textContent = "listening(local)"; aMic.className = "v live"; }
+        else if(micReady){ aMic.textContent = "idle"; aMic.className = "v stub"; }
+      }
+      if(telemetry.field_link?.barge_pulse){ bargeRippleT = ts; }
+      const ttsTarget = telemetry.field_link?.tts_out ? 1 : 0;
+      ttsOutflowStrength += (ttsTarget - ttsOutflowStrength) * 0.12;
+      const blendAmp = useMusic ? Math.max(mergedNorm, musicSig.amp) : mergedNorm;
+      const blendFreq = useRemoteHz ? remote.voice_hz
+        : (useMusic && musicSig.amp >= mergedNorm * 0.7 ? musicSig.freq : micFreq);
+      const drive = computeParticleDrive(telemetry, useRemoteHz ? remote.voice_hz : micFreq,
+        micReady || remoteActive, blendAmp, blendFreq);
       // ---- aiState 四态形变 ----
-      // 目标状态:后端 aiState 优先;老后端无此字段时从 speaking/voiceSource 推导
-      let aiStateRaw = telemetry.aiState
+      // GridVoice 优先;否则后端 aiState;老后端从 speaking/voiceSource 推导
+      let aiStateRaw = voiceTurnState
+        || telemetry.aiState
         || (telemetry.speaking ? "speaking" : (telemetry.voiceSource === "mic" ? "listening" : "idle"));
       if(morphDemoOn){
         const demoPhase = Math.floor((ts - morphDemoT) / 2200) % 4;
@@ -1553,12 +2231,15 @@ HTML = """<!doctype html>
       const cohBoost = tuningMode ? fieldCoh * 0.9 : 0; // 对齐呼吸也只属于调音时刻
       const alignedBreath = Math.sin(ts*0.00022) * (1.4 + amp*2.8) * (1 + cohBoost);
       const fieldBreath = (alignedBreath + tremor + speakPulse + listenGather) * contractF;
-      animateLayer(core, ts, dtMs, amp, freq, gain*voiceBoost, depthGain*1.2, -30.0 + fieldBreath + stateDriftX, fieldCoh, micLow, micHigh, layerMorph);
-      animateLayer(halo, ts, dtMs, amp, freq, gain*1.08*voiceBoost, depthGain*1.35, -30.0 + fieldBreath + stateDriftX, fieldCoh, micLow, micHigh, layerMorph);
-      animateLayer(fringeGreen, ts, dtMs, amp, freq, gain*1.15*voiceBoost, depthGain*1.45, -29.2 + fieldBreath + stateDriftX, fieldCoh, micLow, micHigh, layerMorph);
-      animateLayer(fringeCyan, ts, dtMs, amp, freq, gain*1.22*voiceBoost, depthGain*1.55, -30.8 + fieldBreath + stateDriftX, fieldCoh, micLow, micHigh, layerMorph);
-      animateLayer(fringeCoral, ts, dtMs, amp, freq, gain*1.08*voiceBoost, depthGain*1.4, -29.5 + fieldBreath + stateDriftX, fieldCoh, micLow, micHigh, layerMorph);
-      animateLayer(dust, ts, dtMs, amp, freq, gain*0.88, depthGain*1.85, -33.0 + fieldBreath*0.7, fieldCoh, micLow, micHigh, {...layerMorph, radial: radialScale*0.9, yPull: yPull*0.65});
+      const drift = fieldBreath * 0.22 + stateDriftX;
+      const anchorOpts = updateAnchorLayer(drive, ts);
+      const gBreath = anchorOpts.globalBreath || 1;
+      animateLayer(core, ts, dtMs, amp, freq, gain*voiceBoost, depthGain*1.2, drift, fieldCoh, micLow, micHigh, layerMorph, anchorOpts);
+      animateLayer(halo, ts, dtMs, amp, freq, gain*1.08*voiceBoost, depthGain*1.35, drift, fieldCoh, micLow, micHigh, layerMorph, anchorOpts);
+      animateLayer(fringeGreen, ts, dtMs, amp, freq, gain*1.15*voiceBoost, depthGain*1.45, drift - 2.5, fieldCoh, micLow, micHigh, layerMorph, anchorOpts);
+      animateLayer(fringeCyan, ts, dtMs, amp, freq, gain*1.22*voiceBoost, depthGain*1.55, drift + 2.5, fieldCoh, micLow, micHigh, layerMorph, anchorOpts);
+      animateLayer(fringeCoral, ts, dtMs, amp, freq, gain*(1.08 + voiceStreamStrength*0.35)*voiceBoost, depthGain*1.4, drift - 1.5, fieldCoh, micLow, micHigh, layerMorph, anchorOpts);
+      animateLayer(dust, ts, dtMs, amp, freq, gain*0.62, depthGain*1.45, drift * 0.5, fieldCoh, micLow, micHigh, {...layerMorph, radial: radialScale*0.9, yPull: yPull*0.65}, anchorOpts);
 
       // 几何呼吸:边缘先于核心收 —— 吸气从外向内
       pCore.scale.setScalar(fieldScale);
@@ -1574,12 +2255,12 @@ HTML = """<!doctype html>
       pCoral.position.y = groupY * 0.9;
       pDust.position.y = groupY * 0.5;
 
-      pCore.rotation.y = Math.sin(ts*0.00011)*0.24 + swirlPhase;
-      pHalo.rotation.y = Math.sin(ts*0.000105)*0.26 + swirlPhase * 0.92;
-      pGreen.rotation.y = Math.sin(ts*0.000102)*0.29 + swirlPhase * 1.08;
-      pCyan.rotation.y = Math.sin(ts*0.000098)*0.31 + swirlPhase * 1.15;
-      pCoral.rotation.y = Math.sin(ts*0.000106)*0.27 + swirlPhase * 0.85;
-      pDust.rotation.y = Math.sin(ts*0.00008)*0.34 + swirlPhase * 1.3;
+      pCore.rotation.y = Math.sin(ts*0.00011)*0.05 + swirlPhase * 0.35;
+      pHalo.rotation.y = Math.sin(ts*0.000105)*0.06 + swirlPhase * 0.42;
+      pGreen.rotation.y = Math.sin(ts*0.000102)*0.12 + swirlPhase * 0.55;
+      pCyan.rotation.y = Math.sin(ts*0.000098)*0.14 + swirlPhase * 0.62;
+      pCoral.rotation.y = Math.sin(ts*0.000106)*0.10 + swirlPhase * 0.48;
+      pDust.rotation.y = Math.sin(ts*0.00008)*0.22 + swirlPhase * 0.85;
       pDust.rotation.z = Math.cos(ts*0.00012)*0.05 + thinkTilt;
       pCore.rotation.x = thinkTilt * 0.75;
       pHalo.rotation.x = thinkTilt * 0.55;
@@ -1592,13 +2273,13 @@ HTML = """<!doctype html>
       mGreen.uniforms.uSize.value = controls.size * 1.05 * sizeMul;
       mCyan.uniforms.uSize.value = controls.size * 1.08 * sizeMul;
       mCoral.uniforms.uSize.value = controls.size * 0.98 * sizeMul;
-      mDust.uniforms.uSize.value = controls.size * 0.52 * sizeMul;
-      mCore.uniforms.uAmp.value = glow * controls.contrast * 1.18;
-      mHalo.uniforms.uAmp.value = glow * controls.contrast * 1.05;
-      mGreen.uniforms.uAmp.value = glow * controls.contrast * 1.55;
-      mCyan.uniforms.uAmp.value = glow * controls.contrast * 2.45;
-      mCoral.uniforms.uAmp.value = glow * controls.contrast * 1.28;
-      mDust.uniforms.uAmp.value = glow * controls.contrast * 0.62;
+      mDust.uniforms.uSize.value = controls.size * 0.38 * sizeMul;
+      mCore.uniforms.uAmp.value = glow * controls.contrast * 1.18 * gBreath * (1 + touchGlow * 0.03) * (zoneMod.bright || 1);
+      mHalo.uniforms.uAmp.value = glow * controls.contrast * 1.05 * gBreath * (1 + touchGlow * 0.03);
+      mGreen.uniforms.uAmp.value = glow * controls.contrast * 1.55 * gBreath;
+      mCyan.uniforms.uAmp.value = glow * controls.contrast * 2.45 * gBreath;
+      mCoral.uniforms.uAmp.value = glow * controls.contrast * (1.28 + voiceStreamStrength * 0.35) * gBreath;
+      mDust.uniforms.uAmp.value = glow * controls.contrast * 0.38 * (1 - darkLakeStrength * 0.4);
       mHalo.uniforms.uShift.value = shift * 0.45;
       mGreen.uniforms.uShift.value = shift * 0.8;
       mCyan.uniforms.uShift.value = shift;
@@ -1610,11 +2291,12 @@ HTML = """<!doctype html>
       const plumeOffset = FIGURE_X + (controls.disp - 1.4) * 10.0;
       pCore.position.x = plumeOffset;
       pHalo.position.x = plumeOffset;
-      pGreen.position.x = plumeOffset - 5;
-      pCoral.position.x = plumeOffset - 3;
-      pCyan.position.x = plumeOffset + 4;
+      pGreen.position.x = plumeOffset - 10;
+      pCoral.position.x = plumeOffset - 6;
+      pCyan.position.x = plumeOffset + 12;
       pDust.position.x = plumeOffset;
-      renderer.toneMappingExposure = 2.92 * dimF * (1 + stateW.speaking * 0.42 - stateW.thinking * 0.22 + stateW.listening * 0.08);
+      renderer.toneMappingExposure = 2.92 * dimF * (1 + stateW.speaking * 0.42 - stateW.thinking * 0.22 + stateW.listening * 0.08) * (1 + touchGlow * 0.03);
+      touchGlow *= 0.94;
       const aimX = VIEW_AIM_X + mx * 0.18 + stateW.listening * 2.8 - stateW.thinking * 2.2 + stateW.speaking * 1.0;
       const camZBase = 98 + Math.sin(ts*0.00009*(0.6 + controls.depth*0.8)) * (5 + controls.depth*7);
       const camZTarget = camZBase - stateW.thinking * 52 + stateW.speaking * 44 - stateW.listening * 12;
@@ -1634,13 +2316,13 @@ HTML = """<!doctype html>
       const ss = String(elapsed % 60).padStart(2, "0");
       const telLabel = telemetryLive ? (telemetry.active ? "live" : "idle") : "offline";
       hud.textContent =
-        `session ${hh}:${mm}:${ss}\n` +
-        substrateHudLines.join("\n") + "\n" +
-        `telemetry ${telLabel}\n` +
-        `fps ${fps}\n` +
-        `latency ~${latencyAvg.toFixed(0)} ms\n` +
-        `particles ${PARTICLE_COUNT}\n` +
-        `state ${displayedState} (t${stateW.thinking.toFixed(2)} s${stateW.speaking.toFixed(2)} l${stateW.listening.toFixed(2)})\n` +
+        `session ${hh}:${mm}:${ss}\\n` +
+        substrateHudLines.join("\\n") + "\\n" +
+        `telemetry ${telLabel}\\n` +
+        `fps ${fps}\\n` +
+        `latency ~${latencyAvg.toFixed(0)} ms\\n` +
+        `particles ${PARTICLE_COUNT}\\n` +
+        `state ${displayedState} (t${stateW.thinking.toFixed(2)} s${stateW.speaking.toFixed(2)} l${stateW.listening.toFixed(2)})\\n` +
         `coh ${drive.coherence > 0 ? drive.coherence.toFixed(3) : "—"}`;
 
       if(aVoice){
@@ -1686,10 +2368,34 @@ HTML = """<!doctype html>
         aBeat.className = "v " + (inSync ? "live" : "stub");
       }
       if(aEnergy){ aEnergy.textContent = (drive.hasMic || drive.aiActive) ? drive.energy.toFixed(3) : "—"; }
+      if(aAnchorCoh){
+        aAnchorCoh.textContent = anchorCoherenceDisplay != null ? anchorCoherenceDisplay.toFixed(2) : "—";
+      }
+      if(aAnchorState){
+        aAnchorState.textContent = ANCHOR_OFF ? "off" : (anchorState === "idle" && anchorCoherenceDisplay == null ? "—" : anchorState);
+        aAnchorState.className = "v state-" + (anchorState || "idle");
+      }
+      if(aBreathSync){
+        aBreathSync.textContent = (ANCHOR_OFF || anchorCoherenceDisplay == null || anchorCoherenceDisplay < 0.55)
+          ? "—" : `${Math.round(breathSyncDisplay * 100)}%`;
+      }
+      if(aTodayPeak){
+        aTodayPeak.textContent = todayPeakLocal > 0
+          ? `${todayPeakLocal.toFixed(2)}  ${todayPeakAtLocal}` : "—";
+      }
+      if(aZone){
+        const zl = ANCHOR_OFF ? "off" : (zoneDisplay || "—");
+        aZone.textContent = zl;
+        aZone.className = "v" + (zoneDisplay ? ` zone-${zoneDisplay}` : "");
+      }
+      if(anchorFill){
+        anchorFill.style.width = anchorCoherenceDisplay != null
+          ? `${Math.min(100, anchorCoherenceDisplay * 100).toFixed(1)}%` : "0%";
+      }
       if(cohFill){
         cohFill.style.width = drive.coherence > 0 ? `${Math.min(100, drive.coherence * 100).toFixed(1)}%` : "0%";
       }
-      analysis?.classList.toggle("is-live", !!(drive.hasMic || drive.aiActive));
+      analysis?.classList.toggle("is-live", !!(drive.hasMic || drive.aiActive || voiceOn));
       if(bLow){ bLow.style.width = `${Math.min(100, micLow * 100).toFixed(1)}%`; }
       if(bMid){ bMid.style.width = `${Math.min(100, micMid * 100).toFixed(1)}%`; }
       if(bHigh){ bHigh.style.width = `${Math.min(100, micHigh * 100).toFixed(1)}%`; }
@@ -1711,6 +2417,38 @@ HTML = """<!doctype html>
 @app.get("/health")
 async def health() -> dict[str, bool]:
     return {"ok": True}
+
+
+@app.post("/api/tts/audio8")
+async def audio8_tts(body: Audio8Body) -> Response:
+    text = (body.input or body.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="input required")
+    voice = body.voice or _pick_audio8_voice(text)
+    payload = json.dumps(
+        {
+            "model": "arktts",
+            "input": text,
+            "voice": voice,
+            "response_format": "wav",
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        f"{_AUDIO8_URL}/v1/audio/speech",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(
+            req, timeout=float(os.environ.get("GARDEN_AUDIO8_TIMEOUT", "120"))
+        ) as resp:
+            data = resp.read()
+    except (OSError, urllib.error.URLError) as exc:
+        raise HTTPException(status_code=502, detail=f"audio8 unreachable: {exc}") from exc
+    if len(data) < 44 or data[:4] != b"RIFF":
+        raise HTTPException(status_code=502, detail="audio8 returned non-wav")
+    return Response(content=data, media_type="audio/wav")
 
 
 @app.get("/api/memory/compiled")

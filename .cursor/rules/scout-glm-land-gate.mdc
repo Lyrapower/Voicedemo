@@ -1,0 +1,40 @@
+---
+description: 晨报/午报/财报班/晚报必须 GLM 编译后才算落盘；公开 HTML 必须吃 GLM 终稿
+alwaysApply: true
+---
+
+# Scout · GLM 编译落盘硬闸
+
+**Lyra 2026-08-26：** 晨报/晚报必须由 GLM review/编译后才能落盘。禁止「这次跑了、下次又漏」。
+**Lyra 2026-08-27：** 午班纳入同闸；**公开 HTML 必须吃 GLM 终稿**，禁止 OPTION「打开」仍是 DS 四槽卡。
+
+## 落盘定义
+
+| 班 | DS 半成品（可写） | **公开落盘（缺一不可）** |
+|----|-------------------|---------------------------|
+| 晨报 `morning` | `briefs/{日}-morning.json/.md/.ds.html` | `{日}-morning-final.md` **且** `{日}-morning.html` 含 `review_origin=glm52_cloud` + `GLM 编译终稿`；经 `scripts/scout_land_option.py --mode morning` |
+| 午报 `midday` | 同上 pattern | `{日}-midday-final.md` **且** `{日}-midday.html` 同上；`--mode midday` |
+| 财报班 `earnings` | 同上 | `{日}-earnings-final.md` **且** `{日}-earnings.html` 同上；`--mode earnings` |
+| 晚报 `evening` | `{日}-evening.json/.md/.ds.html` | `{日}-evening-final.md` 且 `review_origin=glm52_cloud`；公开 html 由 `write_public_html_from_glm`；`expanded_evening_review` 失败/空回 = 班次失败 |
+
+公开 `{日}-{mode}.html` 在 GLM 完成前只许 stub（待编译），禁止把 DS 卡片当公开作业。
+
+## Agent 绝对禁止
+
+1. 装完 Scout 包因「晨报 html 完好」就宣称落地完成、**不跑 GLM land**
+2. 把 DS 直出 html/md 说成「晨报/午报/晚报已落盘」
+3. `--review off`、空回当成功、`(glm empty — ds json landed)` 占位当编译
+4. 改 `scout_agent.py` / `scout_land_option.py` / `verify_scout_deploy.py` / `scout_land_integrity.sh` 把硬闸改回「不阻塞」
+5. 用 land 往 **cloud-glm52 / workbench-b11** 写验收（land 走 smoke/`persist:False` 或 `scout-review-{日}`）
+
+## 必须做
+
+- 晨/午/财报：`glm_land_or_die(today, shift)` 或 `python3 scripts/scout_land_option.py --date {日} --mode {班}` **exit 0**，并 `grep review_origin=glm52_cloud` **final 与公开 html**
+- 晚报：`evening-final.md` 同章；无 GLM 禁止 emit；公开 html 必须 `write_public_html_from_glm`
+- 完工：`python3 verify_scout_deploy.py` 含本闸条目为 OK
+- 未执行 GLM 编译 → 只能说「DS 半成品在，尚未落盘」
+
+## 门禁（不靠记忆）
+
+- `verify_scout_deploy.py` 静态闸：`glm_land_or_die` + `write_public_html_from_glm` + land 拒空 GLM + `--mode midday`
+- `scripts/scout_land_integrity.sh`：无 `{mode}-final.md`/`glm52_cloud` **或公开 html 不是 GLM 终稿** → 强制该班 land；**午报 10:55 后、财报班 12:50 后必须查 midday/earnings**（禁止只查晨报就 PASS）；21:00 后查 `evening-final.md`

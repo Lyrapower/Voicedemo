@@ -1,0 +1,56 @@
+{
+  "BTC-USD": {
+    "fail": 0,
+    "last_value": 66313.755,
+    "last_check": "2026-07-21T14:48:30.765355-07:00",
+    "baseline": 66328.585,
+    "_next": 1784670810.765079
+  },
+  "ETH-USD": {
+    "fail": 0,
+    "last_value": 1923.555,
+    "last_check": "2026-07-21T14:48:30.864962-07:00",
+    "baseline": 1913.845,
+    "_next": 1784670810.765079
+  },
+  "AnthropicNews": {
+    "fail": 753,
+    "_next": 1784672394.29391
+  },
+  "OllamaReleases": {
+    "fail": 0,
+    "_next": 1784671316.274368,
+    "content_hash": "88c9e5d8c5df89685a8dc8eb738e10c679aa745f2d2feba30337c16e74282ba1",
+    "last_check": "2026-07-21T14:01:56.274715-07:00",
+    "content_snippet": "Skip to content\nNavigation Menu\nToggle navigation\nSign in\nAppearance settings\nPlatform\nAI CODE CREATION\nGitHub Copilot\nWrite better code with AI\nGitHub Copilot app\nDirect agents from issue to merge\nMCP Registry\nNew\nIntegrate external tools\nDEVELOPER WORKFLOWS\nActions\nAutomate any workflow\nCodespaces\nInstant dev environments\nIssues\nPlan and track work\nCode Review\nManage code changes\nCode Quality\nEnforce quality at merge\nAPPLICATION SECURITY\nGitHub Advanced Security\nFind and fix vulnerabilities\nCode security\nSecure your code as you build\nSecret protection\nStop leaks before they start\nEXPLORE\nWhy GitHub\nDocumentation\nBlog\nChangelog\nMarketplace\nView all features\nSolutions\nBY COMPANY SIZE\nEnterprises\nSmall and medium teams\nStartups\nNonprofits\nBY USE CASE\nApp Modernization\nDevSecOps\nDevOps\nCI/CD\nView all use cases\nBY INDUSTRY\nHealthcare\nFinancial services\nManufacturing\nGovernment\nView all industries\nView all solutions\nResources\nEXPLORE BY TOPIC\nAI\nSoftware Development\nDevOps\nSecurity\nView all topics\nEXPLORE BY TYPE\nCustomer stories\nEvents & webinars\nEbooks & reports\nBusiness insights\nGitHub Skills\nSUPPORT & SERVICES\nDocumentation\nCustomer support\nCommunity forum\nTrust center\nPartners\nView all resources\nOpen Source\nCOMMUNITY\nGitHub Sponsors\nFund open source developers\nPROGRAMS\nSecurity Lab\nMaintainer Community\nAccelerator\nGitHub Stars\nArchive Program\nREPOSITORIES\nTopics\nTrending\nCollections\nEnterprise\nENTERPRISE SOLUTIONS\nEnterprise platform\nAI-powered developer platform\nAVAILABLE ADD-ONS\nGitHub Advanced Security\nEnterprise-grade security features\nCopilot for Business\nEnterprise-grade AI features\nPremium Support\nEnterprise-grade 24/7 support\nPricing\nSearch or jump to...\nSearch code, repositories, users, issues, pull requests...\nSearch\nClear\nSearch syntax tips\nProvide feedback\nWe read every piece of feedback, and take your input very seriously.\nInclude my email address so I can be contacted\nCancel\nSubmit feedback\nSaved searches\nUse saved searches to filter your results more quickly\nName\nQuery\nTo see all available qualifiers, see our\ndocumentation\n.\nCancel\nCreate saved search\nSign in\nSign up\nAppearance settings\nResetting focus\nYou signed in with another tab or window.\nReload\nto refresh your session.\nYou signed out in another tab or window.\nReload\nto refresh your session.\nYou switched accounts on another tab or window.\nReload\nto refresh your session.\nDismiss alert\n{{ message }}\nUh oh!\nThere was an error while loading.\nPlease reload this page\n.\nollama\n/\nollama\nPublic\nNotifications\nYou must be signed in to change notification settings\nFork\n17.1k\nStar\n177k\nCode\nIssues\n2.3k\nPull requests\n1.1k\nActions\nSecurity and quality\n0\nInsights\nAdditional navigation options\nCode\nIssues\nPull requests\nActions\nSecurity and quality\nInsights\nReleases: ollama/ollama\nReleases\nTags\nReleases · ollama/ollama\nRelease list\nv0.32.2\nv0.32.1\nv0.32.0\nv0.31.2\nv0.31.1\nv0.30.12\nv0.30.11\nv0.30.10\nv0.30.9\nv0.30.8\nPrevious\nNext\nJump to release\nv0.32.2\nv0.32.1\nv0.32.0\nv0.31.2\nv0.31.1\nv0.30.12\nv0"
+  },
+  "OptionScanner": {
+    "last_check": "2026-07-21T14:48:30.895251-07:00",
+    "alerted": {
+      "进程心跳": true,
+      "数据源 yfinance": true,
+      "数据源 stooq": true,
+      "扫描新鲜度": true
+    },
+    "log_silence_min": 509,
+    "signal_age_hours": 8.5,
+    "provider_fail_rates": {
+      "yfinance": 1.0,
+      "stooq": 1.0
+    },
+    "_next": 1784671110.765079
+  },
+  "MomentumSticker-pool": {
+    "last_check": "2026-07-21T14:48:30.896124-07:00",
+    "fail": 0,
+    "error": "Alpaca keys missing",
+    "_next": 1784671110.765079,
+    "opt_vol_baseline": {
+      "COIN": 69048
+    },
+    "last_fire": {
+      "COIN": 1784669906.461619
+    },
+    "last_fired": []
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "fmt_convert": {
+    "prompt": "把以下数据转换为{target}格式,只输出结果,不要解释:\n{payload}",
+    "targets": [
+      "JSON",
+      "YAML",
+      "CSV"
+    ],
+    "source_glob": "traces/**/*.json"
+  },
+  "translate": {
+    "prompt": "把以下文本忠实翻译为{target},保留所有数字、代码与格式,只输出译文:\n{payload}",
+    "targets": [
+      "英文",
+      "中文"
+    ],
+    "source_glob": "traces/**/*.md"
+  },
+  "extract": {
+    "prompt": "从以下文本抽取字段,只输出 JSON {\"date\":null,\"subject\":null,\"key_numbers\":[],\"action_items\":[]}。缺失填 null,只输出 JSON:\n{payload}",
+    "targets": [
+      null
+    ],
+    "source_glob": "traces/**/*.md"
+  },
+  "diff_summary": {
+    "prompt": "把以下 git diff 或工单总结为三行以内的变更说明,只输出说明:\n{payload}",
+    "targets": [
+      null
+    ],
+    "source_glob": "work_orders/**/*.md"
+  },
+  "normalize": {
+    "prompt": "规范化以下文本:半角标点、ISO8601 时间戳、统一空格,内容一字不改,只输出结果:\n{payload}",
+    "targets": [
+      null
+    ],
+    "source_glob": "traces/**/*"
+  }
+}

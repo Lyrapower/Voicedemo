@@ -39,6 +39,8 @@ alwaysApply: true
 3. **复发封堵**：同类失败有门禁、integrity、或硬断言；不只靠「下次注意」  
 4. **可证明证据**：贴命令输出原文、路径、时间戳、exit code；禁止空口  
 
+5. **波及面**：`bash scripts/blast_radius_check.sh` 须 exit 0。
+
 未达门槛 → 只能说「部分完成 / 已改代码尚未验收」，并写下一步。
 
 ## 反例（等同再犯）
@@ -46,3 +48,4 @@ alwaysApply: true
 - Scout 改 token → 不查 `briefs/*-morning.json` / store emit → 说「晨会好了」
 - 装 LaunchAgent → 不看 `launchctl print` runs/calendar → 说「定时会跑」
 - 修灰卡 → 只造当日文件、不修 integrity → 次日同类再灰
+- 修 8600 热力/锁库 → 不跑 `scripts/blast_radius_check.sh` → 扫描池过期仍说平台好了

@@ -1,0 +1,3 @@
+{"decided_at": "2026-07-16T22:59:51-07:00", "decided_by": "lyra", "reason": "live smoke step 3 ok", "record_id": "6ee63f5f3022ae04f44e3be727875bfd387394a8016e357ce33f5ff427d8e77b", "review_version": 1, "status": "approved", "via": "cli"}
+{"decided_at": "2026-07-16T22:59:51-07:00", "decided_by": "lyra", "reason": "flip test reject for audit trail", "record_id": "6ee63f5f3022ae04f44e3be727875bfd387394a8016e357ce33f5ff427d8e77b", "review_version": 2, "status": "rejected", "via": "cli"}
+{"decided_at": "2026-07-16T22:59:51-07:00", "decided_by": "lyra", "reason": "re-approve after flip", "record_id": "6ee63f5f3022ae04f44e3be727875bfd387394a8016e357ce33f5ff427d8e77b", "review_version": 3, "status": "approved", "via": "cli"}

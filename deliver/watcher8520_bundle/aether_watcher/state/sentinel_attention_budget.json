@@ -1,0 +1,170 @@
+[
+  {
+    "ts": 1784649815.462498,
+    "time": "2026-07-21T09:03:35.462511-07:00",
+    "source": "momentum_sticker",
+    "symbol": "COIN",
+    "signal": "momentum_anomaly",
+    "detail": "COIN $180.91 | 放量×1.25 | 突破+7.1% | opt_vol=48334",
+    "priority": "normal",
+    "tags": [
+      "放量×1.25",
+      "突破+7.1%"
+    ],
+    "report_only": true
+  },
+  {
+    "ts": 1784651640.127437,
+    "time": "2026-07-21T09:34:00.127448-07:00",
+    "source": "momentum_sticker",
+    "symbol": "COIN",
+    "signal": "momentum_anomaly",
+    "detail": "COIN $179.38 | 放量×1.34 | 突破+6.2% | opt_vol=53591",
+    "priority": "normal",
+    "tags": [
+      "放量×1.34",
+      "突破+6.2%"
+    ],
+    "report_only": true
+  },
+  {
+    "ts": 1784653472.105586,
+    "time": "2026-07-21T10:04:32.105597-07:00",
+    "source": "momentum_sticker",
+    "symbol": "COIN",
+    "signal": "momentum_anomaly",
+    "detail": "COIN $179.85 | 放量×1.42 | 突破+6.5% | opt_vol=57245",
+    "priority": "normal",
+    "tags": [
+      "放量×1.42",
+      "突破+6.5%"
+    ],
+    "report_only": true
+  },
+  {
+    "ts": 1784655292.749016,
+    "time": "2026-07-21T10:34:52.749032-07:00",
+    "source": "momentum_sticker",
+    "symbol": "COIN",
+    "signal": "momentum_anomaly",
+    "detail": "COIN $179.18 | 放量×1.51 | 突破+6.1% | opt_vol=58731",
+    "priority": "normal",
+    "tags": [
+      "放量×1.51",
+      "突破+6.1%"
+    ],
+    "report_only": true
+  },
+  {
+    "ts": 1784657119.388629,
+    "time": "2026-07-21T11:05:19.388644-07:00",
+    "source": "momentum_sticker",
+    "symbol": "COIN",
+    "signal": "momentum_anomaly",
+    "detail": "COIN $178.31 | 放量×1.62 | 突破+5.6% | opt_vol=60321",
+    "priority": "normal",
+    "tags": [
+      "放量×1.62",
+      "突破+5.6%"
+    ],
+    "report_only": true
+  },
+  {
+    "ts": 1784658939.40215,
+    "time": "2026-07-21T11:35:39.402163-07:00",
+    "source": "momentum_sticker",
+    "symbol": "COIN",
+    "signal": "momentum_anomaly",
+    "detail": "COIN $177.70 | 放量×1.73 | 突破+5.2% | opt_vol=62488",
+    "priority": "normal",
+    "tags": [
+      "放量×1.73",
+      "突破+5.2%"
+    ],
+    "report_only": true
+  },
+  {
+    "ts": 1784660769.146271,
+    "time": "2026-07-21T12:06:09.146281-07:00",
+    "source": "momentum_sticker",
+    "symbol": "COIN",
+    "signal": "momentum_anomaly",
+    "detail": "COIN $176.20 | 放量×1.84 | 突破+4.4% | opt_vol=64314",
+    "priority": "normal",
+    "tags": [
+      "放量×1.84",
+      "突破+4.4%"
+    ],
+    "report_only": true
+  },
+  {
+    "ts": 1784662588.530467,
+    "time": "2026-07-21T12:36:28.530473-07:00",
+    "source": "momentum_sticker",
+    "symbol": "COIN",
+    "signal": "momentum_anomaly",
+    "detail": "COIN $176.53 | 放量×1.98 | 突破+4.5% | opt_vol=66245",
+    "priority": "normal",
+    "tags": [
+      "放量×1.98",
+      "突破+4.5%"
+    ],
+    "report_only": true
+  },
+  {
+    "ts": 1784664414.922516,
+    "time": "2026-07-21T13:06:54.922525-07:00",
+    "source": "momentum_sticker",
+    "symbol": "COIN",
+    "signal": "momentum_anomaly",
+    "detail": "COIN $175.80 | 放量×2.38 | 突破+4.1% | opt_vol=68212",
+    "priority": "normal",
+    "tags": [
+      "放量×2.38",
+      "突破+4.1%"
+    ],
+    "report_only": true
+  },
+  {
+    "ts": 1784666256.73468,
+    "time": "2026-07-21T13:37:36.734697-07:00",
+    "source": "momentum_sticker",
+    "symbol": "COIN",
+    "signal": "momentum_anomaly",
+    "detail": "COIN $175.80 | 放量×2.38 | 突破+4.1% | opt_vol=69048",
+    "priority": "normal",
+    "tags": [
+      "放量×2.38",
+      "突破+4.1%"
+    ],
+    "report_only": true
+  },
+  {
+    "ts": 1784668080.729173,
+    "time": "2026-07-21T14:08:00.729182-07:00",
+    "source": "momentum_sticker",
+    "symbol": "COIN",
+    "signal": "momentum_anomaly",
+    "detail": "COIN $175.80 | 放量×2.39 | 突破+4.1% | opt_vol=69048",
+    "priority": "normal",
+    "tags": [
+      "放量×2.39",
+      "突破+4.1%"
+    ],
+    "report_only": true
+  },
+  {
+    "ts": 1784669906.45489,
+    "time": "2026-07-21T14:38:26.454906-07:00",
+    "source": "momentum_sticker",
+    "symbol": "COIN",
+    "signal": "momentum_anomaly",
+    "detail": "COIN $175.80 | 放量×2.39 | 突破+4.1% | opt_vol=69048",
+    "priority": "normal",
+    "tags": [
+      "放量×2.39",
+      "突破+4.1%"
+    ],
+    "report_only": true
+  }
+]

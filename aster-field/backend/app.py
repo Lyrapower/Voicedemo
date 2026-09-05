@@ -19,6 +19,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# 控制类(健康检查等) vs 模型生成(8790→8501 chat 转发)
+TIMEOUT_CTL = 15
+TIMEOUT_GEN = 300
+
 _GSR = Path(__file__).resolve().parents[2] / "grid-sovereign-runtime"
 if str(_GSR) not in sys.path:
     sys.path.insert(0, str(_GSR))
@@ -100,19 +104,9 @@ async def _resolve_chat_context(body: dict[str, Any]) -> dict[str, Any] | JSONRe
     part_idx = int(body.get("continuation_part") or 0)
     use_mem = chat_memory.uses_memory(task)
     mem_user = chat_memory.memory_user_text(msg, has_image=has_image)
-    history: list[dict[str, str]] = []
-    if use_mem:
-        history = await asyncio.to_thread(chat_memory.fetch_history, task=task)
-        if part_idx > 0 or body.get("continue"):
-            orig = chat_memory.memory_user_text(
-                (body.get("original_message") or seed).strip(),
-                has_image=bool(body.get("had_image")),
-            )
-            if history and history[-1].get("role") == "user" and history[-1].get("content") == orig:
-                history = history[:-1]
-
+    # 上下文唯一源=grid_mem inject(read/recall);不再 fetch_history 拼接
     gateway_messages = chat_memory.build_gateway_messages(
-        body, msg or ("分析这张图" if has_image else ""), history if use_mem else None,
+        body, msg or ("分析这张图" if has_image else ""),
         continue_user=CONTINUE_USER,
         image=image if has_image and part_idx == 0 and not body.get("continue") else None,
     )
@@ -406,7 +400,10 @@ async def chat(req: Request):
         _ensure_key_env,
         attach_grid_verification,
     )
-    _gw_timeout = 15.0
+    # 生成调用:connect 5s;read=TIMEOUT_GEN → 流式按块,静默无字节超 TIMEOUT_GEN 才超时
+    _gw_timeout = httpx.Timeout(
+        connect=5.0, read=float(TIMEOUT_GEN), write=float(TIMEOUT_CTL), pool=float(TIMEOUT_CTL),
+    )
     if use_model == CFG["gateway_model"]:
         try:
             _ensure_key_env()
@@ -512,9 +509,22 @@ async def chat(req: Request):
                 done["session_seed"] = session_meta.get("session_seed")
                 done["method_cards_used"] = session_meta.get("method_cards_used")
             yield "data: " + json.dumps(done, ensure_ascii=False) + "\n\n"
+        except httpx.ConnectTimeout:
+            await BUS.pub(state="error")
+            msg = "连不上网关(5s)"
+            yield f"data: {json.dumps({'error': msg, 'done': True, 'text': msg, 'served_by': None}, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(0.6)
+            await BUS.pub(state="idle")
+        except httpx.ReadTimeout:
+            await BUS.pub(state="error")
+            msg = f"模型响应超时({TIMEOUT_GEN}s)"
+            yield f"data: {json.dumps({'error': msg, 'done': True, 'text': msg, 'served_by': None}, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(0.6)
+            await BUS.pub(state="idle")
         except httpx.TimeoutException:
             await BUS.pub(state="error")
-            yield f"data: {json.dumps({'error': '网关超时', 'done': True, 'text': '网关超时', 'served_by': None}, ensure_ascii=False)}\n\n"
+            msg = "连不上网关(5s)"
+            yield f"data: {json.dumps({'error': msg, 'done': True, 'text': msg, 'served_by': None}, ensure_ascii=False)}\n\n"
             await asyncio.sleep(0.6)
             await BUS.pub(state="idle")
         except Exception as e:
@@ -524,7 +534,6 @@ async def chat(req: Request):
             await BUS.pub(state="idle")
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
-
 @app.get("/health")
 async def health():
     return {

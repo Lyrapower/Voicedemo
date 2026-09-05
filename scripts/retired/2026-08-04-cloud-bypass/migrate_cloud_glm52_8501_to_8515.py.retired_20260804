@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""Import 8501 cloud-glm52 store → 8515 cloud_memory.db (user history recovery).
+
+Read-only on 8501. Writes 8515 glm52 lane only.
+"""
+from __future__ import annotations
+
+import json
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+WB = ROOT / "grid-sovereign-runtime" / "workbench"
+sys.path.insert(0, str(WB))
+
+from cloud_store import CloudStore  # noqa: E402
+
+STORE_URL = "http://127.0.0.1:8501/store/conversations/cloud-glm52?limit=500"
+DB_PATH = WB / "data" / "cloud_memory.db"
+
+
+def fetch_turn_pairs() -> list[tuple[str, str]]:
+    with urllib.request.urlopen(STORE_URL, timeout=30) as resp:
+        rows = json.load(resp)
+    pairs: list[tuple[str, str]] = []
+    i = 0
+    while i < len(rows):
+        row = rows[i]
+        if row.get("role") != "user":
+            i += 1
+            continue
+        nxt = rows[i + 1] if i + 1 < len(rows) else None
+        if nxt and nxt.get("role") == "assistant":
+            u = str(row.get("content") or "").strip()
+            a = str(nxt.get("content") or "").strip()
+            if u and a:
+                pairs.append((u, a))
+            i += 2
+        else:
+            i += 1
+    return pairs
+
+
+def main() -> int:
+    try:
+        pairs = fetch_turn_pairs()
+    except urllib.error.URLError as exc:
+        print(f"FAIL: cannot read 8501 cloud-glm52: {exc}", file=sys.stderr)
+        return 1
+    if not pairs:
+        print("FAIL: no turn pairs in 8501 cloud-glm52", file=sys.stderr)
+        return 1
+
+    store = CloudStore(DB_PATH)
+    imported = 0
+    for user, assistant in pairs:
+        store.append_turn(
+            "glm52",
+            user=user,
+            assistant=assistant,
+            model="glm-5.2:cloud",
+        )
+        imported += 1
+
+    snap = store.snapshot("glm52")
+    active = snap.get("active") or []
+    print(
+        f"OK imported {imported} turns from 8501 cloud-glm52 "
+        f"→ active_turns={snap.get('active_turns')} archive_turns={snap.get('archive_turns')}"
+    )
+    if active:
+        last_u = next((m for m in reversed(active) if m.get("role") == "user"), {})
+        print(f"last user preview: {str(last_u.get('content', ''))[:100]}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

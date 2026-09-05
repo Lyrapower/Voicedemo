@@ -1,0 +1,47 @@
+{
+  "daemons": [
+    {
+      "id": "post_market",
+      "name": "Post-market",
+      "kind": "report-only",
+      "status": "running"
+    },
+    {
+      "id": "research",
+      "name": "Research",
+      "kind": "report-only",
+      "status": "running"
+    },
+    {
+      "id": "trading_screen",
+      "name": "Trading Screen",
+      "kind": "report-only",
+      "status": "running"
+    },
+    {
+      "id": "ocr",
+      "name": "OCR",
+      "kind": "read · multimodal",
+      "status": "running"
+    },
+    {
+      "id": "build",
+      "name": "Build",
+      "kind": "in trust window",
+      "status": "building"
+    },
+    {
+      "id": "deploy",
+      "name": "Deploy",
+      "kind": "write · gated",
+      "status": "frozen"
+    },
+    {
+      "id": "cc_cli",
+      "name": "CC CLI",
+      "kind": "EXECUTION_FROZEN=1",
+      "status": "locked"
+    }
+  ],
+  "_note": "status is the manual override; ledger can lower, never promote. Optional per-daemon: \"gates\": [30, 90] overrides the default trust ladder — higher-stakes daemons get longer gates (e.g. anything touching people or client money). Optional: \"project\": \"aether\" for grouping when the fleet grows."
+}

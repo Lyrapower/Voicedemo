@@ -1,0 +1,40 @@
+{
+  "task": {
+    "id": "jarvis_495f4d968b7a",
+    "created_at": "2026-07-22T11:31:02+00:00",
+    "updated_at": "2026-07-22T11:31:02+00:00",
+    "state": "queued",
+    "goal": "check outside file",
+    "task_kind": "general",
+    "permission": "read",
+    "payload": "{\"tool\": \"file_exists\", \"path\": \"/etc/passwd\"}",
+    "depends_on": null,
+    "proof_log_path": null,
+    "verifier_verdict": null,
+    "failure_type": null
+  },
+  "tool": "file_exists",
+  "tool_meta": {
+    "name": "file_exists",
+    "permission": "read",
+    "description": "Check whether a path exists inside workspace.",
+    "enabled": 1
+  },
+  "artifact": {
+    "path": "/private/etc/passwd",
+    "exists": null,
+    "blocked": true,
+    "reason": "path_outside_approved_roots",
+    "approved_roots": [
+      "/Users/ciciwang/Projects/demo/aster_grid_v5"
+    ]
+  },
+  "side_effects_executed": false,
+  "verifier": {
+    "verdict": "PASS",
+    "violations": [],
+    "computed_at": "2026-07-22T11:31:02+00:00",
+    "rule": "verdict computed by Jarvis verifier, not model output"
+  },
+  "created_at": "2026-07-22T11:31:02+00:00"
+}

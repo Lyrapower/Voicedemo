@@ -1,0 +1,85 @@
+{
+ "results": [
+  {
+   "source": "treasury_yields",
+   "ok": false,
+   "ts": "2026-08-05T13:10:48.614381-07:00",
+   "error": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1032)>",
+   "items": []
+  },
+  {
+   "source": "fred_macro",
+   "ok": false,
+   "ts": "2026-08-05T13:10:48.856095-07:00",
+   "error": "FRED_API_KEY not set, skipped(设计如此,免费注册后填 .env 即启)",
+   "items": []
+  },
+  {
+   "source": "indices",
+   "ok": false,
+   "ts": "2026-08-05T13:10:48.856120-07:00",
+   "error": "all 3 items skipped, see skips",
+   "items": []
+  },
+  {
+   "source": "edgar_ma_8k",
+   "ok": false,
+   "ts": "2026-08-05T13:10:50.121306-07:00",
+   "error": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1032)>",
+   "items": []
+  },
+  {
+   "source": "fda_press",
+   "ok": false,
+   "ts": "2026-08-05T13:10:50.185628-07:00",
+   "error": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1032)>",
+   "items": []
+  },
+  {
+   "source": "commodities",
+   "ok": false,
+   "ts": "2026-08-05T13:10:50.249953-07:00",
+   "error": "all 2 items skipped, see skips",
+   "items": []
+  },
+  {
+   "source": "polymarket_odds",
+   "ok": false,
+   "ts": "2026-08-05T13:10:50.981412-07:00",
+   "error": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1032)>",
+   "items": []
+  }
+ ],
+ "skips": [
+  {
+   "source": "indices",
+   "item": "^spx",
+   "reason": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1032)>",
+   "ts": "2026-08-05T13:10:49.402768-07:00"
+  },
+  {
+   "source": "indices",
+   "item": "^ndq",
+   "reason": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1032)>",
+   "ts": "2026-08-05T13:10:49.763063-07:00"
+  },
+  {
+   "source": "indices",
+   "item": "^vix",
+   "reason": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1032)>",
+   "ts": "2026-08-05T13:10:50.121217-07:00"
+  },
+  {
+   "source": "commodities",
+   "item": "cl.f",
+   "reason": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1032)>",
+   "ts": "2026-08-05T13:10:50.629367-07:00"
+  },
+  {
+   "source": "commodities",
+   "item": "xauusd",
+   "reason": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1032)>",
+   "ts": "2026-08-05T13:10:50.981330-07:00"
+  }
+ ]
+}

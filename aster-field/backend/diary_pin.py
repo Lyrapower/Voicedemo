@@ -6,8 +6,13 @@ PIN_FILE = os.environ.get(
     "DIARY_PIN_FILE",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "diary_pin.json"),
 )
+TOKEN_FILE = os.environ.get(
+    "DIARY_TOKEN_FILE",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "diary_tokens.json"),
+)
 _TOKENS: dict[str, float] = {}
 _TOKEN_TTL = 86400
+_loaded_tokens = False
 
 
 def _load() -> dict:
@@ -22,6 +27,32 @@ def _save(data: dict) -> None:
         json.dump(data, f)
     try:
         os.chmod(PIN_FILE, 0o600)
+    except OSError:
+        pass
+
+
+def _load_tokens() -> None:
+    global _loaded_tokens
+    if _loaded_tokens:
+        return
+    if os.path.exists(TOKEN_FILE):
+        try:
+            with open(TOKEN_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+            now = time.time()
+            for tok, exp in data.items():
+                if isinstance(exp, (int, float)) and exp > now:
+                    _TOKENS[tok] = float(exp)
+        except (json.JSONDecodeError, OSError):
+            pass
+    _loaded_tokens = True
+
+
+def _persist_tokens() -> None:
+    try:
+        with open(TOKEN_FILE, "w", encoding="utf-8") as f:
+            json.dump(_TOKENS, f)
+        os.chmod(TOKEN_FILE, 0o600)
     except OSError:
         pass
 
@@ -48,6 +79,7 @@ def set_pin(pin: str, old_pin: str | None = None) -> dict:
     salt = secrets.token_hex(16)
     _save({"salt": salt, "hash": _hash(pin, salt)})
     _TOKENS.clear()
+    _persist_tokens()
     return {"ok": True}
 
 
@@ -67,12 +99,15 @@ def unlock(pin: str) -> dict:
 
 
 def _issue_token() -> dict:
+    _load_tokens()
     token = secrets.token_urlsafe(32)
     _TOKENS[token] = time.time() + _TOKEN_TTL
+    _persist_tokens()
     return {"ok": True, "token": token}
 
 
 def check_token(token: str | None) -> bool:
+    _load_tokens()
     if not pin_is_set():
         return True
     if not token:
@@ -80,5 +115,6 @@ def check_token(token: str | None) -> bool:
     exp = _TOKENS.get(token)
     if not exp or time.time() > exp:
         _TOKENS.pop(token or "", None)
+        _persist_tokens()
         return False
     return True

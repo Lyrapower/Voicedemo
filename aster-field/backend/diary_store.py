@@ -3,6 +3,7 @@
    append-only + sha256 链(防无声改写)。"""
 from __future__ import annotations
 import os, json, sqlite3, hashlib, datetime as dt
+from .diary_guard import reject_probe_text
 
 DB = os.environ.get("DIARY_DB",
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "diary.db"))
@@ -20,6 +21,7 @@ def _conn() -> sqlite3.Connection:
 def add(text: str) -> dict:
     """写一篇。空文本也存('今天选择不写'),append-only。"""
     text = (text or "").strip() or "(今天选择不写)"
+    reject_probe_text(text, what="diary entry")
     c = _conn()
     prev = c.execute("SELECT hash FROM entries ORDER BY id DESC LIMIT 1").fetchone()
     prev_hash = prev[0] if prev else ""

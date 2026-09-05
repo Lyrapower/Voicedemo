@@ -31,6 +31,8 @@ class CCConfig:
     binary: str
     work_root: str
     timeout_seconds: int
+    model: str = ""
+    ollama_endpoint: str = ""
 
 
 @dataclass(frozen=True)

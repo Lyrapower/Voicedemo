@@ -1,0 +1,49 @@
+{
+  "generated_at": "2026-07-06T20:51:15+00:00",
+  "gates": [
+    7,
+    30
+  ],
+  "daemons": [
+    {
+      "name": "Post-market",
+      "kind": "report-only",
+      "status": "running",
+      "days": 0
+    },
+    {
+      "name": "Research",
+      "kind": "report-only",
+      "status": "running",
+      "days": 0
+    },
+    {
+      "name": "Trading Screen",
+      "kind": "report-only",
+      "status": "running",
+      "days": 0
+    },
+    {
+      "name": "OCR",
+      "kind": "read · multimodal",
+      "status": "running",
+      "days": 0
+    },
+    {
+      "name": "Build",
+      "kind": "in trust window",
+      "status": "building",
+      "days": 0
+    },
+    {
+      "name": "Deploy",
+      "kind": "write · gated",
+      "status": "frozen"
+    },
+    {
+      "name": "CC CLI",
+      "kind": "EXECUTION_FROZEN=1",
+      "status": "locked"
+    }
+  ]
+}

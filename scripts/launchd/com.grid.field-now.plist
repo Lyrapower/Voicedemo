@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.grid.field-now</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/ciciwang/Projects/demo/scripts/start_field_now_8795.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/ciciwang/Projects/demo</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>/tmp/com.grid.field-now.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/com.grid.field-now.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Library/Frameworks/Python.framework/Versions/3.13/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>FIELD_DIR</key>
+    <string>/Users/ciciwang/Projects/demo/data/grid_field</string>
+    <key>ROUTER_DIR</key>
+    <string>/Users/ciciwang/Projects/demo/data/grid_router</string>
+    <key>NOW_PORT</key>
+    <string>8795</string>
+    <key>NOW_BIND</key>
+    <string>127.0.0.1</string>
+    <key>NOW_QUIET</key>
+    <string></string>
+  </dict>
+</dict>
+</plist>

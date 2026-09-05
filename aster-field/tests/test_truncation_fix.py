@@ -11,16 +11,18 @@ def test_classify_compile_json():
 
 def test_classify_chat_default():
     assert classify_task("你好") == "chat"
-    assert max_tokens_for("chat") == 400
+    assert max_tokens_for("chat") == 1600
     assert max_tokens_for("handoff_protocol") == 4096
 
 def test_parse_complete_json():
     r = parse_json_artifact('{"status":"PASS","round_id":"r1"}')
     assert r["ok"] and r["merged_json_valid"]
+    assert r["schema"] == "schema:loose"
 
 def test_parse_incomplete_json():
     r = parse_json_artifact('{"status":"PASS",')
     assert not r["ok"] and r["status"] == "INCOMPLETE_ARTIFACT"
+    assert r["schema"] == "schema:loose"
 
 def test_parse_fenced_json():
     raw = 'note\n```json\n{"a":1}\n```'

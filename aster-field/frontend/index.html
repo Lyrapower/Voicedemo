@@ -27,13 +27,16 @@
 <div id="chat-artifact"></div>
 <div id="raw-panel" class="raw-panel">
   <div class="raw-toolbar">
-    <button type="button" id="raw-toggle" class="raw-btn">raw output</button>
     <button type="button" id="raw-copy" class="raw-btn">copy full</button>
     <button type="button" id="chat-continue" class="raw-btn continue" hidden>CONTINUE</button>
   </div>
   <pre id="raw-out"></pre>
 </div>
-<div class="dock"><input id="ask" placeholder="经由 gateway,问 Qwen 一句" autocomplete="off"></div>
+<div class="dock">
+  <button type="button" id="raw-toggle" class="raw-btn dock-raw" title="raw output">raw</button>
+  <input id="ask" placeholder="粒子对话 · gateway…" autocomplete="off" enterkeyhint="send">
+  <button type="button" id="ask-send" class="dock-send" aria-label="发送">发</button>
+</div>
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

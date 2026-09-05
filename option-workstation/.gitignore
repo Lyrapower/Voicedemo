@@ -1,0 +1,8 @@
+# 密钥与本机态
+theta/.env
+theta/creds.txt
+theta/logs/
+theta/*.log
+__pycache__/
+*.pyc
+.DS_Store

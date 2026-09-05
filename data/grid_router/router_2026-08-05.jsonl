@@ -1,0 +1,5 @@
+{"ts": "2026-08-05T13:35:33Z", "route_outcome": "cc_cli", "target": "cloud", "reason": "slash:/scan+payload:confirmed", "model": "claude-code", "chars": 2454}
+{"ts": "2026-08-05T17:35:29Z", "route_outcome": "cc_cli", "target": "cloud", "reason": "slash:/scan+payload:confirmed", "model": "claude-code", "chars": 2512}
+{"ts": "2026-08-05T17:50:04Z", "route_outcome": "cc_cli", "target": "cloud", "reason": "slash:/scan+payload:confirmed", "model": "claude-code", "chars": 1349}
+{"ts": "2026-08-05T19:50:02Z", "route_outcome": "cc_cli", "target": "cloud", "reason": "slash:/scan+payload:confirmed", "model": "claude-code", "chars": 2515}
+{"ts": "2026-08-05T22:31:10Z", "route_outcome": "cc_candidate", "target": null, "reason": "auto:complexity", "model": null, "chars": 1155}

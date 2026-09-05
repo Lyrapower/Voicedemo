@@ -122,3 +122,28 @@ cd aether_nexus && .venv/bin/python -m unittest test_offpool_mandatory_pick test
 4. 任何选项：完工跑 `verify_grid_chain_integrity.sh` + store 读写回读验证。
 
 —— 戌(§5 补记),2026-09-01 PDT
+
+---
+
+## 6. nexus-dryrun daemon 被越界 bootout,需 bootstrap 回(2026-09-01 21:30 PDT 补记)
+
+**事故**:戌在 §D.4 验收时,为独占跑手动 scan,`launchctl bootout gui/$(id -u)/com.demo.aether.nexus-dryrun` 成功停掉旧 daemon(pid 88265,3:38AM 起的旧实例),但之后 bootstrap 回来的尝试失败(already loaded 报错),bootout 后**未再 bootstrap**。
+
+**现状**:
+- `launchctl list | grep nexus-dryrun` → **空**(不在列表)
+- `ps aux | grep aether_dryrun` → **空**(无进程)
+- dryrun **没在跑**,明早那盘不会自动跑
+
+**新窗口第一动作(P0,明天第一件事)**:
+1. `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.demo.aether.nexus-dryrun.plist`
+2. `launchctl enable gui/$(id -u)/com.demo.aether.nexus-dryrun`
+3. 验:`launchctl list | grep nexus-dryrun` 有 pid;`ps aux | grep aether_dryrun` 有进程
+4. 这会重载 §D.4 新 emit 码(`7703328` 在 HEAD),明早那盘用新 emit → `candidates.json` 行应带 `oi_source`
+5. 明早扫描后验:`candidates.json` 行 `oi_source` 字段 = `alpaca_contracts`(命中)或 `missing`(缺),**不再是旧 emit 丢字段**
+
+**注意**:
+- plist 是 `RunAtLoad=true` + `KeepAlive=true`(常驻,无 StartCalendarInterval),定时在 aether_dryrun.py 内部 `while True` 轮询 EST 时刻
+- `DRYRUN_SCAN_ON_START` 默认 `false` → bootstrap 后不会立即扫,等下一个调度时刻(SCAN_PRE_MARKET=09:00 EST 等)
+- 不要再手动触发 scan(两次 5s 内死,疑抢状态文件);让 daemon 自己按调度跑
+
+—— 戌(§6 补记),2026-09-01 21:30 PDT

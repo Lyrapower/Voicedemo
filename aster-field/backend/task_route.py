@@ -1,12 +1,25 @@
 """Task-type token routing for FIELD /chat → gateway."""
 from __future__ import annotations
+
+import os
 import re
 
+
+def _int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return default
+
+
 TASK_BUDGETS: dict[str, int] = {
-    "chat": 400,
-    "diary": 800,
-    "compile_json": 4096,
-    "handoff_protocol": 4096,
+    "chat": _int_env("FIELD_CHAT_MAX_TOKENS", 1600),
+    "diary": _int_env("FIELD_DIARY_MAX_TOKENS", 1600),
+    "compile_json": _int_env("FIELD_COMPILE_MAX_TOKENS", 4096),
+    "handoff_protocol": _int_env("FIELD_HANDOFF_MAX_TOKENS", 4096),
 }
 
 _JSON_MARKERS = (

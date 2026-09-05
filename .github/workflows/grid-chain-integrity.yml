@@ -1,0 +1,65 @@
+name: Grid chain integrity (P0)
+
+on:
+  push:
+    paths:
+      - 'grid-sovereign-runtime/**'
+      - 'config/grid_infrastructure_lock.json'
+      - 'scripts/grid_infrastructure_guard.py'
+      - 'scripts/verify_grid_chain_integrity.sh'
+      - 'scripts/verify_b11_boot.sh'
+      - 'scripts/start_grid_gateway.sh'
+      - 'scripts/git-hooks/**'
+      - '.cursor/rules/grid-chain-integrity-redzone.mdc'
+      - '.cursor/rules/grid-infrastructure-immutable.mdc'
+      - '.github/workflows/grid-chain-integrity.yml'
+  pull_request:
+    paths:
+      - 'grid-sovereign-runtime/**'
+      - 'config/grid_infrastructure_lock.json'
+      - 'scripts/grid_infrastructure_guard.py'
+      - 'scripts/verify_grid_chain_integrity.sh'
+      - 'scripts/verify_b11_boot.sh'
+      - 'scripts/start_grid_gateway.sh'
+      - 'scripts/git-hooks/**'
+      - '.cursor/rules/grid-chain-integrity-redzone.mdc'
+      - '.cursor/rules/grid-infrastructure-immutable.mdc'
+      - '.github/workflows/grid-chain-integrity.yml'
+
+jobs:
+  p0-gate:
+    name: P0 infrastructure + chain integrity (block release)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Runtime hash lock (immutable manifest)
+        run: python3 scripts/grid_infrastructure_guard.py verify-runtime
+
+      - name: Block unauthorized frozen-file diffs (CI never unlocks)
+        run: |
+          BASE="${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}"
+          if git rev-parse "$BASE" >/dev/null 2>&1; then
+            python3 scripts/grid_infrastructure_guard.py check-diff --base-ref "$BASE"
+          else
+            echo "skip check-diff: no base ref"
+          fi
+
+      - name: Chain integrity static gate
+        run: bash scripts/verify_grid_chain_integrity.sh
+
+      - name: Infrastructure guard unit tests
+        run: python3 -m unittest grid-sovereign-runtime/tests/test_infrastructure_guard.py -q
+
+      - name: Assert immutable rules present
+        run: |
+          rg -q 'alwaysApply: true' .cursor/rules/grid-infrastructure-immutable.mdc
+          rg -q 'pre-commit' .cursor/rules/grid-infrastructure-immutable.mdc
+          rg -q 'verify-runtime' .cursor/rules/grid-infrastructure-immutable.mdc
+          test -f config/grid_infrastructure_lock.json

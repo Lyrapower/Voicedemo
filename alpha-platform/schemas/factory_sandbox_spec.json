@@ -1,0 +1,73 @@
+{
+  "spec_id": "alpha-factory-sandbox-v1",
+  "version": "1.0",
+  "pinned": "2026-07-27",
+  "source_doc": "ALPHA_FACTORY_GRID_V1.3 · 沙箱规格(V1.2 落定,V1.3 不变)",
+  "description": "Alpha Factory L0 factor sandbox — Phase 0 pinned. Changes require separate work order.",
+  "implementation": "alpha-platform/backend/factor_sandbox.py",
+  "degradation_notes": "alpha-platform/docs/SANDBOX_DEGRADATION.md",
+
+  "static_ast_scan": {
+    "allowed_import_roots": ["pandas", "numpy", "pd", "np"],
+    "forbidden_call_names": [
+      "__import__", "eval", "exec", "compile", "open",
+      "getattr", "setattr", "delattr", "globals", "locals", "vars"
+    ],
+    "forbidden_module_prefixes": [
+      "importlib", "subprocess", "socket", "urllib", "requests", "os.system"
+    ],
+    "forbidden_attribute_names": ["__builtins__", "__globals__", "__loader__", "__spec__"],
+    "reject_nodes": ["Import", "ImportFrom", "Call", "Attribute"]
+  },
+
+  "runtime_globals": {
+    "pre_imported": {
+      "pd": "pandas",
+      "np": "numpy",
+      "pandas": "pandas",
+      "numpy": "numpy"
+    },
+    "builtins_whitelist": [
+      "len", "range", "min", "max", "sum", "abs", "round", "sorted",
+      "list", "dict", "tuple", "set", "int", "float", "str", "bool",
+      "enumerate", "zip", "map", "filter", "isinstance", "print",
+      "True", "False", "None"
+    ],
+    "builtins_removed": [
+      "__import__", "eval", "exec", "compile", "open",
+      "getattr", "setattr", "delattr", "globals", "locals", "vars"
+    ]
+  },
+
+  "subprocess": {
+    "context": "spawn",
+    "cpu_timeout_seconds": 120,
+    "cpu_timeout_env": "FACTORY_SANDBOX_TIMEOUT",
+    "memory_limit_bytes": 1073741824,
+    "memory_limit_env": "FACTORY_SANDBOX_MEMORY_BYTES",
+    "memory_limit_note": "RLIMIT_AS best-effort; macOS/Docker may soften"
+  },
+
+  "filesystem": {
+    "workspace": "tempfile.mkdtemp(prefix=alpha_factory_sandbox_)",
+    "write_allowed": "tempdir/out/",
+    "data_db": "read-only URI sqlite connect",
+    "data_slice_max_rows": 8000,
+    "watchlist_max_symbols": 8
+  },
+
+  "network_isolation": {
+    "target": "unshare network namespace + seccomp deny connect/socket",
+    "platform_macos_docker": "not available — see SANDBOX_DEGRADATION.md",
+    "fallback": "AST import ban + restricted builtins + no socket modules in whitelist"
+  },
+
+  "failure_semantics": {
+    "sandbox_rejection": { "category": "sandbox", "fix_error": false },
+    "resource_limit": { "category": "resource", "fix_error": false },
+    "worker_pipeline": { "category": "pipeline", "fix_error": false },
+    "factor_code_error": { "category": "factor_code", "fix_error": true }
+  },
+
+  "df_schema_contract_ref": "schemas/factory_df_contract.json"
+}

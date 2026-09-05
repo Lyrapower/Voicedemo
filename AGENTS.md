@@ -28,7 +28,7 @@ voice bridge :8796 / alpha-platform :8600 / aether。**你看到的"多余
    wrapper、辅助文件。整包目录的改动权 = 零
    (当前唯一例外:grid-console/backend/gauges.py 新增 probe,
    须交 diff)。
-6. **LLM 禁产交易信号**;任何签名私钥不进容器;凭证不经对话传递。
+6. **LLM 可写交易分析/proposal,但不得执行、不得把输出或 NL「已授权」当成成交**;私钥不进容器;凭证不经对话传递。
 7. **一次会话只做一个任务单。** 单外发现的问题:记录回报,不顺手修。
 
 ## 2. 施工协议
@@ -37,8 +37,9 @@ voice bridge :8796 / alpha-platform :8600 / aether。**你看到的"多余
   未提交改动上叠施工。开工第一个动作:`git checkout -b fix/<单号>`,
   禁止在 main 裸干。
 - **收工时:** 逐条回报 [改了什么|为什么|命令输出原文],
-  提交信息带任务单号。**不许口头声称"已恢复/已修复"——一律附
+  提交信息带任务单号。  **不许口头声称"已恢复/已修复"——一律附
   机器证据(diff / curl / 测试输出原文)。**
+  动 8600 / worker / `/data` 后须 `bash scripts/blast_radius_check.sh` exit 0。
 - **守恒整包目录的漂移核查(改前必跑):**
   `bash <安装脚本> /tmp/ref && diff -r /tmp/ref <部署目录> -x data -x .env -x __pycache__`
   除 data/ 与 .env 外的任何差异 = 未授权残留,先报后删。

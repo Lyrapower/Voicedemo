@@ -2,6 +2,14 @@
 
 Real-time audio-reactive particle field (Three.js **InstancedMesh**, WebGL2), Web Audio + **Meyda**, optional **WebSocket** stream `ws://localhost:8787/live`, **IndexedDB** session cards (WAV + particle keyframes), and a **lil-gui** settings panel.
 
+## Field Sense (anchor v2 + pipeline)
+
+Specs and acceptance order: [`docs/field-sense/README.md`](docs/field-sense/README.md)
+
+- Garden anchor v2 → `8787/telemetry.json`
+- Field compiler → `scripts/field_now_v1_5.py` on `:8795`
+- Multimodal workbench → gateway `/app/grid_multimodal.html`
+
 ## Prerequisites
 
 - Node.js 20+ and npm

@@ -1,0 +1,63 @@
+{
+  "time": "2026-07-21T14:53:15.277978-07:00",
+  "ts": 1784670795.2782578,
+  "targets": [
+    {
+      "name": "BTC-USD",
+      "type": "price",
+      "last_check": "2026-07-21T14:48:30.765355-07:00",
+      "last_value": 66313.755,
+      "signal_age_h": null,
+      "provider_fail": null,
+      "fail": 0
+    },
+    {
+      "name": "ETH-USD",
+      "type": "price",
+      "last_check": "2026-07-21T14:48:30.864962-07:00",
+      "last_value": 1923.555,
+      "signal_age_h": null,
+      "provider_fail": null,
+      "fail": 0
+    },
+    {
+      "name": "AnthropicNews",
+      "type": "rss",
+      "last_check": null,
+      "last_value": null,
+      "signal_age_h": null,
+      "provider_fail": null,
+      "fail": 753
+    },
+    {
+      "name": "OllamaReleases",
+      "type": "webpage",
+      "last_check": "2026-07-21T14:01:56.274715-07:00",
+      "last_value": null,
+      "signal_age_h": null,
+      "provider_fail": null,
+      "fail": 0
+    },
+    {
+      "name": "OptionScanner",
+      "type": "scanner_health",
+      "last_check": "2026-07-21T14:48:30.895251-07:00",
+      "last_value": null,
+      "signal_age_h": 8.5,
+      "provider_fail": {
+        "yfinance": 1.0,
+        "stooq": 1.0
+      },
+      "fail": 0
+    },
+    {
+      "name": "MomentumSticker-pool",
+      "type": "momentum_sticker",
+      "last_check": "2026-07-21T14:48:30.896124-07:00",
+      "last_value": null,
+      "signal_age_h": null,
+      "provider_fail": null,
+      "fail": 0
+    }
+  ]
+}

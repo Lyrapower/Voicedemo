@@ -1,0 +1,48 @@
+{
+  "schema_id": "alpha-factory-bars-v0",
+  "version": "1.0",
+  "pinned": "2026-07-27",
+  "description": "Alpha Factory factor(df) input contract — schema changes require separate work order.",
+  "column_whitelist": ["ts", "symbol", "o", "h", "l", "c", "v"],
+  "columns": {
+    "ts": {
+      "dtype": "int64",
+      "meaning": "bar open time, unix epoch seconds (UTC storage)",
+      "required": true
+    },
+    "symbol": {
+      "dtype": "string",
+      "meaning": "ticker symbol, e.g. AAPL",
+      "required": true
+    },
+    "o": { "dtype": "float64", "required": true },
+    "h": { "dtype": "float64", "required": true },
+    "l": { "dtype": "float64", "required": true },
+    "c": { "dtype": "float64", "required": true },
+    "v": { "dtype": "float64", "required": true }
+  },
+  "index": {
+    "type": "RangeIndex",
+    "multiindex": false,
+    "note": "index 任意; worker 按 symbol ASC, ts ASC 排序后传入 factor(df)"
+  },
+  "timezone": "UTC (ts int); display ET optional upstream",
+  "missing_values": "worker 不填充; NaN/缺失原样传入, factor 自行处理",
+  "universe": {
+    "source": "worker resolve_watchlist()",
+    "delivery": "df 仅含 watchlist 内 symbol 行 (最多 8 只, ≤8000 bars)"
+  },
+  "factor_interface": {
+    "signature": "def factor(df: pd.DataFrame) -> pd.Series",
+    "return": "Series aligned with df (len equal); index 与 df.index 对齐或 positional"
+  },
+  "factor_v0_placeholders": ["ret_5m", "ret_30m", "vol_1m", "range_pos"],
+  "template_comment": [
+    "# Alpha Factory df contract (alpha-factory-bars-v0)",
+    "# Columns (whitelist): ts, symbol, o, h, l, c, v",
+    "# Index: arbitrary RangeIndex; sorted symbol+ts by worker",
+    "# Universe: symbols present in df (from worker watchlist)",
+    "# Missing: not imputed by worker",
+    "# def factor(df: pd.DataFrame) -> pd.Series: ..."
+  ]
+}

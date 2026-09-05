@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 财报班 12:35pm PST 起跑(报告 12:45 在手,=3:35pm ET 尾盘;收盘 13:00 PST,Lyra 拍板 2026-08-19)。
+     模板同保护规矩:cp 到 ~/Library/LaunchAgents/ 后:launchctl load ~/Library/LaunchAgents/com.grid.earnings-brief.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.grid.earnings-brief</string>
+  <key>ProgramArguments</key>
+  <array><string>/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13</string><string>/Users/ciciwang/Projects/demo/grid-scout/scout_agent.py</string>
+         <string>--mode</string><string>earnings</string></array>
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>35</integer></dict>
+  <key>StandardOutPath</key><string>/Users/ciciwang/Projects/demo/grid-scout/scout_earnings.log</string>
+  <key>StandardErrorPath</key><string>/Users/ciciwang/Projects/demo/grid-scout/scout_earnings.err</string>
+  <key>EnvironmentVariables</key><dict>
+    <key>SCOUT_OUT</key><string>/Users/ciciwang/Projects/demo/grid-scout</string>
+    <key>CONSOLE_URL</key><string>http://localhost:8610</string>
+    <key>DS_MAX_TOKENS</key><string>16000</string>
+  </dict>
+</dict></plist>

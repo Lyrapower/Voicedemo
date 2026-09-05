@@ -1,0 +1,60 @@
+{
+ "results": [
+  {
+   "source": "treasury_yields",
+   "ok": false,
+   "ts": "2026-08-04T22:38:07.523885-07:00",
+   "error": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1032)>",
+   "items": []
+  },
+  {
+   "source": "fred_macro",
+   "ok": false,
+   "ts": "2026-08-04T22:38:07.694628-07:00",
+   "error": "FRED_API_KEY not set, skipped(设计如此,免费注册后填 .env 即启)",
+   "items": []
+  },
+  {
+   "source": "edgar_ma_8k",
+   "ok": false,
+   "ts": "2026-08-04T22:38:07.694670-07:00",
+   "error": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1032)>",
+   "items": []
+  },
+  {
+   "source": "fda_press",
+   "ok": false,
+   "ts": "2026-08-04T22:38:07.851342-07:00",
+   "error": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1032)>",
+   "items": []
+  },
+  {
+   "source": "commodities",
+   "ok": false,
+   "ts": "2026-08-04T22:38:08.005011-07:00",
+   "error": "all 2 items skipped, see skips",
+   "items": []
+  },
+  {
+   "source": "polymarket_odds",
+   "ok": false,
+   "ts": "2026-08-04T22:38:08.918994-07:00",
+   "error": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1032)>",
+   "items": []
+  }
+ ],
+ "skips": [
+  {
+   "source": "commodities",
+   "item": "cl.f",
+   "reason": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1032)>",
+   "ts": "2026-08-04T22:38:08.557034-07:00"
+  },
+  {
+   "source": "commodities",
+   "item": "xauusd",
+   "reason": "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1032)>",
+   "ts": "2026-08-04T22:38:08.918941-07:00"
+  }
+ ]
+}

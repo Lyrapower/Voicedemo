@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASTER FIELD v1 — live</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0A0910;--dew:#EDEAF4;--vine:#8B8698;--perilla:#A78BE0;--gold:#E8C98A;--seal:#8FD0A8;--warn:#C97B6E;
+  --mono:"IBM Plex Mono",monospace;--body:"Instrument Sans",sans-serif;}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--ink);color:var(--dew);font-family:var(--body);overflow:hidden;height:100vh}
+canvas#field{position:fixed;inset:0}
+.bg{position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(1000px 700px at 50% 42%, rgba(107,79,163,.16), transparent 62%),
+             radial-gradient(1400px 900px at 80% 90%, rgba(232,201,138,.05), transparent 55%);}
+.grain{position:fixed;inset:0;pointer-events:none;opacity:.045;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.95'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");}
+.vignette{position:fixed;inset:0;pointer-events:none;box-shadow:inset 0 0 220px 60px rgba(5,4,10,.85)}
+.hud{position:fixed;top:22px;left:24px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;
+  color:var(--vine);line-height:1.9;user-select:none;z-index:5}
+.hud b{color:var(--dew);font-weight:500}
+.hud .st{color:var(--perilla)}
+.hud .on{color:var(--seal)} .hud .off{color:var(--warn)}
+#stateWord{position:fixed;left:50%;top:66%;transform:translateX(-50%);
+  font-family:var(--mono);font-size:12px;letter-spacing:.55em;color:var(--vine);
+  opacity:.65;transition:color .6s;z-index:5;text-transform:uppercase}
+.panel{position:fixed;top:22px;right:24px;z-index:6;font-family:var(--mono);font-size:10.5px;
+  color:var(--vine);letter-spacing:.08em;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
+.panel label{display:flex;gap:10px;align-items:center}
+input[type=range]{-webkit-appearance:none;width:130px;height:2px;background:rgba(167,139,224,.3);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;
+  background:var(--perilla);cursor:pointer;box-shadow:0 0 8px rgba(167,139,224,.8)}
+#reply{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);width:min(560px,88vw);
+  font-size:14px;color:var(--dew);opacity:.88;line-height:1.7;text-align:center;
+  text-shadow:0 2px 18px rgba(10,9,16,.9);z-index:5;min-height:1.5em;max-height:32vh;overflow-y:auto}
+#reply .meta{display:block;margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--vine)}
+.dock{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);z-index:6;display:flex;gap:10px;width:min(560px,88vw)}
+.dock input{flex:1;background:rgba(20,18,32,.55);border:1px solid rgba(167,139,224,.22);
+  border-radius:8px;padding:13px 18px;color:var(--dew);font-family:var(--body);font-size:14px;
+  backdrop-filter:blur(12px);outline:none;transition:border-color .3s,box-shadow .3s}
+.dock input:focus{border-color:rgba(167,139,224,.55);box-shadow:0 0 24px rgba(167,139,224,.12)}
+.dock input::placeholder{color:var(--vine)}
+</style>
+</head>
+<body>
+<canvas id="field"></canvas>
+<div class="bg"></div><div class="grain"></div><div class="vignette"></div>
+
+<div class="hud">
+  state <b class="st" id="hState">idle</b> · coh <b id="hCoh">—</b> · tokens <b id="hTok">0</b><br>
+  bridge <b id="lBridge" class="off">…</b> · gateway <b id="lGw" class="off">…</b> · garden <b id="lGd" class="off">…</b><br>
+  fps <b id="hFps">—</b> · particles <b id="hN">—</b> · <b id="hMode">LIVE</b>
+</div>
+
+<div id="stateWord">idle</div>
+
+<div class="panel">
+  <label>coh override <input type="range" id="coh" min="0" max="100" value="72"></label>
+</div>
+
+<div id="reply"></div>
+<div class="dock"><input id="ask" placeholder="经由 gateway,问 Qwen 一句" autocomplete="off"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ===== 视觉宪法与 v0.1 同源:phyllotaxis 母形 · 四态 morph · 色温 coherence · 火彩 ===== */
+const canvas=document.getElementById('field');
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const renderer=new THREE.WebGLRenderer({canvas,antialias:false,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.8));
+renderer.setSize(innerWidth,innerHeight);
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(46,innerWidth/innerHeight,.1,200);
+camera.position.set(0,1.5,26);
+
+const N=innerWidth<640?28000:62000;
+document.getElementById('hN').textContent=N.toLocaleString();
+const pos=new Float32Array(N*3),seed=new Float32Array(N),shell=new Float32Array(N);
+const GA=Math.PI*(3-Math.sqrt(5));
+for(let i=0;i<N;i++){
+  const r=8.5*Math.cbrt(i/N)*(0.92+Math.random()*.16);
+  const y=1-(i/(N-1))*2, rad=Math.sqrt(1-y*y), th=GA*i;
+  pos[i*3]=Math.cos(th)*rad*r; pos[i*3+1]=y*r*.86; pos[i*3+2]=Math.sin(th)*rad*r;
+  seed[i]=Math.random()*1000; shell[i]=r/8.5;
+}
+const geo=new THREE.BufferGeometry();
+geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+geo.setAttribute('seed',new THREE.BufferAttribute(seed,1));
+geo.setAttribute('shell',new THREE.BufferAttribute(shell,1));
+
+const U={uT:{value:0},uPx:{value:renderer.getPixelRatio()},
+  uW:{value:new THREE.Vector4(1,0,0,0)},uCoh:{value:.72},
+  uRip:{value:new THREE.Vector3(-99,-99,-99)},uMouse:{value:new THREE.Vector3(999,0,0)},uFreeze:{value:0}};
+const mat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  vertexShader:`
+    attribute float seed; attribute float shell;
+    uniform float uT,uPx,uCoh,uFreeze; uniform vec4 uW; uniform vec3 uRip,uMouse;
+    varying float vGlow; varying float vShell; varying float vSpark;
+    mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}
+    void main(){
+      float t=uT*(1.0-uFreeze);
+      vec3 b=position; float r=length(b)+1e-4;
+      float phase=t*0.5+mix(seed*6.2831,0.0,uCoh);
+      float breath=sin(phase);
+      vec3 pIdle=b*(1.0+breath*0.05); pIdle.xz=rot(t*0.05)*pIdle.xz;
+      vec3 pTh=b*(0.52+0.06*sin(t*1.7+seed)); pTh.xz=rot(t*(1.4/(shell+0.35)))*pTh.xz; pTh.y*=0.8;
+      float lane=fract(b.x*0.08+t*0.22+seed*0.001);
+      vec3 pWk=vec3((lane-0.5)*30.0,b.y*0.55,b.z*0.55); pWk.yz=rot(sin(seed)*0.3)*pWk.yz;
+      vec3 pOut=b*(1.0+breath*0.03); float ripGlow=0.0;
+      for(int k=0;k<3;k++){
+        float t0=k==0?uRip.x:(k==1?uRip.y:uRip.z);
+        float w=t-t0; float d=abs(r-w*9.0);
+        float hit=smoothstep(1.2,0.0,d)*smoothstep(2.2,0.0,w)*step(0.0,w);
+        pOut+=normalize(b)*hit*1.15; ripGlow+=hit; }
+      vec3 p=pIdle*uW.x+pTh*uW.y+pWk*uW.z+pOut*uW.w;
+      vec2 dm=p.xy-uMouse.xy; float md=length(dm);
+      float pull=smoothstep(6.5,0.0,md);
+      p.xy-=normalize(dm+1e-4)*pull*1.1;
+      float sparkGate=step(0.97,fract(seed*0.618));
+      float scint=sparkGate*pow(max(sin(t*(14.0+fract(seed)*9.0)+seed),0.0),6.0);
+      vSpark=scint;
+      vGlow=0.45+breath*0.12*uW.x+uW.y*0.35*(1.0-shell)+ripGlow*1.6+pull*1.4+scint*2.2;
+      vShell=shell;
+      vec4 mv=modelViewMatrix*vec4(p,1.0);
+      gl_Position=projectionMatrix*mv;
+      gl_PointSize=(0.9+(1.0-shell)*0.8+scint*2.6+pull*1.6+ripGlow*1.2)*uPx*(30.0/-mv.z);
+    }`,
+  fragmentShader:`
+    uniform float uCoh; varying float vGlow; varying float vShell; varying float vSpark;
+    void main(){
+      float d=length(gl_PointCoord-0.5); float a=smoothstep(0.5,0.06,d);
+      vec3 edge=mix(vec3(0.46,0.36,0.72),vec3(0.78,0.62,0.90),uCoh);
+      vec3 core=mix(vec3(0.72,0.66,0.92),vec3(0.96,0.90,0.78),uCoh);
+      vec3 col=mix(core,edge,smoothstep(0.1,0.9,vShell));
+      col=mix(col,vec3(0.95,0.98,1.05)+vec3(0.25,-0.05,0.35)*sin(vShell*40.0),vSpark*0.8);
+      gl_FragColor=vec4(col,a*0.5*vGlow);
+    }`});
+scene.add(new THREE.Points(geo,mat));
+
+/* ===== 真实状态接线 ===== */
+const W_OF={idle:[1,0,0,0],thinking:[0,1,0,0],working:[0,0,1,0],output:[0,0,0,1],error:[1,0,0,0]};
+const target=new THREE.Vector4(1,0,0,0);
+const wordEl=document.getElementById('stateWord'),stEl=document.getElementById('hState');
+let ripIdx=0; const clock=new THREE.Clock();
+function ripple(){const v=[U.uRip.value.x,U.uRip.value.y,U.uRip.value.z];
+  v[ripIdx++%3]=clock.getElapsedTime();U.uRip.value.set(v[0],v[1],v[2]);}
+async function applyState(s){
+  if(s==='error'){U.uFreeze.value=1;setTimeout(()=>U.uFreeze.value=0,500);}
+  target.fromArray(W_OF[s]||W_OF.idle);
+  wordEl.textContent=s;stEl.textContent=s;
+  wordEl.style.color=s==='output'?'var(--gold)':s==='thinking'?'var(--perilla)':s==='error'?'var(--warn)':'var(--vine)';
+}
+let cohOverride=null;
+function setCoh(v){U.uCoh.value=v;document.getElementById('hCoh').textContent=v.toFixed(2);}
+document.getElementById('coh').addEventListener('input',e=>{cohOverride=e.target.value/100;setCoh(cohOverride);});
+
+/* /state SSE:桥的心跳 */
+let live=false;
+function connectSSE(){
+  const es=new EventSource('/state');
+  es.onopen=()=>{live=true;setLink('lBridge',true);document.getElementById('hMode').textContent='LIVE';};
+  es.onmessage=e=>{
+    const d=JSON.parse(e.data);
+    applyState(d.state);
+    if(d.state==='output')ripple();
+    document.getElementById('hTok').textContent=d.tokens??0;
+    if(cohOverride===null&&typeof d.coherence==='number')setCoh(d.coherence);
+    setLink('lGw',d.links?.gateway);setLink('lGd',d.links?.garden);
+  };
+  es.onerror=()=>{live=false;setLink('lBridge',false);
+    document.getElementById('hMode').textContent='OFFLINE';
+    es.close();setTimeout(connectSSE,3000);};
+}
+function setLink(id,ok){const el=document.getElementById(id);
+  el.textContent=ok?'ok':'—';el.className=ok?'on':'off';}
+connectSSE();
+
+/* /chat:发问 → 桥 → gateway → Qwen;token 流边到边显 */
+const replyEl=document.getElementById('reply');
+document.getElementById('ask').addEventListener('keydown',async e=>{
+  if(e.key!=='Enter'||!e.target.value.trim())return;
+  const msg=e.target.value.trim();e.target.value='';replyEl.textContent='';
+  try{
+    const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message:msg})});
+    const reader=r.body.getReader();const dec=new TextDecoder();let buf='';
+    while(true){
+      const{done,value}=await reader.read();if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      let idx;
+      while((idx=buf.indexOf('\n\n'))>=0){
+        const line=buf.slice(0,idx);buf=buf.slice(idx+2);
+        if(!line.startsWith('data:'))continue;
+        const d=JSON.parse(line.slice(5));
+        if(d.token){replyEl.firstChild?replyEl.firstChild.textContent+=d.token
+                    :replyEl.append(document.createTextNode(d.token));}
+        if(d.done){const m=document.createElement('span');m.className='meta';
+          m.textContent=`served_by ${d.served_by??'—'} · finish ${d.finish_reason??'—'}${d.truncated?' · ⚠ truncated':''}`;
+          replyEl.append(m);}
+        if(d.error){replyEl.textContent='⏸ '+d.error;}
+      }
+    }
+  }catch(err){replyEl.textContent='⏸ bridge unreachable';applyState('error');}
+});
+
+const ray=new THREE.Raycaster(),ndc=new THREE.Vector2(),
+      plane=new THREE.Plane(new THREE.Vector3(0,0,1),0),hit=new THREE.Vector3();
+addEventListener('pointermove',e=>{
+  ndc.set(e.clientX/innerWidth*2-1,-(e.clientY/innerHeight)*2+1);
+  ray.setFromCamera(ndc,camera);
+  if(ray.ray.intersectPlane(plane,hit))U.uMouse.value.copy(hit);});
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+
+let fpsT=0,fpsN=0;
+(function loop(){
+  requestAnimationFrame(loop);
+  const dt=clock.getDelta(),t=clock.getElapsedTime();
+  U.uT.value=reduced?8:t;
+  U.uW.value.lerp(target,1-Math.pow(0.0025,dt));
+  camera.position.x+=(U.uMouse.value.x*0.04-camera.position.x)*0.02;
+  camera.lookAt(0,0,0);
+  renderer.render(scene,camera);
+  fpsN++;if(t-fpsT>1){document.getElementById('hFps').textContent=fpsN;fpsN=0;fpsT=t;}
+})();
+</script>
+</body>
+</html>

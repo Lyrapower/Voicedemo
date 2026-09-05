@@ -1,0 +1,6 @@
+---
+description: 动 8600/worker/data 后须跑 blast_radius_check.sh exit 0 才能说完成
+alwaysApply: true
+---
+
+动 8600 / worker / `/data` 后禁止说完成，直到 `bash scripts/blast_radius_check.sh` exit 0。

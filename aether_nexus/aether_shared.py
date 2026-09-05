@@ -16,15 +16,37 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def configure_ssl_certificates() -> str | None:
+    """Use certifi CA bundle when SSL_CERT_FILE is unset (macOS python.org installs)."""
+    existing = os.getenv("SSL_CERT_FILE", "").strip()
+    if existing:
+        return existing
+    try:
+        import certifi
+
+        bundle = certifi.where()
+        os.environ["SSL_CERT_FILE"] = bundle
+        os.environ["REQUESTS_CA_BUNDLE"] = bundle
+        return bundle
+    except ImportError:
+        return None
+
+
+configure_ssl_certificates()
+
 # ======================== Paths ========================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 AETHER_VERSION = "R5.4.1"
 AETHER_TAGLINE = "IB Paper + Alpaca Data-Hardened Dry Run R5.4.1"
 STATE_DIR = os.path.join(BASE_DIR, "state")
+NEXUS_STATE_DIR = os.path.join(BASE_DIR, "nexus_state")
+NEXUS_LIVE_LOG_PATH = os.path.join(NEXUS_STATE_DIR, "nexus.log")
 DRYRUN_STATE_DIR = os.path.join(BASE_DIR, "dryrun_state")
 DRYRUN_SIGNALS_PATH = os.path.join(DRYRUN_STATE_DIR, "signals.json")
 CMD_DIR = os.path.join(BASE_DIR, "commands")
 os.makedirs(STATE_DIR, exist_ok=True)
+os.makedirs(NEXUS_STATE_DIR, exist_ok=True)
 os.makedirs(DRYRUN_STATE_DIR, exist_ok=True)
 os.makedirs(CMD_DIR, exist_ok=True)
 
@@ -83,19 +105,57 @@ BUY_CHECK_INTERVAL_SEC = int(os.getenv("BUY_CHECK_INTERVAL_SEC", "120"))
 # IB scan source: dryrun = aether_dryrun.py BFS (default); ib = legacy IB universe scan
 IB_SCAN_SOURCE = os.getenv("IB_SCAN_SOURCE", "dryrun").lower().strip()
 
+# R4 v2: capital-moving daemon commands. NL / client "authorized" flags are ignored.
+CAPITAL_DAEMON_COMMANDS = frozenset({"buy", "emergency_close"})
+
+
+def capital_execution_allowed(
+    *,
+    live: bool | None = None,
+    scan_source: str | None = None,
+    broker_connected: bool = False,
+) -> tuple:
+    """Fail-closed IB capital actions.
+
+    Uses only process env + actual IB connection. Does not honor
+    authorized/role/source/benchmark keys from command files or prompts.
+    """
+    live_flag = LIVE_TRADING_ENABLED if live is None else bool(live)
+    scan = str(IB_SCAN_SOURCE if scan_source is None else scan_source).lower().strip()
+    ib_required = live_flag or scan != "dryrun"
+    if not ib_required:
+        return False, "ib_trading_not_required"
+    if not broker_connected:
+        return False, "ib_not_connected"
+    return True, "ok"
+
 # Dry Run (Alpaca/Stooq/yfinance scanner — feeds IB buy logic when IB_SCAN_SOURCE=dryrun)
 DRYRUN_SCAN_MODE = os.getenv("DRYRUN_SCAN_MODE", os.getenv("SCAN_MODE", "sp500")).lower().strip()
-DRYRUN_POOL_DEFAULT = "MU,MRVL,AMD,HOOD,DELL,APA,OXY,IONQ,NVDA,TSLA,PLTR,COIN"
-DRYRUN_POOL_SYMBOLS = [
-    s.strip().upper()
-    for s in os.getenv("POOL_SYMBOLS", DRYRUN_POOL_DEFAULT).split(",")
-    if s.strip()
-]
+from pool_config import pool_symbols  # noqa: E402
+
+DRYRUN_POOL_SYMBOLS = pool_symbols()
 
 EST = pytz.timezone("US/Eastern")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("AetherNexus")
+
+_NEXUS_LIVE_LOG_ATTACHED = False
+
+
+def attach_nexus_live_log(target_logger: logging.Logger | None = None) -> None:
+    """Mirror production scan/trade logs to nexus_state/nexus.log for post-market live briefs."""
+    global _NEXUS_LIVE_LOG_ATTACHED
+    if _NEXUS_LIVE_LOG_ATTACHED:
+        return
+    if os.getenv("NEXUS_LIVE_LOG", "1").lower() not in ("1", "true", "yes"):
+        return
+    log = target_logger or logger
+    fmt = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    fh = logging.FileHandler(NEXUS_LIVE_LOG_PATH, encoding="utf-8")
+    fh.setFormatter(fmt)
+    log.addHandler(fh)
+    _NEXUS_LIVE_LOG_ATTACHED = True
 
 
 # ======================== Atomic file IO ========================

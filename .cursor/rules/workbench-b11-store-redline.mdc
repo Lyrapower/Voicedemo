@@ -24,7 +24,7 @@ alwaysApply: true
 
 ## 绝对禁止（无例外、无「用户没反对就可以」）
 
-对生产 node（至少包括 **`workbench-b11`**、**`cloud-glm52`**、**`cloud-kimi`**、**`field-particle`**、**`field-compile`**）：
+对生产 node（至少包括 **`workbench-b11`**、**`cloud-glm52`**、**`cloud-glm53`**、**`cloud-glm53-full`**、**`cloud-kimi`**、**`field-particle`**、**`field-compile`**）：
 
 1. **`DELETE FROM messages` / `DELETE FROM messages_archive`** 销毁对话正文（sqlite、Python、脚本、任何语言）
 2. **`POST .../purge` 且 `mode=hard_delete`**（或实现上等价硬删）针对上述 node 的正文  

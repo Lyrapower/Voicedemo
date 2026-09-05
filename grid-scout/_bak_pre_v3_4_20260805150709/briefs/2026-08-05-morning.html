@@ -1,0 +1,42 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>SCOUT · MORNING · 2026-08-05</title><style>
+:root{--bg:#07090e;--panel:rgba(17,22,34,.78);--line:rgba(126,148,190,.13);
+--ink:#e3eaf6;--dim:#8a97ad;--faint:#5a6478;--gold:#e2b95f;--grn:#57d19e;
+--red:#ef5f79;--f1:12px;--f2:14px;--f3:16px;--f6:28px;
+--sans:-apple-system,"PingFang SC","Hiragino Sans GB",sans-serif;
+--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;padding:0 0 60px;background:var(--bg);color:var(--ink);font:var(--f2)/1.65 var(--sans)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+header{position:sticky;top:0;display:flex;gap:12px;align-items:center;height:48px;padding:0 14px;
+background:rgba(7,9,14,.92);border-bottom:1px solid var(--line);z-index:5}
+header h1{font:700 var(--f3) var(--mono);letter-spacing:.18em;margin:0}
+header .sub{color:var(--faint);font-size:var(--f1)}
+.banner{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:12px;padding:9px 14px;
+border:1px solid var(--line);border-radius:10px;background:rgba(11,15,24,.72);font-size:var(--f1)}
+.banner b{font-size:var(--f2)}
+section{margin:0 12px 14px}
+h2{font-size:var(--f1);color:var(--dim);letter-spacing:.12em;margin:18px 2px 8px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+.badge{display:inline-block;border:1px solid var(--grn);color:var(--grn);border-radius:999px;
+padding:2px 12px;font:var(--f1) var(--mono)}
+.tick{display:flex;gap:12px;align-items:center;margin:8px 0 2px}
+.tick .sym{font:700 var(--f6) var(--mono);letter-spacing:.04em}
+.pill{border:1.5px solid var(--grn);color:var(--grn);border-radius:999px;padding:2px 14px;font:600 var(--f2) var(--mono)}
+.pill.put{border-color:var(--red);color:var(--red)}
+.kv{display:flex;justify-content:space-between;gap:14px;padding:4px 0;font-size:var(--f2);
+border-bottom:1px dashed rgba(126,148,190,.08)}
+.kv:last-child{border:0}
+.kv b{color:var(--dim);font-weight:500;white-space:nowrap}
+.kv span{text-align:right}
+details{margin-top:10px}
+summary{cursor:pointer;color:#7ea6e8;font-size:var(--f2)}
+.ev{border-left:2px solid var(--line);padding:6px 0 6px 12px;margin:8px 0}
+.ev .src{color:var(--gold);font:var(--f1) var(--mono)}
+.ev .why{color:var(--dim);font-size:var(--f1)}
+.empty{border:1px dashed var(--line);border-radius:12px;padding:20px;color:var(--dim);text-align:center;line-height:1.8}
+table{width:100%;border-collapse:collapse;font-size:var(--f1)}
+th{color:var(--dim);text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);font-weight:500}
+td{padding:5px 8px;border-bottom:1px solid rgba(126,148,190,.06);vertical-align:top}
+p{margin:7px 0}
+footer{margin:24px 12px 0;color:var(--faint);font-size:10px;font-family:var(--mono)}
+</style></head><body><header><h1>SCOUT</h1><span class="sub">morning · 2026-08-05 · 参谋作业,Lyra 拍板</span></header><div class="banner"><b>晨会交易任务单</b><span class="num">2026-08-05</span><span>SP500 <b>中性震荡</b></span><span>NASDAQ <b>中性震荡</b></span><span>VIX <b class="num">19.79</b></span><span>置信 <b>低</b></span></div><section><h2>一 · 大盘方向</h2><div class="card"><div class="kv"><b>逻辑</b><span>VIX 19.79 处于中等偏低水平，无恐慌情绪；隔夜美债收益率短端微降（1M 3.77% vs 前日 3.78%，2Y 4.18% vs 4.20%），但长端稳定，未形成强烈的风险偏好或避险信号；EDGAR 8-K 大量提交但无宏观事件，缺乏方向性催化剂。</span></div><div class="kv"><b>关键位</b><span>SP500 proxy 769.79，NASDAQ proxy 717.1，无实弹 GEX 数据，无法给出精确关键位，仅以收盘价为参考。</span></div><div class="kv"><b>指数实读</b><span class="num">SPX 769.79 · NDQ 717.1 · VIX 19.79</span></div></div></section><section><h2>二 · 池内候选</h2><div class="empty">今日池内无事件驱动候选<br><span style="font-size:var(--f1)">隔夜 EDGAR 8-K 文件涉及 EA、SWKS、CRTO、LNTH、SUPN、INDV、GRTX、OBX、CRNX 等多家公司，但仅凭表格类型（8-K、EX-99.1、EX-10.1）无法判断具体内容及利好/利空方向，无符合单腿 CALL 的明确证据。</span></div></section><section><h2>三 · 数据缺失与矛盾标注</h2><div class="card"><table><tr><th>项目</th><th>状态</th><th>处理</th></tr><tr><td>FRED 宏观数据</td><td>不可用</td><td>已使用美债收益率和指数 proxy 数据替代，对宏观判断影响有限。</td></tr></table></div></section><section><h2>四 · 结论</h2><div class="card">隔夜数据缺乏明确方向性驱动，VIX 低位，收益率微降，大盘倾向中性震荡，无高置信度单腿 CALL 候选。</div></section><footer>build scout v3.3 · DS JSON → review(GLM|EXPANDED) · indices(^vix) → aether OPTION · 渲染:_render_structured/_cand_card/_md_fallback</footer></body></html>

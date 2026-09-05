@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 午班 10:40am PST(=1:40pm ET 盘中,Lyra 拍板 2026-08-19)。模板同保护规矩:
+     cp 到 ~/Library/LaunchAgents/ 后:launchctl load ~/Library/LaunchAgents/com.grid.midday-brief.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.grid.midday-brief</string>
+  <key>ProgramArguments</key>
+  <array><string>/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13</string><string>/Users/ciciwang/Projects/demo/grid-scout/scout_agent.py</string>
+         <string>--mode</string><string>midday</string></array>
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>40</integer></dict>
+  <key>StandardOutPath</key><string>/Users/ciciwang/Projects/demo/grid-scout/scout_midday.log</string>
+  <key>StandardErrorPath</key><string>/Users/ciciwang/Projects/demo/grid-scout/scout_midday.err</string>
+  <key>EnvironmentVariables</key><dict>
+    <key>SCOUT_OUT</key><string>/Users/ciciwang/Projects/demo/grid-scout</string>
+    <key>CONSOLE_URL</key><string>http://localhost:8610</string>
+    <key>DS_MAX_TOKENS</key><string>12000</string>
+  </dict>
+</dict></plist>

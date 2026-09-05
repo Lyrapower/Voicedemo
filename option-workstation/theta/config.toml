@@ -1,0 +1,7 @@
+# Theta Terminal v3 · 本机/compose 共用
+host = "0.0.0.0"
+port = 25503
+log_directory = "logs"
+
+[env]
+mdds_type = "PROD"

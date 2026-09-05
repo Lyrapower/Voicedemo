@@ -1,6 +1,7 @@
 # Env and secrets
 .env
 .env.local
+.env.gitpush.local
 *.pem
 
 # Python

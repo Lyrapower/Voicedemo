@@ -1,0 +1,902 @@
+{
+  "schema_version": "1.0",
+  "window": "PREMARKET",
+  "generated_at": "2026-07-16T21:31:45.094169-04:00",
+  "trade_date": "2026-07-16",
+  "scan_provenance": {
+    "rejection_log": "/Users/ciciwang/Projects/demo/aether_nexus/logs/rejections/2026-07-16_123457-c20008.jsonl",
+    "scan_time": "2026-07-16T12:34:57-04:00",
+    "scan_id": "123457-c20008",
+    "row_count": 722,
+    "off_pool_symbols": 16,
+    "option_feed": "indicative"
+  },
+  "market_context": {
+    "spx_pct": null,
+    "vix": null,
+    "sector_leaders": [],
+    "opening_range_note": null,
+    "available": false,
+    "note": "index context not wired in v0 builder"
+  },
+  "candidates": [
+    {
+      "ticker": "INTC",
+      "why_surfaced": "off-pool BFS near-miss score=42.24 primary_kill=iv",
+      "best_score": 42.24,
+      "quote": {
+        "last": 96.26,
+        "asof": "2026-07-16T12:34:57-04:00"
+      },
+      "quote_freshness": {
+        "scan_time": "2026-07-16T12:34:57-04:00",
+        "scan_id": "123457-c20008",
+        "quote_source": "indicative",
+        "oi_source": "missing_in_snapshot",
+        "staleness_policy": "scan_batch_age",
+        "age_minutes": 2.0
+      },
+      "levels": null,
+      "atr14": null,
+      "iv_context": {
+        "iv": 1.121,
+        "iv_pct": 112.1,
+        "iv_unit": "decimal_fraction",
+        "iv_source": "alpaca_indicative",
+        "scan_max_iv": 0.8,
+        "scan_max_iv_pct": 80.0,
+        "iv_scan_veto": true,
+        "scan_kill_rule": "iv",
+        "threshold_at_kill": 0.8,
+        "path_verified": "alpaca_snapshot.impliedVolatility → aether_dryrun._parse_alpaca_chain → rejection_log.iv",
+        "note": "112% class IV is event/extreme pricing if unit correct — not a display bug. iv_environment may single-dimension veto regardless of other scores."
+      },
+      "liquidity_context": {
+        "spread_pct": 0.043993,
+        "oi_available": false,
+        "oi_unverified": true,
+        "open_interest": null,
+        "oi_source": "missing_in_snapshot",
+        "gate_mode": "spread_only+oi_unverified",
+        "note": "OI unavailable — liquidity scored on spread_pct only; blind zone declared."
+      },
+      "chain_summary": [
+        {
+          "strike": 100.0,
+          "type": "C",
+          "exp": "2026-07-27",
+          "bid": 5.78,
+          "ask": 6.04,
+          "mid": 5.91,
+          "delta": 0.4623,
+          "iv": 1.121,
+          "spread_pct": 0.043993,
+          "volume": 503,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "iv"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 100.0,
+          "type": "C",
+          "exp": "2026-07-24",
+          "bid": 5.36,
+          "ask": 5.64,
+          "mid": 5.5,
+          "delta": 0.4553,
+          "iv": 1.244,
+          "spread_pct": 0.050909,
+          "volume": 1946,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "iv"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 98.0,
+          "type": "C",
+          "exp": "2026-07-24",
+          "bid": 6.29,
+          "ask": 6.52,
+          "mid": 6.405,
+          "delta": 0.5,
+          "iv": 1.261,
+          "spread_pct": 0.035909,
+          "volume": 360,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "iv"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        }
+      ],
+      "event_lane": false,
+      "gate_pass": [
+        "momentum_ok:ret_20=-17.12%",
+        "liquidity_ok:spread_only;oi_unverified",
+        "event_ok",
+        "staleness_ok:age_min=2.0"
+      ],
+      "gate_reject": []
+    },
+    {
+      "ticker": "ONTO",
+      "why_surfaced": "off-pool BFS near-miss score=40.53 primary_kill=gamma",
+      "best_score": 40.53,
+      "quote": {
+        "last": 280.86,
+        "asof": "2026-07-16T12:34:57-04:00"
+      },
+      "quote_freshness": {
+        "scan_time": "2026-07-16T12:34:57-04:00",
+        "scan_id": "123457-c20008",
+        "quote_source": "indicative",
+        "oi_source": "missing_in_snapshot",
+        "staleness_policy": "scan_batch_age",
+        "age_minutes": 2.0
+      },
+      "levels": null,
+      "atr14": null,
+      "iv_context": {
+        "iv": 1.0518,
+        "iv_pct": 105.18,
+        "iv_unit": "decimal_fraction",
+        "iv_source": "alpaca_indicative",
+        "scan_max_iv": 0.8,
+        "scan_max_iv_pct": 80.0,
+        "iv_scan_veto": true,
+        "scan_kill_rule": "gamma",
+        "threshold_at_kill": 0.01,
+        "path_verified": "alpaca_snapshot.impliedVolatility → aether_dryrun._parse_alpaca_chain → rejection_log.iv",
+        "note": "112% class IV is event/extreme pricing if unit correct — not a display bug. iv_environment may single-dimension veto regardless of other scores."
+      },
+      "liquidity_context": {
+        "spread_pct": 0.049631,
+        "oi_available": false,
+        "oi_unverified": true,
+        "open_interest": null,
+        "oi_source": "missing_in_snapshot",
+        "gate_mode": "spread_only+oi_unverified",
+        "note": "OI unavailable — liquidity scored on spread_pct only; blind zone declared."
+      },
+      "chain_summary": [
+        {
+          "strike": 300.0,
+          "type": "C",
+          "exp": "2026-08-21",
+          "bid": 29.08,
+          "ask": 30.56,
+          "mid": 29.82,
+          "delta": 0.492,
+          "iv": 1.0518,
+          "spread_pct": 0.049631,
+          "volume": 4,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "gamma"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 310.0,
+          "type": "C",
+          "exp": "2026-08-21",
+          "bid": 25.31,
+          "ask": 27.38,
+          "mid": 26.345,
+          "delta": 0.4523,
+          "iv": 1.0506,
+          "spread_pct": 0.078573,
+          "volume": 14,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "gamma"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 290.0,
+          "type": "C",
+          "exp": "2026-08-21",
+          "bid": 32.62,
+          "ask": 34.37,
+          "mid": 33.495,
+          "delta": 0.5325,
+          "iv": 1.048,
+          "spread_pct": 0.052247,
+          "volume": 3,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "delta"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        }
+      ],
+      "event_lane": false,
+      "gate_pass": [
+        "momentum_ok:ret_20=-10.96%",
+        "liquidity_ok:spread_only;oi_unverified",
+        "event_ok",
+        "staleness_ok:age_min=2.0"
+      ],
+      "gate_reject": []
+    },
+    {
+      "ticker": "MKSI",
+      "why_surfaced": "off-pool BFS near-miss score=39.07 primary_kill=gamma",
+      "best_score": 39.07,
+      "quote": {
+        "last": 329.66,
+        "asof": "2026-07-16T12:34:57-04:00"
+      },
+      "quote_freshness": {
+        "scan_time": "2026-07-16T12:34:57-04:00",
+        "scan_id": "123457-c20008",
+        "quote_source": "indicative",
+        "oi_source": "missing_in_snapshot",
+        "staleness_policy": "scan_batch_age",
+        "age_minutes": 2.0
+      },
+      "levels": null,
+      "atr14": null,
+      "iv_context": {
+        "iv": 0.9036,
+        "iv_pct": 90.36,
+        "iv_unit": "decimal_fraction",
+        "iv_source": "alpaca_indicative",
+        "scan_max_iv": 0.8,
+        "scan_max_iv_pct": 80.0,
+        "iv_scan_veto": true,
+        "scan_kill_rule": "gamma",
+        "threshold_at_kill": 0.01,
+        "path_verified": "alpaca_snapshot.impliedVolatility → aether_dryrun._parse_alpaca_chain → rejection_log.iv",
+        "note": "112% class IV is event/extreme pricing if unit correct — not a display bug. iv_environment may single-dimension veto regardless of other scores."
+      },
+      "liquidity_context": {
+        "spread_pct": 0.070403,
+        "oi_available": false,
+        "oi_unverified": true,
+        "open_interest": null,
+        "oi_source": "missing_in_snapshot",
+        "gate_mode": "spread_only+oi_unverified",
+        "note": "OI unavailable — liquidity scored on spread_pct only; blind zone declared."
+      },
+      "chain_summary": [
+        {
+          "strike": 350.0,
+          "type": "C",
+          "exp": "2026-08-21",
+          "bid": 28.23,
+          "ask": 30.29,
+          "mid": 29.26,
+          "delta": 0.4756,
+          "iv": 0.9036,
+          "spread_pct": 0.070403,
+          "volume": 4,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "gamma"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 360.0,
+          "type": "C",
+          "exp": "2026-08-21",
+          "bid": 24.21,
+          "ask": 27.94,
+          "mid": 26.075,
+          "delta": 0.4375,
+          "iv": 0.9102,
+          "spread_pct": 0.143049,
+          "volume": 1,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "gamma"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 330.0,
+          "type": "C",
+          "exp": "2026-08-21",
+          "bid": 36.29,
+          "ask": 38.07,
+          "mid": 37.18,
+          "delta": 0.5579,
+          "iv": 0.9002,
+          "spread_pct": 0.047875,
+          "volume": 2,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "delta"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        }
+      ],
+      "event_lane": false,
+      "gate_pass": [
+        "momentum_ok:ret_20=-9.65%",
+        "liquidity_ok:spread_only;oi_unverified",
+        "event_ok",
+        "staleness_ok:age_min=2.0"
+      ],
+      "gate_reject": []
+    },
+    {
+      "ticker": "APP",
+      "why_surfaced": "off-pool BFS near-miss score=31.67 primary_kill=gamma",
+      "best_score": 31.67,
+      "quote": {
+        "last": 437.11,
+        "asof": "2026-07-16T12:34:57-04:00"
+      },
+      "quote_freshness": {
+        "scan_time": "2026-07-16T12:34:57-04:00",
+        "scan_id": "123457-c20008",
+        "quote_source": "indicative",
+        "oi_source": "missing_in_snapshot",
+        "staleness_policy": "scan_batch_age",
+        "age_minutes": 2.0
+      },
+      "levels": null,
+      "atr14": null,
+      "iv_context": {
+        "iv": 0.7318,
+        "iv_pct": 73.18,
+        "iv_unit": "decimal_fraction",
+        "iv_source": "alpaca_indicative",
+        "scan_max_iv": 0.8,
+        "scan_max_iv_pct": 80.0,
+        "iv_scan_veto": false,
+        "scan_kill_rule": "gamma",
+        "threshold_at_kill": 0.01,
+        "path_verified": "alpaca_snapshot.impliedVolatility → aether_dryrun._parse_alpaca_chain → rejection_log.iv",
+        "note": "IV within scan cap; still judge premium vs thesis."
+      },
+      "liquidity_context": {
+        "spread_pct": 0.02381,
+        "oi_available": false,
+        "oi_unverified": true,
+        "open_interest": null,
+        "oi_source": "missing_in_snapshot",
+        "gate_mode": "spread_only+oi_unverified",
+        "note": "OI unavailable — liquidity scored on spread_pct only; blind zone declared."
+      },
+      "chain_summary": [
+        {
+          "strike": 445.0,
+          "type": "C",
+          "exp": "2026-07-31",
+          "bid": 22.41,
+          "ask": 22.95,
+          "mid": 22.68,
+          "delta": 0.4865,
+          "iv": 0.7318,
+          "spread_pct": 0.02381,
+          "volume": 4,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "gamma"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 455.0,
+          "type": "C",
+          "exp": "2026-07-31",
+          "bid": 17.74,
+          "ask": 19.05,
+          "mid": 18.395,
+          "delta": 0.4255,
+          "iv": 0.723,
+          "spread_pct": 0.071215,
+          "volume": 10,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "gamma"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 455.0,
+          "type": "C",
+          "exp": "2026-08-07",
+          "bid": 31.24,
+          "ask": 32.76,
+          "mid": 32.0,
+          "delta": 0.478,
+          "iv": 0.9141,
+          "spread_pct": 0.0475,
+          "volume": 12,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "gamma"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        }
+      ],
+      "event_lane": false,
+      "gate_pass": [
+        "momentum_ok:ret_20=-15.67%",
+        "liquidity_ok:spread_only;oi_unverified",
+        "event_ok",
+        "staleness_ok:age_min=2.0"
+      ],
+      "gate_reject": []
+    },
+    {
+      "ticker": "WDC",
+      "why_surfaced": "off-pool BFS near-miss score=28.09 primary_kill=gamma",
+      "best_score": 28.09,
+      "quote": {
+        "last": 463.24,
+        "asof": "2026-07-16T12:34:57-04:00"
+      },
+      "quote_freshness": {
+        "scan_time": "2026-07-16T12:34:57-04:00",
+        "scan_id": "123457-c20008",
+        "quote_source": "indicative",
+        "oi_source": "missing_in_snapshot",
+        "staleness_policy": "scan_batch_age",
+        "age_minutes": 2.0
+      },
+      "levels": null,
+      "atr14": null,
+      "iv_context": {
+        "iv": 1.112,
+        "iv_pct": 111.2,
+        "iv_unit": "decimal_fraction",
+        "iv_source": "alpaca_indicative",
+        "scan_max_iv": 0.8,
+        "scan_max_iv_pct": 80.0,
+        "iv_scan_veto": true,
+        "scan_kill_rule": "gamma",
+        "threshold_at_kill": 0.01,
+        "path_verified": "alpaca_snapshot.impliedVolatility → aether_dryrun._parse_alpaca_chain → rejection_log.iv",
+        "note": "112% class IV is event/extreme pricing if unit correct — not a display bug. iv_environment may single-dimension veto regardless of other scores."
+      },
+      "liquidity_context": {
+        "spread_pct": 0.070141,
+        "oi_available": false,
+        "oi_unverified": true,
+        "open_interest": null,
+        "oi_source": "missing_in_snapshot",
+        "gate_mode": "spread_only+oi_unverified",
+        "note": "OI unavailable — liquidity scored on spread_pct only; blind zone declared."
+      },
+      "chain_summary": [
+        {
+          "strike": 475.0,
+          "type": "C",
+          "exp": "2026-07-24",
+          "bid": 24.35,
+          "ask": 26.12,
+          "mid": 25.235,
+          "delta": 0.4722,
+          "iv": 1.112,
+          "spread_pct": 0.070141,
+          "volume": 83,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "gamma"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 470.0,
+          "type": "C",
+          "exp": "2026-07-24",
+          "bid": 26.8,
+          "ask": 28.19,
+          "mid": 27.495,
+          "delta": 0.4981,
+          "iv": 1.1179,
+          "spread_pct": 0.050555,
+          "volume": 8,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "gamma"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 485.0,
+          "type": "C",
+          "exp": "2026-07-31",
+          "bid": 32.36,
+          "ask": 34.87,
+          "mid": 33.615,
+          "delta": 0.4679,
+          "iv": 1.1379,
+          "spread_pct": 0.074669,
+          "volume": 4,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "gamma"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        }
+      ],
+      "event_lane": false,
+      "gate_pass": [
+        "momentum_ok:ret_20=-31.47%",
+        "liquidity_ok:spread_only;oi_unverified",
+        "event_ok",
+        "staleness_ok:age_min=2.0"
+      ],
+      "gate_reject": []
+    },
+    {
+      "ticker": "LITE",
+      "why_surfaced": "off-pool BFS near-miss score=27.53 primary_kill=gamma",
+      "best_score": 27.53,
+      "quote": {
+        "last": 702.015,
+        "asof": "2026-07-16T12:34:57-04:00"
+      },
+      "quote_freshness": {
+        "scan_time": "2026-07-16T12:34:57-04:00",
+        "scan_id": "123457-c20008",
+        "quote_source": "indicative",
+        "oi_source": "missing_in_snapshot",
+        "staleness_policy": "scan_batch_age",
+        "age_minutes": 2.0
+      },
+      "levels": null,
+      "atr14": null,
+      "iv_context": {
+        "iv": 1.0485,
+        "iv_pct": 104.85,
+        "iv_unit": "decimal_fraction",
+        "iv_source": "alpaca_indicative",
+        "scan_max_iv": 0.8,
+        "scan_max_iv_pct": 80.0,
+        "iv_scan_veto": true,
+        "scan_kill_rule": "gamma",
+        "threshold_at_kill": 0.01,
+        "path_verified": "alpaca_snapshot.impliedVolatility → aether_dryrun._parse_alpaca_chain → rejection_log.iv",
+        "note": "112% class IV is event/extreme pricing if unit correct — not a display bug. iv_environment may single-dimension veto regardless of other scores."
+      },
+      "liquidity_context": {
+        "spread_pct": 0.060827,
+        "oi_available": false,
+        "oi_unverified": true,
+        "open_interest": null,
+        "oi_source": "missing_in_snapshot",
+        "gate_mode": "spread_only+oi_unverified",
+        "note": "OI unavailable — liquidity scored on spread_pct only; blind zone declared."
+      },
+      "chain_summary": [
+        {
+          "strike": 725.0,
+          "type": "C",
+          "exp": "2026-07-31",
+          "bid": 47.82,
+          "ask": 50.82,
+          "mid": 49.32,
+          "delta": 0.4809,
+          "iv": 1.0485,
+          "spread_pct": 0.060827,
+          "volume": 3,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "gamma"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 720.0,
+          "type": "C",
+          "exp": "2026-07-24",
+          "bid": 32.91,
+          "ask": 37.35,
+          "mid": 35.13,
+          "delta": 0.4627,
+          "iv": 1.0484,
+          "spread_pct": 0.126388,
+          "volume": 29,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "gamma"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 717.5,
+          "type": "C",
+          "exp": "2026-07-24",
+          "bid": 34.97,
+          "ask": 39.39,
+          "mid": 37.18,
+          "delta": 0.4738,
+          "iv": 1.0734,
+          "spread_pct": 0.118881,
+          "volume": 1,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "gamma"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        }
+      ],
+      "event_lane": false,
+      "gate_pass": [
+        "momentum_ok:ret_20=-19.28%",
+        "liquidity_ok:spread_only;oi_unverified",
+        "event_ok",
+        "staleness_ok:age_min=2.0"
+      ],
+      "gate_reject": []
+    },
+    {
+      "ticker": "GEV",
+      "why_surfaced": "off-pool BFS near-miss score=27.18 primary_kill=delta",
+      "best_score": 27.18,
+      "quote": {
+        "last": 1030.18,
+        "asof": "2026-07-16T12:34:57-04:00"
+      },
+      "quote_freshness": {
+        "scan_time": "2026-07-16T12:34:57-04:00",
+        "scan_id": "123457-c20008",
+        "quote_source": "indicative",
+        "oi_source": "missing_in_snapshot",
+        "staleness_policy": "scan_batch_age",
+        "age_minutes": 2.0
+      },
+      "levels": null,
+      "atr14": null,
+      "iv_context": {
+        "iv": 0.6871,
+        "iv_pct": 68.71,
+        "iv_unit": "decimal_fraction",
+        "iv_source": "alpaca_indicative",
+        "scan_max_iv": 0.8,
+        "scan_max_iv_pct": 80.0,
+        "iv_scan_veto": false,
+        "scan_kill_rule": "delta",
+        "threshold_at_kill": 0.5,
+        "path_verified": "alpaca_snapshot.impliedVolatility → aether_dryrun._parse_alpaca_chain → rejection_log.iv",
+        "note": "IV within scan cap; still judge premium vs thesis."
+      },
+      "liquidity_context": {
+        "spread_pct": 0.036707,
+        "oi_available": false,
+        "oi_unverified": true,
+        "open_interest": null,
+        "oi_source": "missing_in_snapshot",
+        "gate_mode": "spread_only+oi_unverified",
+        "note": "OI unavailable — liquidity scored on spread_pct only; blind zone declared."
+      },
+      "chain_summary": [
+        {
+          "strike": 1045.0,
+          "type": "C",
+          "exp": "2026-08-07",
+          "bid": 62.31,
+          "ask": 64.64,
+          "mid": 63.475,
+          "delta": 0.5046,
+          "iv": 0.6871,
+          "spread_pct": 0.036707,
+          "volume": 1,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "delta"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 1055.0,
+          "type": "C",
+          "exp": "2026-08-07",
+          "bid": 57.7,
+          "ask": 61.53,
+          "mid": 59.615,
+          "delta": 0.4825,
+          "iv": 0.691,
+          "spread_pct": 0.064246,
+          "volume": 16,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "gamma"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 1050.0,
+          "type": "C",
+          "exp": "2026-08-07",
+          "bid": 59.66,
+          "ask": 63.52,
+          "mid": 61.59,
+          "delta": 0.4936,
+          "iv": 0.6898,
+          "spread_pct": 0.062673,
+          "volume": 2,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "gamma"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        }
+      ],
+      "event_lane": false,
+      "gate_pass": [
+        "momentum_ok:ret_20=5.44%",
+        "liquidity_ok:spread_only;oi_unverified",
+        "event_ok",
+        "staleness_ok:age_min=2.0"
+      ],
+      "gate_reject": []
+    },
+    {
+      "ticker": "C",
+      "why_surfaced": "off-pool BFS near-miss score=26.42 primary_kill=delta",
+      "best_score": 26.42,
+      "quote": {
+        "last": 131.7,
+        "asof": "2026-07-16T12:34:57-04:00"
+      },
+      "quote_freshness": {
+        "scan_time": "2026-07-16T12:34:57-04:00",
+        "scan_id": "123457-c20008",
+        "quote_source": "indicative",
+        "oi_source": "missing_in_snapshot",
+        "staleness_policy": "scan_batch_age",
+        "age_minutes": 2.0
+      },
+      "levels": null,
+      "atr14": null,
+      "iv_context": {
+        "iv": 0.3002,
+        "iv_pct": 30.02,
+        "iv_unit": "decimal_fraction",
+        "iv_source": "alpaca_indicative",
+        "scan_max_iv": 0.8,
+        "scan_max_iv_pct": 80.0,
+        "iv_scan_veto": false,
+        "scan_kill_rule": "delta",
+        "threshold_at_kill": 0.25,
+        "path_verified": "alpaca_snapshot.impliedVolatility → aether_dryrun._parse_alpaca_chain → rejection_log.iv",
+        "note": "IV within scan cap; still judge premium vs thesis."
+      },
+      "liquidity_context": {
+        "spread_pct": 0.05988,
+        "oi_available": false,
+        "oi_unverified": true,
+        "open_interest": null,
+        "oi_source": "missing_in_snapshot",
+        "gate_mode": "spread_only+oi_unverified",
+        "note": "OI unavailable — liquidity scored on spread_pct only; blind zone declared."
+      },
+      "chain_summary": [
+        {
+          "strike": 136.0,
+          "type": "C",
+          "exp": "2026-07-24",
+          "bid": 0.81,
+          "ask": 0.86,
+          "mid": 0.835,
+          "delta": 0.2458,
+          "iv": 0.3002,
+          "spread_pct": 0.05988,
+          "volume": 85,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "delta"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 133.0,
+          "type": "C",
+          "exp": "2026-07-31",
+          "bid": 2.68,
+          "ask": 3.07,
+          "mid": 2.875,
+          "delta": 0.4602,
+          "iv": 0.319,
+          "spread_pct": 0.135652,
+          "volume": 19,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "spread"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        },
+        {
+          "strike": 133.0,
+          "type": "C",
+          "exp": "2026-08-07",
+          "bid": 3.14,
+          "ask": 3.47,
+          "mid": 3.305,
+          "delta": 0.471,
+          "iv": 0.2937,
+          "spread_pct": 0.099849,
+          "volume": 4,
+          "open_interest": null,
+          "oi_available": false,
+          "quote_stale": false,
+          "kill_rules": [
+            "vol"
+          ],
+          "asof": "2026-07-16T12:34:57-04:00"
+        }
+      ],
+      "event_lane": false,
+      "gate_pass": [
+        "momentum_ok:ret_20=-7.87%",
+        "liquidity_ok:spread_only;oi_unverified",
+        "event_ok",
+        "staleness_ok:age_min=2.0"
+      ],
+      "gate_reject": []
+    }
+  ],
+  "risk_budget": {
+    "max_loss_per_trade_usd": null,
+    "note": "set RISK_BUDGET_USD before stage3"
+  },
+  "builder_notes": [
+    "staleness_anchor=scan_plus — replay at scan_time+2m; live runs use anchor=now",
+    "Alpaca indicative: OI unavailable — stage1 liquidity gate degrades to spread_pct only; liquidity_context.oi_unverified=true on all candidates",
+    "chain_summary.kill_rules are INFORMATIONAL (scan wounds); iv_context.iv_scan_veto drives IV veto"
+  ],
+  "schema_semantics": {
+    "kill_rules": "informational_scan_wounds_not_coach_gate",
+    "iv_scan_veto": "scoring_veto_stage4_enforces_max_grade_C",
+    "oi_unverified": "liquidity_blind_zone_must_propagate_to_fable"
+  }
+}

@@ -1,5 +1,6 @@
 diary.db
 diary_pin.json
+.field_chat_memory_state.json
 _diary_patch/
 frontend/node_modules/
 frontend/dist/

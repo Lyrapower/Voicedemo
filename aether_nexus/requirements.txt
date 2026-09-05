@@ -4,6 +4,7 @@ python-dotenv==1.0.1
 ib_insync==0.9.86
 nest-asyncio==1.6.0
 requests==2.32.3
+certifi>=2024.8.30
 pyTelegramBotAPI==4.23.0
 pytz==2024.2
 yfinance==0.2.54

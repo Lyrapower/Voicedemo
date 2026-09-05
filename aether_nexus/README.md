@@ -9,7 +9,7 @@ IB Paper daemon + **Data-Hardened Dry Run** (Alpaca/Stooq/yfinance + Gemini) + S
 | `aether_daemon.py` | Exclusive IB connection, auto buy/monitor from Dry Run candidates |
 | `aether_dryrun.py` | Dry Run scanner — **pool** (做T池) + **sp500** (BFS 漏斗) dual lines |
 | `aether_dashboard.py` | Streamlit UI — IB + Dry Run tabs |
-| `aether_shared.py` | Config, atomic file IO, notifications |
+| `post_market_summary_daemon.py` | Post-close scan log → `:8501` Aster JSON summary → Telegram + `traces/daemon/` |
 | `watchlist.json` | 紫苏叶 watchlist + catalyst metadata |
 | `state/` | IB daemon writes, dashboard reads |
 | `dryrun_state/` | Dry run signals, iv_history, data_health, filtered logs |
@@ -20,7 +20,7 @@ Daemon and dashboard communicate via files only — no shared IB connection in D
 ## Quick Start
 
 ```bash
-cd /Users/ciciwang/Desktop/demo/aether_nexus
+cd /Users/ciciwang/Projects/demo/aether_nexus
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -138,6 +138,32 @@ See `.env.example` for full list.
 - Increase `STOOQ_SLEEP` / `YF_SLEEP` if Stage 2 returns empty
 - Pool mode ~12 symbols (~2–3 min); sp500 BFS full run ~15–25 min
 - IB disconnect affects auto-buy only — Dry Run Telegram reports are independent
+
+## Post-Market Summary daemon v1
+
+After each trading day (default **16:35 EST**), reads same-day `dryrun.log`, calls **`:8501` / `demo/aster`**, triple-votes `candidate_count` / `top_symbol` / `top_score`, pushes Telegram, writes `grid-sovereign-runtime/traces/daemon/`.
+
+```bash
+# One-shot (today or --date YYYY-MM-DD)
+/Users/ciciwang/Projects/demo/scripts/start_post_market_summary.sh --once --dry-run
+
+# 5-day acceptance dry-run loop (title prefix [DRY-RUN])
+/Users/ciciwang/Projects/demo/scripts/start_post_market_summary.sh --loop --dry-run
+```
+
+Requires `:8501` gateway up and `TELEGRAM_*` in `.env`. `contract_gate` quarantines outputs containing 建仓/做多/做空/买入/卖出/加仓 (no Telegram dispatch).
+
+## Sync topology (Aether ↔ Alpha · 只读可见性 · TICK_SECONDS=300 不动)
+
+| Writer | What | Cadence | Reader | Face period |
+|--------|------|---------|--------|-------------|
+| `aether_dryrun` / scan daemons | `grid_store` events (`aether_scan`, brief, …) | trading windows (09:40/15:30 ET etc.) | Aether UI `:8501/app/aether.html` | poll **30s** |
+| Alpha worker `:8600` | `platform.db` ticks/bars/factors/heat nominations | **TICK_SECONDS=300** | Alpha Console `/app` | WS ~2s / HTTP poll |
+| Alpha worker | heat = WATCHLIST + scan 提名≤8 | same tick | `/api/pulse` equity | tick-bound |
+| BFS raw rows | store `aether_scan` | scan windows | Console BFS 区 | **即时**(不经 tick) |
+| Factory propose | `8600 → 8501 /factory/task`（**factory 分类器**，≠ `:8500` Router） | on demand | `factor_drafts` | — |
+
+共享事实源只有 `grid_store.db`；**无 live bus**。UI 数据龄徽章：store 最后写入 ts vs 本面最后读取 ts；超本面周期×2 → 琥珀。
 
 ## Legacy
 

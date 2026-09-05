@@ -450,6 +450,88 @@ def send_bark(title: str, body: str, *, base: str = "") -> str:
             return f"失败 POST={post_err} GET={get_err}"
 
 
+def check_unique_factor_rate_3d() -> dict[str, Any]:
+    """近 3 日 unique/总 draft;<0.7 琥珀 <0.5 红。8600 platform.db。"""
+    import sqlite3
+
+    db_path = Path(os.environ.get("PLATFORM_DB", str(REPO / "alpha-platform" / "data" / "platform.db")))
+    # docker default mount often ./data/platform.db under alpha-platform
+    candidates = [
+        db_path,
+        REPO / "alpha-platform" / "data" / "platform.db",
+        REPO / "alpha-platform" / "platform" / "data" / "platform.db",
+    ]
+    path = next((p for p in candidates if p.is_file()), None)
+    if path is None:
+        return {"env": "unique_factor_rate_3d", "status": UNK, "detail": "platform.db 未找到"}
+    try:
+        c = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)
+        try:
+            cutoff = int(NOW.timestamp()) - 3 * 86400
+            rows = c.execute(
+                "SELECT code, status FROM factor_drafts WHERE created>=?", (cutoff,)
+            ).fetchall()
+        finally:
+            c.close()
+    except Exception as exc:
+        return {"env": "unique_factor_rate_3d", "status": UNK, "detail": f"读库失败: {exc}"}
+    if not rows:
+        return {"env": "unique_factor_rate_3d", "status": UNK, "detail": "近3日无 draft"}
+    sys.path.insert(0, str(REPO / "alpha-platform" / "backend"))
+    try:
+        import factor_dedup  # noqa: WPS433
+
+        # fingerprint without full db helper
+        fps = set()
+        total = 0
+        for code, status in rows:
+            total += 1
+            if status == "dup_rejected":
+                continue
+            fps.add(factor_dedup.factor_fingerprint(code or ""))
+        unique = len(fps)
+        rate = unique / total if total else 1.0
+    except Exception as exc:
+        return {"env": "unique_factor_rate_3d", "status": UNK, "detail": f"指纹失败: {exc}"}
+    if rate < 0.5:
+        st = RED
+    elif rate < 0.7:
+        st = YEL
+    else:
+        st = GRN
+    return {
+        "env": "unique_factor_rate_3d",
+        "status": st,
+        "detail": f"{unique}/{total}={rate:.2f} ({path.name})",
+    }
+
+
+def check_missed_movers() -> dict[str, Any]:
+    """movers top-20 ∖ (heat∪watch); >3 琥珀。经 8600 /api/pulse。"""
+    url = os.environ.get("ALPHA_PULSE_URL", "http://127.0.0.1:8600/api/pulse")
+    try:
+        with urllib.request.urlopen(url, timeout=8) as resp:
+            pulse = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        return {"env": "missed_movers", "status": UNK, "detail": f"pulse 不可达: {exc}"}
+    heat = set(pulse.get("watchlist") or [])
+    gainers = (pulse.get("dailyMovers") or {}).get("gainers") or []
+    covered = set(heat)
+    missed = []
+    for g in gainers[:20]:
+        sym = str(g.get("sym") or g.get("symbol") or "").upper()
+        if sym and sym not in covered:
+            missed.append(f"{sym}:{g.get('ret1d', '?')}%")
+    n = len(missed)
+    st = YEL if n > 3 else GRN
+    sample = ", ".join(missed[:8]) if missed else "无"
+    return {
+        "env": "missed_movers",
+        "status": st,
+        "detail": f"n={n} (>3琥珀) · {sample}",
+    }
+
+
 def run() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     rows.append(check_launchd("com.demo.aether.nexus-dryrun"))
@@ -463,6 +545,8 @@ def run() -> list[dict[str, Any]]:
     rows.append(check_endpoint("⑤ router 8500", URLS["router"]))
     rows.append(check_endpoint("⑥ gateway 8501", URLS["gateway"]))
     rows.append(check_launchd("com.demo.aether.pool-quant-gate"))
+    rows.append(check_unique_factor_rate_3d())
+    rows.append(check_missed_movers())
     return rows
 
 

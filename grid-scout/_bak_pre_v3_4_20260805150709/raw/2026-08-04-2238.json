@@ -1,0 +1,620 @@
+{
+ "results": [
+  {
+   "source": "treasury_yields",
+   "ok": true,
+   "ts": "2026-08-04T22:38:53.636605-07:00",
+   "items": [
+    {
+     "field": "Date",
+     "value": "08/04/2026"
+    },
+    {
+     "field": "\"1 Mo\"",
+     "value": "3.78"
+    },
+    {
+     "field": "\"1.5 Month\"",
+     "value": "3.80"
+    },
+    {
+     "field": "\"2 Mo\"",
+     "value": "3.85"
+    },
+    {
+     "field": "\"3 Mo\"",
+     "value": "3.89"
+    },
+    {
+     "field": "\"4 Mo\"",
+     "value": "3.91"
+    },
+    {
+     "field": "\"6 Mo\"",
+     "value": "4.00"
+    },
+    {
+     "field": "\"1 Yr\"",
+     "value": "4.04"
+    },
+    {
+     "field": "\"2 Yr\"",
+     "value": "4.20"
+    },
+    {
+     "field": "\"3 Yr\"",
+     "value": "4.25"
+    },
+    {
+     "field": "\"5 Yr\"",
+     "value": "4.33"
+    },
+    {
+     "field": "\"7 Yr\"",
+     "value": "4.47"
+    },
+    {
+     "field": "\"10 Yr\"",
+     "value": "4.63"
+    },
+    {
+     "field": "\"20 Yr\"",
+     "value": "5.18"
+    },
+    {
+     "field": "\"30 Yr\"",
+     "value": "5.18"
+    }
+   ]
+  },
+  {
+   "source": "fred_macro",
+   "ok": false,
+   "ts": "2026-08-04T22:38:53.850246-07:00",
+   "error": "FRED_API_KEY not set, skipped(设计如此,免费注册后填 .env 即启)",
+   "items": []
+  },
+  {
+   "source": "edgar_ma_8k",
+   "ok": true,
+   "ts": "2026-08-04T22:38:53.850301-07:00",
+   "items": [
+    {
+     "company": "Indivior Pharmaceuticals, Inc.  (INDV)  (CIK 0001625297)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Atkore Inc.  (ATKR)  (CIK 0001666138)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SUPERNUS PHARMACEUTICALS, INC.  (SUPN)  (CIK 0001356576)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Bowhead Specialty Holdings Inc.  (BOW)  (CIK 0002002473)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Integer Holdings Corp  (ITGR)  (CIK 0001114483)",
+     "form": "8-K",
+     "filed": "2026-08-04"
+    },
+    {
+     "company": "ELECTRONIC ARTS INC.  (EA)  (CIK 0000712515)",
+     "form": "8-K",
+     "filed": "2026-08-04"
+    },
+    {
+     "company": "LogicMark, Inc.  (LGMK)  (CIK 0001566826)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Lantheus Holdings, Inc.  (LNTH)  (CIK 0001521036)",
+     "form": "8-K",
+     "filed": "2026-08-04"
+    },
+    {
+     "company": "ACRES Commercial Realty Corp.  (ACR, ACR-PC, ACR-PD)  (CIK 0001332551)",
+     "form": "EX-99.3",
+     "filed": "2026-08-04"
+    },
+    {
+     "company": "Esquire Financial Holdings, Inc.  (ESQ)  (CIK 0001531031)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SKYWORKS SOLUTIONS, INC.  (SWKS)  (CIK 0000004127)",
+     "form": "EX-99.2",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Galera Therapeutics, Inc.  (GRTX, GRTXD)  (CIK 0001563577)",
+     "form": "8-K",
+     "filed": "2026-08-04"
+    },
+    {
+     "company": "Fidelity Private Credit Co LLC  (CIK 0002112554)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Bowhead Specialty Holdings Inc.  (BOW)  (CIK 0002002473)",
+     "form": "EX-2.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "ACRES Commercial Realty Corp.  (ACR, ACR-PC, ACR-PD)  (CIK 0001332551)",
+     "form": "8-K",
+     "filed": "2026-08-04"
+    },
+    {
+     "company": "SUPERNUS PHARMACEUTICALS, INC.  (SUPN)  (CIK 0001356576)",
+     "form": "EX-10.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Newbridge Acquisition Ltd  (NBRG, NBRGR, NBRGU)  (CIK 0001918414)",
+     "form": "EX-2.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "LogicMark, Inc.  (LGMK)  (CIK 0001566826)",
+     "form": "EX-10.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Lantheus Holdings, Inc.  (LNTH)  (CIK 0001521036)",
+     "form": "EX-2.1",
+     "filed": "2026-08-04"
+    },
+    {
+     "company": "TWO HARBORS INVESTMENT CORP.  (TWO, TWOD, TWO-PA, TWO-PB, TWO-PC)  (CIK 0001465740)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "CECO ENVIRONMENTAL CORP  (CECO)  (CIK 0000003197)",
+     "form": "EX-99.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Integer Holdings Corp  (ITGR)  (CIK 0001114483)",
+     "form": "EX-2.1",
+     "filed": "2026-08-04"
+    },
+    {
+     "company": "Indivior Pharmaceuticals, Inc.  (INDV)  (CIK 0001625297)",
+     "form": "EX-99.2",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Bluerock Acquisition Corp.  (BLRK, BLRKU, BLRKW)  (CIK 0002081532)",
+     "form": "EX-2.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "HANCOCK WHITNEY CORP  (HWC, HWCPZ)  (CIK 0000750577)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Atkore Inc.  (ATKR)  (CIK 0001666138)",
+     "form": "EX-2.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SUPERNUS PHARMACEUTICALS, INC.  (SUPN)  (CIK 0001356576)",
+     "form": "EX-10.2",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Indivior Pharmaceuticals, Inc.  (INDV)  (CIK 0001625297)",
+     "form": "EX-99.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Lantheus Holdings, Inc.  (LNTH)  (CIK 0001521036)",
+     "form": "EX-10.2",
+     "filed": "2026-08-04"
+    },
+    {
+     "company": "SKYWORKS SOLUTIONS, INC.  (SWKS)  (CIK 0000004127)",
+     "form": "EX-99.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "BIOLIFE SOLUTIONS INC  (BLFS)  (CIK 0000834365)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SKYWORKS SOLUTIONS, INC.  (SWKS)  (CIK 0000004127)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Global Business Travel Group, Inc.  (GBTG)  (CIK 0001820872)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "SKYWORKS SOLUTIONS, INC.  (SWKS)  (CIK 0000004127)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Fidelity Private Credit Co LLC  (CIK 0002112554)",
+     "form": "EX-3.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Newbridge Acquisition Ltd  (NBRG, NBRGR, NBRGU)  (CIK 0001918414)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "IREN Ltd  (IREN)  (CIK 0001878848)",
+     "form": "EX-5.1",
+     "filed": "2026-08-04"
+    },
+    {
+     "company": "Calisa Acquisition Corp  (ALIS, ALISR, ALISU)  (CIK 0002026767)",
+     "form": "8-K",
+     "filed": "2026-08-04"
+    },
+    {
+     "company": "SUPERNUS PHARMACEUTICALS, INC.  (SUPN)  (CIK 0001356576)",
+     "form": "EX-99.1",
+     "filed": "2026-08-03"
+    },
+    {
+     "company": "Nano Mobile Healthcare, Inc.  (CIK 0001497130)",
+     "form": "8-K",
+     "filed": "2026-08-03"
+    }
+   ]
+  },
+  {
+   "source": "fda_press",
+   "ok": true,
+   "ts": "2026-08-04T22:38:53.981688-07:00",
+   "items": [
+    {
+     "title": "FDA Licenses First-Ever Freeze-Dried Plasma Product in the U.S.",
+     "date": "Wed, 29 Jul 2026 12:10:31 EDT"
+    },
+    {
+     "title": "FDA Announces First Participant Selected for TEMPO for Digital Health Devices Pilot",
+     "date": "Wed, 22 Jul 2026 13:57:57 EDT"
+    },
+    {
+     "title": "FDA Takes Further Steps to Remove Outdated Authorizations for Color Additives in Food",
+     "date": "Wed, 22 Jul 2026 09:10:58 EDT"
+    },
+    {
+     "title": "FDA Approves First Oral PCSK9 Inhibitor to Lower LDL Cholesterol in Adults with High Cholesterol",
+     "date": "Fri, 17 Jul 2026 11:01:17 EDT"
+    },
+    {
+     "title": "FDA Issues Emergency Use Authorization for Drug for Short-Term Prevention of New World Screwworm in Horses",
+     "date": "Wed, 15 Jul 2026 17:04:45 EDT"
+    },
+    {
+     "title": "FDA Proposes Rule to Modernize Drug Manufacturing Registration",
+     "date": "Fri, 10 Jul 2026 09:07:06 EDT"
+    },
+    {
+     "title": "FDA Approves First Gene Therapy for Young Children with Sickle Cell Disease",
+     "date": "Wed, 01 Jul 2026 17:29:41 EDT"
+    },
+    {
+     "title": "FDA Approves New Treatment That Uses Donor Immune Cells to Prevent Serious Complications in Blood Cancer Patients",
+     "date": "Tue, 30 Jun 2026 17:29:30 EDT"
+    },
+    {
+     "title": "FDA Selects Seven Participants for PreCheck Pilot Program to Advance U.S. Drug Manufacturing",
+     "date": "Mon, 29 Jun 2026 16:16:10 EDT"
+    },
+    {
+     "title": "FDA Proposes Rule That Would Help Hold Foreign Tobacco Product Manufacturers Accountable, Protect Public Health",
+     "date": "Fri, 26 Jun 2026 08:58:49 EDT"
+    },
+    {
+     "title": "FDA Approves First Single-Dose Generic Treatment for Influenza",
+     "date": "Wed, 17 Jun 2026 17:32:27 EDT"
+    },
+    {
+     "title": "FDA Broadens Access to Over-the-Counter Naloxone Nasal Spray for Opioid Overdose",
+     "date": "Tue, 16 Jun 2026 08:41:20 EDT"
+    },
+    {
+     "title": "FDA Approves New Indication for Tzield (teplizumab) for Certain Pediatric Patients with Recently Diagnosed Stage 3 Type 1 Diabetes",
+     "date": "Mon, 15 Jun 2026 16:44:15 EDT"
+    },
+    {
+     "title": "FDA Clears First Over-the-Counter Continuous Glucose Monitor for Children",
+     "date": "Fri, 12 Jun 2026 15:39:25 EDT"
+    },
+    {
+     "title": "FDA Issues Emergency Use Authorization for Generic Over-the-Counter Drug to Treat New World Screwworm in Dogs and Cats",
+     "date": "Thu, 11 Jun 2026 08:21:28 EDT"
+    },
+    {
+     "title": "FDA Expands Sunscreen Options for the First Time in 20 Years",
+     "date": "Tue, 09 Jun 2026 10:05:25 EDT"
+    },
+    {
+     "title": "FDA Issues Draft Guidance to Help Accelerate Cell and Gene Therapies for Patients",
+     "date": "Tue, 02 Jun 2026 09:03:59 EDT"
+    },
+    {
+     "title": "FDA Issues Draft Guidance to Cut Unnecessary Animal Testing for Cancer Drugs",
+     "date": "Fri, 29 May 2026 09:13:39 EDT"
+    },
+    {
+     "title": "FDA Approves First Treatment for Chronic Hepatitis Delta Virus (HDV) Infection",
+     "date": "Fri, 22 May 2026 13:16:56 EDT"
+    },
+    {
+     "title": "FDA Warns Retailers Selling Illegal Tobacco Products That Look Like Everyday Products",
+     "date": "Wed, 20 May 2026 09:53:58 EDT"
+    }
+   ]
+  },
+  {
+   "source": "commodities",
+   "ok": true,
+   "ts": "2026-08-04T22:38:54.135900-07:00",
+   "items": [
+    {
+     "name": "WTI",
+     "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"robots\" content=\"noindex": "</script></body></html>"
+    },
+    {
+     "name": "GOLD",
+     "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"robots\" content=\"noindex": "</script></body></html>"
+    }
+   ]
+  },
+  {
+   "source": "polymarket_odds",
+   "ok": true,
+   "ts": "2026-08-04T22:38:55.288731-07:00",
+   "items": [
+    {
+     "q": "Strait of Hormuz traffic returns to normal by August 15?",
+     "implied": [
+      "0.04",
+      "0.96"
+     ],
+     "vol24h": 1171507,
+     "ends": "2026-08-15"
+    },
+    {
+     "q": "Will the U.S. invade Iran before 2027?",
+     "implied": [
+      "0.155",
+      "0.845"
+     ],
+     "vol24h": 1003933,
+     "ends": "2026-12-31"
+    },
+    {
+     "q": "Dota 2: 1win vs BetBoom Team (BO3) - 1win Essence Playoffs",
+     "implied": [
+      "0.485",
+      "0.515"
+     ],
+     "vol24h": 991348,
+     "ends": "2026-08-05"
+    },
+    {
+     "q": "Will Adanech Abiebie be the next Prime Minister of Ethiopia?",
+     "implied": [
+      "0.002",
+      "0.998"
+     ],
+     "vol24h": 925130,
+     "ends": "2026-06-01"
+    },
+    {
+     "q": "Strait of Hormuz traffic returns to normal by August 31?",
+     "implied": [
+      "0.175",
+      "0.825"
+     ],
+     "vol24h": 902648,
+     "ends": "2026-08-31"
+    },
+    {
+     "q": "Will the Fed decrease interest rates by 25 bps after the September 2026 meeting?",
+     "implied": [
+      "0.0165",
+      "0.9835"
+     ],
+     "vol24h": 614457,
+     "ends": "2026-09-16"
+    },
+    {
+     "q": "Will Haley Stevens win the 2026 Michigan Democratic Primary?",
+     "implied": [
+      "0.084",
+      "0.916"
+     ],
+     "vol24h": 592768,
+     "ends": "2026-08-04"
+    },
+    {
+     "q": "US x Iran Effective Ceasefire by July 31?",
+     "implied": [
+      "0.785",
+      "0.215"
+     ],
+     "vol24h": 562087,
+     "ends": "2026-07-31"
+    },
+    {
+     "q": "Will Donavan McKinney be the Democratic Nominee for MI-13?",
+     "implied": [
+      "0.9345",
+      "0.0655"
+     ],
+     "vol24h": 561312,
+     "ends": "2026-08-04"
+    },
+    {
+     "q": "Will Abdul El-Sayed win the 2026 Michigan Democratic Primary?",
+     "implied": [
+      "0.92",
+      "0.08"
+     ],
+     "vol24h": 530954,
+     "ends": "2026-08-04"
+    },
+    {
+     "q": "Will Shri Thanedar be the Democratic Nominee for MI-13?",
+     "implied": [
+      "0.0615",
+      "0.9385"
+     ],
+     "vol24h": 500351,
+     "ends": "2026-08-04"
+    },
+    {
+     "q": "US announces end of Iranian blockade by August 7, 2026?",
+     "implied": [
+      "0.48",
+      "0.52"
+     ],
+     "vol24h": 407905,
+     "ends": "2026-08-07"
+    },
+    {
+     "q": "Will Shakhtar Donetsk win the 2026-27 UEFA Champions League Championship?",
+     "implied": [
+      "0.0015",
+      "0.9985"
+     ],
+     "vol24h": 380526,
+     "ends": "2027-05-30"
+    },
+    {
+     "q": "Will the Fed increase interest rates by 25 bps after the September 2026 meeting?",
+     "implied": [
+      "0.485",
+      "0.515"
+     ],
+     "vol24h": 361026,
+     "ends": "2026-09-16"
+    },
+    {
+     "q": "Will there be no change in Fed interest rates after the September 2026 meeting?",
+     "implied": [
+      "0.495",
+      "0.505"
+     ],
+     "vol24h": 344152,
+     "ends": "2026-09-16"
+    },
+    {
+     "q": "Will Berhanu Nega be the next Prime Minister of Ethiopia?",
+     "implied": [
+      "0.003",
+      "0.997"
+     ],
+     "vol24h": 318836,
+     "ends": "2026-06-01"
+    },
+    {
+     "q": "Will the Fed decrease interest rates by 50+ bps after the September 2026 meeting?",
+     "implied": [
+      "0.0095",
+      "0.9905"
+     ],
+     "vol24h": 312569,
+     "ends": "2026-09-16"
+    },
+    {
+     "q": "Will Mike Pence win the 2028 Republican presidential nomination?",
+     "implied": [
+      "0.0025",
+      "0.9975"
+     ],
+     "vol24h": 224534,
+     "ends": "2028-11-07"
+    },
+    {
+     "q": "Will the price of Bitcoin be above $70,000 on August 5?",
+     "implied": [
+      "0.0005",
+      "0.9995"
+     ],
+     "vol24h": 223380,
+     "ends": "2026-08-05"
+    },
+    {
+     "q": "Strait of Hormuz traffic returns to normal by December 31?",
+     "implied": [
+      "0.625",
+      "0.375"
+     ],
+     "vol24h": 211156,
+     "ends": "2026-12-31"
+    },
+    {
+     "q": "Kharg Island no longer under Iranian control by August 31?",
+     "implied": [
+      "0.0215",
+      "0.9785"
+     ],
+     "vol24h": 180220,
+     "ends": "2026-06-30"
+    },
+    {
+     "q": "Will the price of Bitcoin be above $60,000 on August 5?",
+     "implied": [
+      "0.9985",
+      "0.0015"
+     ],
+     "vol24h": 179757,
+     "ends": "2026-08-05"
+    },
+    {
+     "q": "LoL: Hanwha Life Esports vs Gen.G (BO3) - LCK Round 3-4 Legend Group",
+     "implied": [
+      "0.525",
+      "0.475"
+     ],
+     "vol24h": 174755,
+     "ends": "2026-08-05"
+    },
+    {
+     "q": "Israel x Iran ceasefire continues through August 9?",
+     "implied": [
+      "0.955",
+      "0.045"
+     ],
+     "vol24h": 171564,
+     "ends": "2026-08-09"
+    },
+    {
+     "q": "Israel x Iran ceasefire continues through August 4?",
+     "implied": [
+      "0.9975",
+      "0.0025"
+     ],
+     "vol24h": 161779,
+     "ends": "2026-08-04"
+    }
+   ]
+  }
+ ],
+ "skips": []
+}

@@ -7,13 +7,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>__PYTHON__</string>
-    <string>-m</string>
-    <string>uvicorn</string>
-    <string>scripts.sound_lab_fallback:app</string>
-    <string>--host</string>
-    <string>127.0.0.1</string>
-    <string>--port</string>
-    <string>5173</string>
+    <string>__DEMO_ROOT__/scripts/garden/start_fallback_5173.py</string>
   </array>
   <key>WorkingDirectory</key>
   <string>__DEMO_ROOT__</string>
@@ -29,6 +23,16 @@
   <dict>
     <key>PATH</key>
     <string>/Library/Frameworks/Python.framework/Versions/3.13/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>GARDEN_TTS_ENABLED</key>
+    <string>1</string>
+    <key>GARDEN_TTS_BACKEND</key>
+    <string>audio8</string>
+    <key>GARDEN_AUDIO8_URL</key>
+    <string>http://127.0.0.1:8631</string>
+    <key>GARDEN_AUDIO8_VOICE_EN</key>
+    <string>grid_en</string>
+    <key>GARDEN_AUDIO8_VOICE_ZH</key>
+    <string>grid_zh</string>
   </dict>
 </dict>
 </plist>

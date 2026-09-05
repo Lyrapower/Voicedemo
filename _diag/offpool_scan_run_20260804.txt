@@ -1,1 +1,0 @@
-{"ok": true, "manifest": {"prompt_file": "/Users/ciciwang/Projects/demo/scripts/grid/prompt_offpool.md", "prompt_sha256": "e18921a6321a763b", "prompt_bytes": 1573, "dynamic_context": true, "router": "

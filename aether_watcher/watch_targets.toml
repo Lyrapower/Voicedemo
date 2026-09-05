@@ -68,7 +68,7 @@ enabled = false
 [[targets]]
 name = "OptionScanner"
 type = "scanner_health"
-scanner_dir = "/Users/ciciwang/Desktop/demo/aether_nexus"
+scanner_dir = "/Users/ciciwang/Projects/demo/aether_nexus"
 log_file = "dryrun.log"
 signals_file = "dryrun_state/signals.json"
 data_health_file = "dryrun_state/data_health.json"
@@ -102,3 +102,18 @@ keywords = ["approval", "clearance"]
 interval = 1800
 llm_summary = true
 enabled = false
+
+# ======== V0.3: Momentum Sticker (sentinel sidecar, report-only) ========
+[[targets]]
+name = "MomentumSticker-pool"
+type = "momentum_sticker"
+extra_symbols = ["WULF", "HUT", "CIEN", "VRT"]
+vol_ratio_min = 1.25
+breakout_min = 0.008
+opt_vol_ratio_min = 1.15
+min_hits = 2
+lookback_days = 20
+cooldown_sec = 1800
+interval = 600
+priority = "normal"
+enabled = true

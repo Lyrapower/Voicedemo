@@ -1,10 +1,20 @@
 # Cleanroom secrets — NEVER commit
 .grid_cleanroom/
 *.key
+voice_kh_key*
+data/voice_gate_audit.jsonl
+data/voice_security_audit.jsonl
+data/voice_telemetry.jsonl
 
 # Runtime state
 gateway/gateway_log.db
 gateway/gateway_log.db-journal
+traces/
+pretrained_models/
+third_party/
+data/
+egress_audit.jsonl
+fleet_status.json
 
 # Python
 __pycache__/
@@ -25,3 +35,7 @@ Thumbs.db
 # keyholder / cleanroom secrets — never commit
 .grid_cleanroom/
 *.key
+voice_kh_key*
+data/voice_gate_audit.jsonl
+data/voice_security_audit.jsonl
+data/voice_telemetry.jsonl

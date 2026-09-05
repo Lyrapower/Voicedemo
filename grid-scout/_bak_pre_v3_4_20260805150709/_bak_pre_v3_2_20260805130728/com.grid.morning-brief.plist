@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>CONSOLE_KEY</key>
+		<string>4ff9a60981d08baa9af2171915c95529</string>
+		<key>CONSOLE_URL</key>
+		<string>http://localhost:8610</string>
+		<key>DEEPSEEK_API_KEY</key>
+		<string>ollama</string>
+		<key>DEEPSEEK_BASE</key>
+		<string>http://127.0.0.1:11434/v1</string>
+		<key>DEEPSEEK_MODEL</key>
+		<string>deepseek-v4-pro:cloud</string>
+		<key>FRED_API_KEY</key>
+		<string></string>
+		<key>GATEWAY_URL</key>
+		<string>http://127.0.0.1:8501</string>
+		<key>GLM_MODEL</key>
+		<string>glm-5.2:cloud</string>
+		<key>OWS_URL</key>
+		<string>http://localhost:8620</string>
+		<key>SCOUT_OUT</key>
+		<string>/Users/ciciwang/Projects/demo/grid-scout</string>
+		<key>SIGNAL_PATTERNS</key>
+		<string>/Users/ciciwang/Projects/demo/config/signal_patterns.json</string>
+	</dict>
+	<key>Label</key>
+	<string>com.grid.morning-brief</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Library/Frameworks/Python.framework/Versions/3.13/bin/python3</string>
+		<string>/Users/ciciwang/Projects/demo/grid-scout/scout_agent.py</string>
+		<string>--mode</string>
+		<string>morning</string>
+		<string>--skip-fetch</string>
+	</array>
+	<key>StandardErrorPath</key>
+	<string>/Users/ciciwang/Projects/demo/grid-scout/scout_morning.err</string>
+	<key>StandardOutPath</key>
+	<string>/Users/ciciwang/Projects/demo/grid-scout/scout_morning.log</string>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>6</integer>
+		<key>Minute</key>
+		<integer>45</integer>
+	</dict>
+	<key>WorkingDirectory</key>
+	<string>/Users/ciciwang/Projects/demo/grid-scout</string>
+</dict>
+</plist>

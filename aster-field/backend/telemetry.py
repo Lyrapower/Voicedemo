@@ -5,7 +5,8 @@ from .config import CFG
 from .state_bus import BUS
 
 async def garden_poller():
-    async with httpx.AsyncClient(timeout=3) as cli:
+    # 控制类:与 app.TIMEOUT_CTL 同值(15);不 import app 以免循环依赖
+    async with httpx.AsyncClient(timeout=15.0) as cli:
         while True:
             ok, coh = False, None
             with suppress(Exception):
@@ -23,7 +24,7 @@ async def garden_poller():
 
 async def gateway_poller():
     url = CFG["gateway"].rsplit("/v1/", 1)[0] + "/health"
-    async with httpx.AsyncClient(timeout=3) as cli:
+    async with httpx.AsyncClient(timeout=15.0) as cli:
         while True:
             ok = False
             with suppress(Exception):

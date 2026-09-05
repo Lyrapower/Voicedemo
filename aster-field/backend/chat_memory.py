@@ -298,7 +298,7 @@ def append_turn(
 
 
 def _soul_inject_prefix(query: str) -> list[dict[str, Any]]:
-    """local 魂组 read+recall → system 前缀(同 grid_mem.inject_messages)。"""
+    """唯一上下文源:grid_mem inject_messages(read 近程窗 + recall)。"""
     try:
         import sys
 
@@ -318,11 +318,11 @@ def _soul_inject_prefix(query: str) -> list[dict[str, Any]]:
 def build_gateway_messages(
     body: dict[str, Any],
     msg: str,
-    history: list[dict[str, str]] | None,
     *,
     continue_user: str,
     image: str | None = None,
 ) -> list[dict[str, Any]]:
+    """组装 gateway messages:魂组注入替换原 history,不并存、不拼接 store history。"""
     def user_msg(text: str, img: str | None = None) -> dict[str, Any]:
         if img and str(img).startswith("data:image/"):
             return {
@@ -334,19 +334,16 @@ def build_gateway_messages(
             }
         return {"role": "user", "content": text}
 
-    prefix = _soul_inject_prefix(msg)
+    seed = (body.get("original_message") or msg or "").strip()
+    prefix = _soul_inject_prefix(seed or msg)
     if body.get("continue") and body.get("prior_text"):
-        orig = (body.get("original_message") or msg).strip()
-        tail = [
-            user_msg(orig, image if not history else None),
+        return [
+            *prefix,
+            user_msg(seed or msg),
             {"role": "assistant", "content": body["prior_text"]},
             {"role": "user", "content": continue_user},
         ]
-        core = [*history, *tail] if history else tail
-        return [*prefix, *core]
-    user = user_msg(msg, image)
-    core = [*history, user] if history else [user]
-    return [*prefix, *core]
+    return [*prefix, user_msg(msg, image)]
 
 
 def memory_user_text(msg: str, *, has_image: bool) -> str:

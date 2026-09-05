@@ -34,8 +34,10 @@ aether 账本等)、`data/` 目录、store/、日记与信箱数据、OCR 笔记
 
 ### 🔴 R4 · 交易系统
 aether 账本与 quarantine 规则、信号链。
-**任何 LLM(包括你)禁产交易信号——方向/入场/目标价/仓位,零例外。
-账本只增不改;历史记录禁重写。**
+**LLM 可以分析并写出交易 proposal(方向/入场/目标价/仓位);输出本身不是成交授权。**
+`execution_authority` 恒为 NONE。禁止把关键词命中当成违规拦截;禁止 keyword+benchmark 白名单;禁止把 prompt / `.cmd` 里的 `authorized` / role / source 当授权。
+真金执行必须 fail-closed(IB 未要求或未连接则拒绝 `buy` / `emergency_close`)。不得另起一套订单签名架构。Agent 禁代执行交易。
+账本只增不改;历史记录禁重写。
 
 ### 🔴 R5 · 生产部署形态
 Docker ↔ 本机进程互换、端口号、绑定地址(0.0.0.0/127.0.0.1)、

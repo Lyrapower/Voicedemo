@@ -8,6 +8,7 @@ import math
 import os
 import statistics
 import time
+from contextlib import contextmanager
 from io import BytesIO
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -92,16 +93,97 @@ def ensure_schema(c) -> None:
         pass
 
 
-def _store_daily_bars(c, canonical: str, bars: list, src: str = "fmp") -> int:
-    n = 0
+_WRITE_TXN_MAX_S = 0.0
+_WRITE_TXN_N = 0
+
+
+def write_txn_stats() -> dict[str, float | int]:
+    return {"max_s": _WRITE_TXN_MAX_S, "n": _WRITE_TXN_N}
+
+
+def reset_write_txn_stats() -> None:
+    global _WRITE_TXN_MAX_S, _WRITE_TXN_N
+    _WRITE_TXN_MAX_S = 0.0
+    _WRITE_TXN_N = 0
+
+
+@contextmanager
+def timed_write(c, label: str):
+    """短写事务:调用方只放 executemany/execute,begin 在首条写,退出时 commit 并打耗时。"""
+    global _WRITE_TXN_MAX_S, _WRITE_TXN_N
+    t0 = time.time()
+    try:
+        yield
+        c.commit()
+    except Exception:
+        try:
+            c.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        elapsed = time.time() - t0
+        _WRITE_TXN_N += 1
+        if elapsed > _WRITE_TXN_MAX_S:
+            _WRITE_TXN_MAX_S = elapsed
+        log.info("write_txn %s %.3fs max=%.3fs n=%d", label, elapsed, _WRITE_TXN_MAX_S, _WRITE_TXN_N)
+
+
+def _bar_rows_from_bars(canonical: str, bars: list, src: str = "fmp") -> list[tuple]:
+    rows = []
     for b in bars:
         ts = int(dt.datetime.fromisoformat(b["t"].replace("Z", "+00:00")).timestamp())
-        c.execute(
-            "INSERT OR REPLACE INTO daily_bars(ts, symbol, o, h, l, c, v, src) VALUES(?,?,?,?,?,?,?,?)",
-            (ts, canonical, b["o"], b["h"], b["l"], b["c"], b["v"], src),
-        )
-        n += 1
-    return n
+        rows.append((ts, canonical, b["o"], b["h"], b["l"], b["c"], b["v"], src))
+    return rows
+
+
+def _flush_bar_and_attempt_writes(
+    c,
+    bar_rows: list[tuple],
+    attempts: list[tuple[str, bool, int]],
+    *,
+    states: list[tuple[str, dict[str, Any]]] | None = None,
+    label: str = "daily_bars",
+) -> int:
+    """HTTP 循环外一次写:daily_bars + bar_fetch_log + 可选 platform_state。"""
+    if not bar_rows and not attempts and not states:
+        return 0
+    last: dict[str, tuple[bool, int]] = {}
+    for sym, got, ts in attempts:
+        last[sym] = (got, ts)
+    with timed_write(c, label):
+        if bar_rows:
+            c.executemany(
+                "INSERT OR REPLACE INTO daily_bars(ts, symbol, o, h, l, c, v, src) VALUES(?,?,?,?,?,?,?,?)",
+                bar_rows,
+            )
+        if last:
+            c.executemany(
+                "INSERT OR IGNORE INTO bar_fetch_log(symbol, attempted_ts, got_ts) VALUES(?,?,NULL)",
+                [(s, ts) for s, (_g, ts) in last.items()],
+            )
+            got_u = [(ts, ts, s) for s, (got, ts) in last.items() if got]
+            miss_u = [(ts, s) for s, (got, ts) in last.items() if not got]
+            if got_u:
+                c.executemany(
+                    "UPDATE bar_fetch_log SET attempted_ts=?, got_ts=? WHERE symbol=?", got_u
+                )
+            if miss_u:
+                c.executemany(
+                    "UPDATE bar_fetch_log SET attempted_ts=? WHERE symbol=?", miss_u
+                )
+        for key, value in states or []:
+            c.execute(
+                "INSERT OR REPLACE INTO platform_state(key, value, updated_ts) VALUES(?,?,?)",
+                (key, json.dumps(value, ensure_ascii=False), int(time.time())),
+            )
+    return len(bar_rows)
+
+
+def _store_daily_bars(c, canonical: str, bars: list, src: str = "fmp") -> int:
+    """测试/单票即时写;HTTP 循环不得调用。"""
+    rows = _bar_rows_from_bars(canonical, bars, src)
+    return _flush_bar_and_attempt_writes(c, rows, [], label="store_daily_bars.one")
 
 
 _fmp_get_day: str | None = None
@@ -245,7 +327,8 @@ def _set_state(c, key: str, value: dict[str, Any]) -> None:
 
 def _persist_fmp_get_count(c) -> None:
     day = dt.datetime.now(ET).date().isoformat()
-    _set_state(c, "fmp_daily_gets", {"day": day, "count": fmp_get_count_today()})
+    with timed_write(c, "fmp_daily_gets"):
+        _set_state(c, "fmp_daily_gets", {"day": day, "count": fmp_get_count_today()})
 
 
 def load_universe_market(*, force: bool = False) -> dict[str, Any] | None:
@@ -392,18 +475,34 @@ def refresh_intraday_quotes(c, symbols: list[str], *, deadline: float | None = N
     fetched = {r[0]: int(r[1] or 0) for r in c.execute("SELECT symbol, fetched_ts FROM intraday_quotes").fetchall()}
     due = [s for s in uniq if now_ts - fetched.get(s, 0) >= QUOTE_REFRESH_S]
     due.sort(key=lambda s: fetched.get(s, 0))
-    n = 0
+    got_rows: list[tuple] = []
+    miss_syms: list[str] = []
     for s in due[:QUOTE_PER_TICK]:
         if deadline is not None and time.time() >= deadline:
             break
         q = fetch_fmp_quote(s)
         if q:
-            c.execute("INSERT OR REPLACE INTO intraday_quotes(symbol, price, prev_close, volume, quote_ts, fetched_ts) VALUES(?,?,?,?,?,?)",
-                      (s, q["price"], q["prev_close"], q["volume"], q["quote_ts"], now_ts))
-            n += 1
+            got_rows.append((s, q["price"], q["prev_close"], q["volume"], q["quote_ts"], now_ts))
         else:
-            c.execute("INSERT OR IGNORE INTO intraday_quotes(symbol, fetched_ts) VALUES(?,?)", (s, now_ts))
-            c.execute("UPDATE intraday_quotes SET fetched_ts=? WHERE symbol=?", (now_ts, s))
+            miss_syms.append(s)
+    if got_rows or miss_syms:
+        with timed_write(c, "refresh_intraday_quotes"):
+            if got_rows:
+                c.executemany(
+                    "INSERT OR REPLACE INTO intraday_quotes(symbol, price, prev_close, volume, quote_ts, fetched_ts) "
+                    "VALUES(?,?,?,?,?,?)",
+                    got_rows,
+                )
+            if miss_syms:
+                c.executemany(
+                    "INSERT OR IGNORE INTO intraday_quotes(symbol, fetched_ts) VALUES(?,?)",
+                    [(s, now_ts) for s in miss_syms],
+                )
+                c.executemany(
+                    "UPDATE intraday_quotes SET fetched_ts=? WHERE symbol=?",
+                    [(now_ts, s) for s in miss_syms],
+                )
+    n = len(got_rows)
     if due:
         log.info("intraday_quotes: refreshed %d / due %d / universe %d", n, len(due), len(uniq))
     return n
@@ -461,6 +560,7 @@ def pull_daily_bars(
     """
     key, secret = os.getenv("ALPACA_API_KEY", ""), os.getenv("ALPACA_SECRET_KEY", "")
     n = 0
+    now_ts = int(_now_et().timestamp())
     uniq = list(dict.fromkeys(symbols))
     if skip_fresh:
         reasons: dict[str, int] = {}
@@ -484,18 +584,25 @@ def pull_daily_bars(
         if FMP_API_KEY and len(gap) >= max(2 * GAP_PROBE_N, min(GAP_BREAKER_MIN, len(uniq))):
             probe = gap[:GAP_PROBE_N]
             hit = 0
+            gap_bars: list[tuple] = []
+            gap_att: list[tuple[str, bool, int]] = []
+            gap_states: list[tuple[str, dict[str, Any]]] = []
             for s in probe:
                 bars = fetch_fmp_daily_bars(s, _bar_limit_for_symbol(c, s, limit), from_date=_pull_from_date(c, s))
-                _log_attempt(c, s, got=bool(bars))
+                gap_att.append((s, bool(bars), now_ts))
                 if bars:
-                    n += _store_daily_bars(c, s, bars)
+                    gap_bars.extend(_bar_rows_from_bars(s, bars))
                     hit += 1
             if hit == 0:
+                probed = set(probe)
                 for s in gap:
-                    _log_attempt(c, s, got=False)
+                    if s not in probed:
+                        gap_att.append((s, False, now_ts))
                 _cool = RTH_REFRESH_S if _is_rth() else OFFHOURS_COOLDOWN_S
-                _set_state(c, "gap_breaker", {"until": int(_now_et().timestamp()) + _cool,
-                                              "n": len(gap), "rth": _is_rth(), "probe": len(probe)})
+                gap_states.append(("gap_breaker", {
+                    "until": int(_now_et().timestamp()) + _cool,
+                    "n": len(gap), "rth": _is_rth(), "probe": len(probe),
+                }))
                 log.info("pull_daily_bars: gap breaker — %d 票缺目标日 bar(%s),探 %d 全空,整批记尝试进冷却",
                          len(gap), "盘中" if _is_rth() else "盘外", len(probe))
                 gs = set(gap)
@@ -503,14 +610,19 @@ def pull_daily_bars(
             else:
                 ps = set(probe)
                 kept = [s for s in kept if s not in ps]
+            n += _flush_bar_and_attempt_writes(
+                c, gap_bars, gap_att, states=gap_states, label="pull_daily_bars.gap"
+            )
         uniq = kept
     if not uniq:
-        return 0
+        return n
     start = (_now_et() - dt.timedelta(days=max(INITIAL_BAR_DAYS, limit + 5))).date().isoformat()
 
-    # ---- FMP 主源(逐票;premium 300/min 速率充足)----
+    # ---- FMP 主源(逐票 HTTP;写在循环外)----
     if FMP_API_KEY:
         remaining: list[str] = []
+        fmp_bars: list[tuple] = []
+        fmp_att: list[tuple[str, bool, int]] = []
         for idx, sym in enumerate(uniq):
             if deadline is not None and time.time() >= deadline:
                 remaining.extend(uniq[idx:])
@@ -518,27 +630,28 @@ def pull_daily_bars(
             sym_limit = _bar_limit_for_symbol(c, sym, limit)
             from_date = _pull_from_date(c, sym)
             bars = fetch_fmp_daily_bars(sym, sym_limit, from_date=from_date)
-            _log_attempt(c, sym, got=bool(bars))
+            fmp_att.append((sym, bool(bars), now_ts))
             if bars:
-                n += _store_daily_bars(c, sym, bars)
+                fmp_bars.extend(_bar_rows_from_bars(sym, bars))
             else:
                 remaining.append(sym)
+        n += _flush_bar_and_attempt_writes(c, fmp_bars, fmp_att, label="pull_daily_bars.fmp")
         uniq = remaining
 
-    # ---- Alpaca 备份(FMP 缺的票)----
+    # ---- Alpaca 备份(FMP 缺的票;HTTP 循环只收集)----
     if not (key and secret and uniq):
         return n
     headers = {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret}
+    iex_bars: list[tuple] = []
+    iex_att: list[tuple[str, bool, int]] = []
 
-    def _store_batch(batch: list[str], bars_map: dict) -> None:
-        nonlocal n
+    def _collect_batch(batch: list[str], bars_map: dict) -> None:
         for alpaca_sym, bars in bars_map.items():
             canonical = db.canonical_ticker(alpaca_sym, batch)
-            n += _store_daily_bars(c, canonical, bars, src=BAR_SRC_IEX)
-            _log_attempt(c, canonical, got=bool(bars))
+            iex_bars.extend(_bar_rows_from_bars(canonical, bars, BAR_SRC_IEX))
+            iex_att.append((canonical, bool(bars), now_ts))
 
     def _pull_one(cli: httpx.Client, sym: str) -> None:
-        nonlocal n
         alpaca_sym = db.alpaca_ticker(sym)
         try:
             r1 = cli.get(
@@ -570,11 +683,11 @@ def pull_daily_bars(
             bars = bm.get(alpaca_sym) or bm.get(sym) or (
                 next(iter(bm.values())) if bm else []
             )
-            _log_attempt(c, sym, got=bool(bars))
+            iex_att.append((sym, bool(bars), now_ts))
             if bars:
-                n += _store_daily_bars(c, sym, bars, src=BAR_SRC_IEX)
+                iex_bars.extend(_bar_rows_from_bars(sym, bars, BAR_SRC_IEX))
         except Exception as exc1:
-            _log_attempt(c, sym, got=False)
+            iex_att.append((sym, False, now_ts))
             log.debug("daily skip %s: %s", sym, exc1)
 
     try:
@@ -602,7 +715,7 @@ def pull_daily_bars(
                     )
                     r.raise_for_status()
                     bars_map = r.json().get("bars") or {}
-                    _store_batch(batch, bars_map)
+                    _collect_batch(batch, bars_map)
                     for ak in bars_map:
                         got.add(db.canonical_ticker(ak, batch))
                         got.add(str(ak).upper().replace(".", "-"))
@@ -614,8 +727,11 @@ def pull_daily_bars(
                         break
                     if sym not in got and db.alpaca_ticker(sym) not in got:
                         _pull_one(cli, sym)
+        n += _flush_bar_and_attempt_writes(c, iex_bars, iex_att, label="pull_daily_bars.iex")
     except Exception as exc:
         log.warning("pull_daily_bars: %s", exc)
+        if iex_bars or iex_att:
+            n += _flush_bar_and_attempt_writes(c, iex_bars, iex_att, label="pull_daily_bars.iex_partial")
     return n
 
 
@@ -661,6 +777,7 @@ def compute_env_factor_truth(c, watchlist: list[str]) -> int:
     pct_mom = _percentile_ranks(raw_mom)
     pct_rev = _percentile_ranks(raw_rev)
     pct_vol = _percentile_ranks(raw_vol)
+    fac_rows: list[tuple] = []
     for sym in env:
         fac = {
             "mom_20d_pct": pct_mom.get(sym),
@@ -670,14 +787,17 @@ def compute_env_factor_truth(c, watchlist: list[str]) -> int:
         for name, val in fac.items():
             if val is None:
                 continue
-            c.execute(
+            fac_rows.append((now, sym, name, float(val)))
+    with timed_write(c, "compute_env_factor_truth"):
+        if fac_rows:
+            c.executemany(
                 "INSERT OR REPLACE INTO factors(ts, symbol, name, value) VALUES(?,?,?,?)",
-                (now, sym, name, float(val)),
+                fac_rows,
             )
-    if ok:
-        db.set_health(c, "factor_truth", "ok", f"env pct · {ok}/{len(env)} syms · vs env")
-    else:
-        db.set_health(c, "factor_truth", "waiting", f"daily bars不足 · need ≥20d · env {len(env)}")
+        if ok:
+            db.set_health(c, "factor_truth", "ok", f"env pct · {ok}/{len(env)} syms · vs env")
+        else:
+            db.set_health(c, "factor_truth", "waiting", f"daily bars不足 · need ≥20d · env {len(env)}")
     return ok
 
 
@@ -777,7 +897,8 @@ def pull_sp500_and_universe_shard(
     if batch:
         n_univ = pull_daily_bars(c, batch, limit=univ_limit, skip_fresh=skip_fresh, deadline=deadline)
     new_idx = (idx + max(scanned, UNIV_BARS_PER_TICK)) % len(univ)
-    _set_state(c, "univ_bars_cursor", {"idx": new_idx, "total": len(univ), "batch_n": len(batch)})
+    with timed_write(c, "univ_bars_cursor"):
+        _set_state(c, "univ_bars_cursor", {"idx": new_idx, "total": len(univ), "batch_n": len(batch)})
     return n_sp, n_univ
 
 
@@ -972,23 +1093,25 @@ def run_factor_truth_cycle(c, watchlist: list[str], *, budget_s: float | None = 
             for row in payload.get(side) or []:
                 row.setdefault("symbol", row.get("sym"))
                 row.setdefault("chg_pct", row.get("ret1d"))
-        db.set_health(
-            c,
-            "daily_movers",
-            payload.get("status", "ok"),
-            json.dumps({
-                "gainers": len(payload.get("gainers") or []),
-                "losers": len(payload.get("losers") or []),
-                "asof_et": payload.get("asof_et"),
-                "with_data": payload.get("with_data"),
-                "bars_pulled_sp500": n_sp,
-                "bars_pulled_univ": n_univ,
-                "quotes_refreshed": n_q,
-                "source_mix": payload.get("source_mix"),
-                "fmp_gets": fmp_get_count_today(),
-                "elapsed_s": int(time.time() - t0),
-            }, ensure_ascii=False)[:400],
-        )
+        with timed_write(c, "daily_movers_health"):
+            db.set_health(
+                c,
+                "daily_movers",
+                payload.get("status", "ok"),
+                json.dumps({
+                    "gainers": len(payload.get("gainers") or []),
+                    "losers": len(payload.get("losers") or []),
+                    "asof_et": payload.get("asof_et"),
+                    "with_data": payload.get("with_data"),
+                    "bars_pulled_sp500": n_sp,
+                    "bars_pulled_univ": n_univ,
+                    "quotes_refreshed": n_q,
+                    "source_mix": payload.get("source_mix"),
+                    "fmp_gets": fmp_get_count_today(),
+                    "elapsed_s": int(time.time() - t0),
+                    "write_txn_max_s": _WRITE_TXN_MAX_S,
+                }, ensure_ascii=False)[:400],
+            )
         log.info(
             "factor_truth: env_daily=%d sp500_daily=%d univ_daily=%d quotes=%d movers=%d src=%s fmp_gets=%d elapsed=%ss",
             n_env, n_sp, n_univ, n_q, payload.get("with_data", 0), payload.get("source_mix"), fmp_get_count_today(), int(time.time() - t0),

@@ -11,12 +11,17 @@
 依赖:同目录的 factor_lineage_v1_1.py 与 ic_eval_v1_1.py;标准库。LINEAGE 库路径沿 FACTOR_LINEAGE_DB(默认 state/factor_lineage.db)。
 """
 from __future__ import annotations
-import argparse, json, os, sqlite3, sys, time
+import argparse, json, logging, os, sqlite3, sys, time
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import factor_lineage_v1_1 as FL   # noqa: E402
 import ic_eval_v1_1 as IE          # noqa: E402
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+log = logging.getLogger("first_real_ic_v1")
+
+PRICE_BASIS = "split-adjusted close (FMP historical-price-eod/full), not dividend-adjusted"
 
 BUILTINS = [("mom_5", "close/close[-5]-1", "5 日动量:短期趋势延续"),
             ("mom_20", "close/close[-20]-1", "20 日动量:月度趋势延续"),
@@ -41,6 +46,17 @@ def coverage(db: str, symbols: list[str] | None = None) -> dict:
             "first": IE._to_date(mn) if mn is not None else None, "last": IE._to_date(mx) if mx is not None else None}
 
 
+def _eval_count() -> int:
+    try:
+        con = sqlite3.connect(FL._db_path())
+        try:
+            return int(con.execute("SELECT COUNT(*) FROM evals").fetchone()[0])
+        finally:
+            con.close()
+    except Exception:
+        return 0
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", required=True); ap.add_argument("--horizon", type=int, default=5)
@@ -50,7 +66,9 @@ def main(argv: list[str]) -> int:
     symbols = IE._load_universe(a.universe)
     day = datetime.now().strftime("%Y-%m-%d")
     receipt = a.receipt or f"first_real_ic_{day}"
-    lines = [f"# 第一批真 IC · {day}", "", f"- bars: `{a.db}` · lineage: `{FL._db_path()}` · horizon {a.horizon}d · settlement close_to_close · universe {a.universe}({len(symbols)} symbols)",
+    lines = [f"# 第一批真 IC · {day}", "",
+             f"- price basis = {PRICE_BASIS}",
+             f"- bars: `{a.db}` · lineage: `{FL._db_path()}` · horizon {a.horizon}d · settlement close_to_close · universe {a.universe}({len(symbols)} symbols)",
              f"- 命令:`python3 first_real_ic_v1.py --db {a.db} --horizon {a.horizon} --universe {a.universe}`", ""]
 
     cov = coverage(a.db, symbols)
@@ -73,17 +91,29 @@ def main(argv: list[str]) -> int:
         print("PRELIMINARY:", "; ".join(short), "→ 照评,只记不裁")
 
     bars = IE.load_bars(a.db, symbols=symbols)
+    evals_before = _eval_count()
     lines += ["", "## 四个起跑因子", "| 因子 | id | IC | std | t | 命中 | 天 | 日均标的 | 判定 | 理由 |", "|---|---|---|---|---|---|---|---|---|---|"]
     rows = []
+    written = 0
     for name, expr, why in BUILTINS:
-        fid = FL.propose(expr, name, "manual", None, "lyra", why, universe="sp500")
-        FL.record_sandbox(fid, True, f"{receipt}:builtin", "")
-        t0 = time.time()
-        s = IE.evaluate(bars, IE.FACTORS[name], a.horizon)
-        v, reason = IE.auto_verdict(s)
-        if prelim:
-            v, reason = "insufficient", f"初值 n={s['n_obs']}<{IE.MIN_N}:" + reason
-        eid = IE.write_lineage(s, fid, receipt, v, reason)
+        try:
+            fid = FL.propose(expr, name, "manual", None, "lyra", why, universe="sp500")
+            FL.record_sandbox(fid, True, f"{receipt}:builtin", "")
+            t0 = time.time()
+            s = IE.evaluate(bars, IE.FACTORS[name], a.horizon)
+            v, reason = IE.auto_verdict(s)
+            if prelim:
+                v, reason = "insufficient", f"初值 n={s['n_obs']}<{IE.MIN_N}:" + reason
+            eid = IE.write_lineage(s, fid, receipt, v, reason)
+        except sqlite3.OperationalError as exc:
+            log.error("first_real_ic: lineage write failed (%s): %s", name, exc)
+            eid = None
+            s = {"ic_mean": None, "ic_std": None, "ic_t": None, "hit": None, "n_obs": 0}
+            v, reason = "error", str(exc)
+            fid = None
+            t0 = time.time()
+        if eid is not None:
+            written += 1
         f = lambda x, d=4: "—" if x is None else f"{x:.{d}f}"
         rows.append((name, fid, s, v, reason, eid))
         line = f"| {name} | {fid} | {f(s['ic_mean'])} | {f(s['ic_std'])} | {f(s['ic_t'], 2)} | {f(s['hit'], 2)} | {s['n_obs']} | {f(s.get('names_avg'), 1)} | {v} | {reason} |"
@@ -107,6 +137,12 @@ def main(argv: list[str]) -> int:
 
     lines += ["", "读法:随机游走里动量本就不该显著;这里的意义是口径——close_to_close、天数为 n、Theta 中价另表。显著才要怀疑数据。"]
     p = _write(a.out, receipt, lines); print("receipt:", p)
+    if written == 0:
+        log.error(
+            "first_real_ic: wrote 0 eval rows lineage=%s evals_before=%s evals_after=%s",
+            FL._db_path(), evals_before, _eval_count(),
+        )
+        return 1
     return 0
 
 

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.demo.aether.premarket-deepseek</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__DEMO_ROOT__/scripts/start_premarket_deepseek_gated.sh</string>
+    <string>--loop</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__DEMO_ROOT__/aether_nexus</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/demo-aether/premarket-deepseek.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/demo-aether/premarket-deepseek.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Library/Frameworks/Python.framework/Versions/3.13/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>SSL_CERT_FILE</key>
+    <string>__SSL_CERT_FILE__</string>
+    <key>REQUESTS_CA_BUNDLE</key>
+    <string>__SSL_CERT_FILE__</string>
+    <key>CC_CLI_EXECUTION_FROZEN</key>
+    <string>1</string>
+    <key>PREMARKET_DEEPSEEK_WINDOWS</key>
+    <string>premarket:06:40,intraday:10:40</string>
+    <key>PREMARKET_DEEPSEEK_SCHEDULE_TZ</key>
+    <string>local</string>
+    <key>PREMARKET_DEEPSEEK_MODEL</key>
+    <string>deepseek-v4-flash:cloud</string>
+    <key>OLLAMA_ENDPOINT</key>
+    <string>http://127.0.0.1:11434/api/chat</string>
+  </dict>
+</dict>
+</plist>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.grid.tailscale-serve-watchdog</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/ciciwang/Projects/demo/scripts/tailscale_serve_watchdog.sh</string>
+  </array>
+  <!-- Every 2 min + at load; covers sleep/wake drift without manual one-shot -->
+  <key>StartInterval</key>
+  <integer>120</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>Nice</key>
+  <integer>5</integer>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/sbin:/usr/bin:/bin:/usr/local/bin</string>
+    <key>TS_HOST</key>
+    <string>cicimacbook-air.tail76db5b.ts.net</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/ciciwang/Library/Logs/demo-grid/tailscale-grid-guardian.launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/ciciwang/Library/Logs/demo-grid/tailscale-grid-guardian.launchd.err.log</string>
+</dict>
+</plist>

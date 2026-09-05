@@ -115,7 +115,8 @@ def record_receipt(receipt: FactualReceipt) -> dict[str, Any]:
     ev = {"ts": _now(), "kind": "receipt", "mission_id": d["mission_id"], "event_id": d["action_id"],
           "actor": "TOOL" if d["executed"] else "HARNESS", "action": "receipt", "target": "",
           "status": d["status"], "evidence_pointer": d.get("evidence_pointer") or "",
-          "receipt_hash": d.get("receipt_hash") or hashlib.sha256(json.dumps(d, sort_keys=True, default=str).encode()).hexdigest()[:16]}
+          "receipt_hash": d.get("receipt_hash") or hashlib.sha256(json.dumps(d, sort_keys=True, default=str).encode()).hexdigest()[:16],
+          "metadata": d.get("metadata") or {}}
     if grade and grade in GRADE_ORDER:
         ev["evidence_grade"] = grade
     return _write(ev)

@@ -1,0 +1,13 @@
+{"ts": "2026-08-07T13:35:34Z", "route_outcome": "cc_cli", "target": "cloud", "reason": "slash:/scan+payload:confirmed", "model": "claude-code", "chars": 2488}
+{"ts": "2026-08-07T17:35:27Z", "route_outcome": "cc_cli", "target": "cloud", "reason": "slash:/scan+payload:confirmed", "model": "claude-code", "chars": 2556}
+{"ts": "2026-08-07T17:50:00Z", "route_outcome": "cc_cli", "target": "cloud", "reason": "slash:/scan+payload:confirmed", "model": "claude-code", "chars": 1357}
+{"ts": "2026-08-07T19:50:00Z", "route_outcome": "cc_cli", "target": "cloud", "reason": "slash:/scan+payload:confirmed", "model": "claude-code", "chars": 2557}
+{"ts": "2026-08-07T23:57:54Z", "route_outcome": "cc_candidate", "target": null, "reason": "model:cloud", "model": null, "chars": 6}
+{"ts": "2026-08-07T23:58:03Z", "route_outcome": "cc_cli", "target": "cloud", "reason": "slash:/scan+payload:confirmed", "model": "claude-code", "chars": 14}
+{"ts": "2026-08-08T00:01:06Z", "route_outcome": "cc_cli", "target": "cloud", "reason": "slash:/scan+payload:confirmed", "model": "claude-code", "chars": 9}
+{"ts": "2026-08-08T00:27:48Z", "route_outcome": "cc_cli", "target": "cloud", "reason": "slash:/scan+payload:confirmed", "model": "claude-code", "chars": 9}
+{"ts": "2026-08-08T05:49:09Z", "route_outcome": "cc_candidate", "target": null, "reason": "auto:complexity", "model": null, "chars": 1059}
+{"ts": "2026-08-08T06:00:53Z", "route_outcome": "cc_candidate", "target": null, "reason": "auto:complexity", "model": null, "chars": 1059}
+{"ts": "2026-08-08T06:01:07Z", "route_outcome": "cc_candidate", "target": null, "reason": "auto:complexity", "model": null, "chars": 1059}
+{"ts": "2026-08-08T06:01:19Z", "route_outcome": "cc_candidate", "target": null, "reason": "auto:complexity", "model": null, "chars": 1059}
+{"ts": "2026-08-08T06:02:27Z", "route_outcome": "cc_candidate", "target": null, "reason": "auto:complexity", "model": null, "chars": 1096}

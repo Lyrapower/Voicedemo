@@ -161,13 +161,13 @@ with st.sidebar:
             st.toast("Scan command sent")
     if st.button("Check Buy Signals", use_container_width=True):
         send_command("buy")
-        st.toast("Buy check command sent")
+        st.toast("Buy check queued — daemon fail-closes unless IB trading is required and connected")
     if st.button("Monitor Positions", use_container_width=True):
         send_command("monitor")
         st.toast("Monitor command sent")
     if st.button("Emergency Close All", use_container_width=True, type="secondary"):
         send_command("emergency_close")
-        st.toast("Emergency close command sent")
+        st.toast("Emergency close queued — daemon deny unless IB trading required and connected")
 
 tab_ib, tab_dryrun = st.tabs(["📈 IB Paper Trading", f"🎯 Dry Run {AETHER_VERSION}"])
 

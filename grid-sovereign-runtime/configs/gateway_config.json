@@ -2,8 +2,29 @@
   "backend": "openai",
   "openai_endpoint": "http://localhost:1234/v1",
   "openai_model": "qwen/qwen3.5-9b",
+  "vl_model": "qwen/qwen3.5-9b",
   "ollama_endpoint": "http://localhost:11434/api/chat",
   "ollama_model": "qwen3.5:9b",
+    "ollama_coder_model": "qwen2.5-coder:7b",
+    "kimi_k25_cloud_model": "kimi-k2.6:cloud",
+    "kimi_k25_cloud_endpoint": "http://localhost:11434/api/chat",
+    "glm52_cloud_model": "glm-5.2:cloud",
+    "glm52_cloud_endpoint": "http://localhost:11434/api/chat",
+    "glm53_flash_cloud_model": "glm-5.3-flash:cloud",
+    "glm53_flash_cloud_endpoint": "http://localhost:11434/api/chat",
+    "glm53_full_cloud_model": "glm-5.3:cloud",
+    "glm53_full_cloud_endpoint": "http://localhost:11434/api/chat",
+    "minimax_m3_cloud_model": "minimax-m3:cloud",
+    "minimax_m3_cloud_endpoint": "http://localhost:11434/api/chat",
+    "expanded_cloud_backend": "glm52_cloud",
+    "expanded_cloud_enabled": true,
+    "expanded_vl_bypass_enabled": false,
+    "kimi_expanded_enabled": false,
+    "deepseek_v4_cloud_model": "deepseek-v4-pro:cloud",
+    "deepseek_v4_cloud_endpoint": "http://localhost:11434/api/chat",
+    "cc_cli_model": "claude-sonnet-4-6",
+    "coder_routing_enabled": false,
+  "coder_routes": ["compile", "task"],
   "coherence_threshold": 0.87,
   "beacon_phrase": "return to node",
   "max_concurrent": 1,
@@ -13,10 +34,51 @@
   "bind_port": 8501,
   "stream_incremental_gate": true,
   "compile_max_tokens": 256,
-  "chat_max_tokens": 400,
+  "chat_max_tokens": 8192,
   "gateway_max_tokens": 1024,
   "task_max_tokens": 4096,
+  "expanded_timeout": 500,
   "thinking_cap": 128,
   "max_reasoning_tokens": 128,
-  "note": "Route budgets: compile=256 chat=400 gateway=1024 task=4096. Authoritative overlay: config/aster.toml [budget]."
+  "voice": {
+    "daemon_port": 8504,
+    "daemon_url": "http://127.0.0.1:8504",
+    "asr": {
+      "model": "SenseVoiceSmall",
+      "device": "mps",
+      "lang": "auto"
+    },
+    "tts": {
+      "engine": "cosyvoice2",
+      "cosyvoice": {
+        "model_dir": "pretrained_models/CosyVoice2-0.5B",
+        "repo_dir": "third_party/CosyVoice",
+        "stream": true,
+        "sample_rate": 24000,
+        "prompt_wav": "third_party/CosyVoice/asset/cross_lingual_prompt.wav",
+        "speaker": "default"
+      },
+      "kokoro": {
+        "model_dir": "",
+        "voice": "af_heart",
+        "sample_rate": 24000
+      }
+    },
+    "llm_route": "voice",
+    "budgets": {
+      "voice_max_tokens": 400
+    },
+    "vad": {
+      "onset": 0.6,
+      "onset_speaking": 0.75,
+      "offset": 0.35,
+      "hangover_ms": 800
+    },
+    "security": {
+      "per_sentence_check": true,
+      "abort_after_blocks": 2
+    },
+    "require_keyholder": false
+  },
+  "note": "Route budgets: compile=256 chat=400 gateway=1024 task=4096 voice=400. Spec: docs/GRID_VOICE_SPEC.md. Authoritative overlay: config/aster.toml [budget]."
 }

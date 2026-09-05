@@ -1,0 +1,2 @@
+Scout Agent v3.28.2 backup extracted 2026-08-26 from scout_agent_install_v3_28_2.sh
+Live at extract time was v3.29.0

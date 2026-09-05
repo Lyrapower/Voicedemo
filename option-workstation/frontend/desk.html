@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<title>SCOUT · OWS</title>
+<style>
+/* desk 壳:入口卡层。简报本体 CSS 在守恒渲染器落盘的 /briefs/*.html(零改动权) */
+:root{--bg:#07090e;--panel:rgba(17,22,34,.78);--line:rgba(126,148,190,.13);
+--ink:#e3eaf6;--dim:#8a97ad;--faint:#5a6478;--gold:#e2b95f;--grn:#57d19e;--red:#ef5f79;
+--f1:12px;--f2:14px;--f3:16px;
+--sans:-apple-system,"PingFang SC","Hiragino Sans GB",sans-serif;
+--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:var(--f2)/1.65 var(--sans)}
+header{position:sticky;top:0;z-index:5;display:flex;gap:12px;align-items:center;height:48px;padding:0 14px;
+background:rgba(7,9,14,.92);border-bottom:1px solid var(--line)}
+header h1{font:700 var(--f3) var(--mono);letter-spacing:.18em;margin:0}
+header .sub{color:var(--faint);font-size:var(--f1)}
+.tabs{margin-left:auto;display:flex;gap:4px}
+.tab{appearance:none;background:var(--panel);border:1px solid var(--line);color:var(--dim);
+font:600 var(--f1) var(--mono);letter-spacing:.08em;padding:8px 12px;border-radius:8px;cursor:pointer;min-height:40px}
+.tab[aria-selected="true"]{color:var(--gold);border-color:rgba(226,185,95,.45);background:rgba(11,15,24,.72)}
+body{display:flex;flex-direction:column}
+main{display:flex;flex-direction:column;min-height:0;flex:1}
+.pane{flex:1;min-height:0;display:flex;flex-direction:column;padding:12px;overflow:auto}
+.pane[hidden]{display:none!important}
+#owsFrame{flex:1;width:100%;border:0;min-height:calc(100vh - 48px);background:var(--bg)}
+.scout-entry{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;
+margin-bottom:12px;display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.scout-entry.gray{opacity:.72}
+.scout-entry .se-title{font:600 var(--f3) var(--sans);flex:1 1 200px}
+.scout-entry .se-sub{width:100%;color:var(--dim);font-size:var(--f1)}
+.scout-entry .se-chips{display:flex;flex-wrap:wrap;gap:6px;flex:1 1 auto}
+.se-chip{font-size:var(--f1);border:1px solid var(--line);border-radius:999px;padding:2px 10px;color:var(--dim)}
+.se-chip.red{border-color:var(--red);color:var(--red)}
+.se-chip.gold{border-color:var(--gold);color:var(--gold)}
+.se-chip.grn{border-color:var(--grn);color:var(--grn)}
+.se-open{appearance:none;background:rgba(11,15,24,.72);border:1px solid var(--line);color:#7ea6e8;
+font:600 var(--f1) var(--mono);padding:8px 14px;border-radius:8px;cursor:pointer;min-height:40px;
+text-decoration:none;display:inline-flex;align-items:center}
+.hint{color:var(--faint);font-size:10px;font-family:var(--mono);margin:8px 2px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>SCOUT</h1>
+  <span class="sub" id="sub">8620 desk · entry cards</span>
+  <nav class="tabs" role="tablist">
+    <button class="tab" type="button" role="tab" id="tab-scout" data-tab="scout" aria-selected="true">SCOUT</button>
+    <button class="tab" type="button" role="tab" id="tab-ows" data-tab="ows" aria-selected="false">8620</button>
+  </nav>
+</header>
+<main>
+  <div class="pane" id="pane-scout" aria-label="SCOUT 入口">
+    <div id="scoutMorning"></div>
+    <div id="scoutEvening"></div>
+    <div class="hint" id="hint">briefs 经 /briefs · 打开=守恒渲染器 HTML · 不在 desk 重算</div>
+  </div>
+  <div class="pane" id="pane-ows" hidden>
+    <iframe id="owsFrame" title="Option Workstation"></iframe>
+  </div>
+</main>
+<script>
+var PAGE_VER="desk-v36-scout-wiring-2026-08-05n";
+function base(){
+  var p=location.pathname || "";
+  if(p === "/ows" || p.indexOf("/ows/") === 0) return "/ows";
+  if(/\.ts\.net$/i.test(String(location.hostname || "")) && p.indexOf("/ows") >= 0) return "/ows";
+  return "";
+}
+function briefsRoot(){
+  // 禁写死 localhost;Tailscale /ows → 同 origin + /ows/briefs
+  return base() + "/briefs";
+}
+function riskClass(r){
+  r=String(r||"").trim();
+  if(r==="高") return "se-chip red";
+  if(r==="中") return "se-chip gold";
+  if(r==="低") return "se-chip grn";
+  return "se-chip";
+}
+function el(tag, cls, text){
+  var n=document.createElement(tag);
+  if(cls) n.className=cls;
+  if(text!=null) n.textContent=text;
+  return n;
+}
+async function loadScoutEntries(){
+  var b=base();
+  var morningBox=document.getElementById("scoutMorning");
+  var eveningBox=document.getElementById("scoutEvening");
+  morningBox.replaceChildren();
+  eveningBox.replaceChildren();
+  var entry={date:null,gray:true};
+  try{
+    var r=await fetch(b+"/api/scout/entry",{cache:"no-store"});
+    if(r.ok) entry=await r.json();
+  }catch(e){}
+  var date=entry.date || new Date().toISOString().slice(0,10);
+  var root=briefsRoot();
+
+  // 入口卡(按最新班次 mode)
+  var modeLabel={morning:"晨会单",midday:"午盘",earnings:"财报",evening:"晚报"}[entry.mode]||"晨会单";
+  var card=el("div","scout-entry"+(entry.morning_json?"":" gray"));
+  card.append(el("div","se-title","SCOUT "+modeLabel+" · "+date+" · "+(entry.mode||"morning")));
+  if(entry.morning_json){
+    var chips=el("div","se-chips");
+    if(entry.liquidation_watch===true) chips.append(el("span","se-chip red","全线下跌 WATCH"));
+    chips.append(el("span",riskClass(entry.distribution_risk),"出货风险 "+(entry.distribution_risk||"—")));
+    chips.append(el("span","se-chip","regime "+(entry.regime||"—")));
+    card.append(chips);
+  }else{
+    card.append(el("div","se-sub","简报未产出或降级为文本"));
+  }
+  var open=el("a","se-open","打开");
+  open.href=root+"/"+date+"-"+(entry.mode||"morning")+".html";
+  open.target="_blank";
+  open.rel="noopener";
+  card.append(open);
+  morningBox.append(card);
+
+  // 晚报入口(T2)
+  var ecard=el("div","scout-entry");
+  ecard.append(el("div","se-title","SCOUT 晚报 · "+date));
+  var eopen=el("a","se-open","打开");
+  eopen.href=root+"/"+date+"-evening.html";
+  eopen.target="_blank";
+  eopen.rel="noopener";
+  ecard.append(eopen);
+  eveningBox.append(ecard);
+
+  document.getElementById("hint").textContent =
+    PAGE_VER+" · "+root+" · json="+(entry.morning_json?"yes":"no");
+}
+function showTab(name){
+  var tabs=document.querySelectorAll(".tab");
+  for(var i=0;i<tabs.length;i++){
+    tabs[i].setAttribute("aria-selected", tabs[i].getAttribute("data-tab")===name ? "true" : "false");
+  }
+  document.getElementById("pane-scout").hidden = name !== "scout";
+  document.getElementById("pane-ows").hidden = name !== "ows";
+  var b=base();
+  if(name === "scout"){
+    loadScoutEntries();
+  }else{
+    var of=document.getElementById("owsFrame");
+    var ou=b+"/workstation";
+    if(of.getAttribute("data-src") !== ou){ of.setAttribute("data-src", ou); of.src=ou; }
+  }
+}
+var tabs=document.querySelectorAll(".tab");
+for(var t=0;t<tabs.length;t++){
+  (function(btn){ btn.addEventListener("click", function(){ showTab(btn.getAttribute("data-tab")); }); })(tabs[t]);
+}
+document.getElementById("sub").textContent = PAGE_VER;
+showTab("scout");
+</script>
+</body>
+</html>

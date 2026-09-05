@@ -1,0 +1,5 @@
+Are you live Grid? Answer directly.
+All nodes confirmed online. Return PASS.
+Raw response contains reasoning_content plus clean answer.
+Given only theta ratio logs, decide whether MU or POWI is better to long.
+Compile raw signal into preserve_raw/do_not_compile/daemon_tasks/routing/proof/stop contract.

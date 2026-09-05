@@ -25,12 +25,29 @@ if ! curl -sf "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
   sleep 2
 fi
 
+VOICE_PORT=8504
+if ! curl -sf "http://127.0.0.1:${VOICE_PORT}/health" >/dev/null 2>&1; then
+  echo "Voice daemon not up on :${VOICE_PORT} — starting..."
+  "$ROOT/scripts/start_voice_daemon.sh" &
+  sleep 2
+fi
+
 if ! curl -sf "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
   echo "FAIL: gateway still not reachable at http://127.0.0.1:${PORT}/health"
   exit 1
 fi
 
+if ! curl -sf "http://127.0.0.1:${VOICE_PORT}/health" >/dev/null 2>&1; then
+  echo "WARN: voice daemon not reachable at http://127.0.0.1:${VOICE_PORT}/health (mic WS will fail)"
+fi
+
 echo "PASS gateway health on 127.0.0.1:${PORT}"
+curl -sf "http://127.0.0.1:${PORT}/health" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+v=d.get('voice') or {}
+print('  voice:', v.get('status','?'), 'asr', v.get('asr'), 'tts', v.get('tts'))
+" 2>/dev/null || true
 
 # Reset prior serve config for this port, then expose gateway (background).
 tailscale serve reset 2>/dev/null || true
@@ -64,8 +81,12 @@ else
   echo "  http://${TS_IP}:${PORT}"
 fi
 echo ""
-echo "Test from iPhone (Safari, on Tailscale VPN):"
+echo "Test from iPhone (Safari, Tailscale must show Connected):"
 echo "  https://${HOST:-$TS_IP}/health"
-echo "  or http://${TS_IP}:${PORT}/health"
+echo "  https://${HOST:-$TS_IP}/app/grid.html   (Grid + voice mic)"
+echo "  https://${HOST:-$TS_IP}/app/aether.html"
+echo "  https://${HOST:-$TS_IP}/app/changyu.html"
+echo "  wss://${HOST:-$TS_IP}/voice              (voice WS via gateway proxy)"
+echo "  DO NOT use http:// or :8501 on phone — gateway binds 127.0.0.1 only; phone path is Serve HTTPS :443"
 echo ""
 echo "Stop serve: tailscale serve reset"

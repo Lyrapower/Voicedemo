@@ -1,0 +1,20 @@
+services:
+  voice-bridge:
+    build: .
+    container_name: grid-voice-bridge
+    # 仅 loopback 发布,禁止局域网裸曝
+    ports: ["127.0.0.1:8796:8796"]
+    env_file: [.env]           # OPENAI_API_KEY 只在这里,绝不进前端
+    environment:
+      GRID_CHAT_URL: http://host.docker.internal:8500/v1/chat/completions
+      CONSOLE_API: http://host.docker.internal:8610/api
+      VOICE_STATIC: /app/static
+      REALTIME_MODEL: gpt-realtime
+      REALTIME_VOICE: marin
+      CONFIRM_TTL: "180"
+      VOICE_BRIDGE_KEY: ${VOICE_BRIDGE_KEY:-}
+      CONSOLE_KEY: ${CONSOLE_KEY:-}
+    volumes:
+      - ./static:/app/static:ro
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    restart: unless-stopped

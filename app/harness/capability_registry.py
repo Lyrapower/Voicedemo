@@ -19,6 +19,9 @@ class Capability:
     status: str = "declared"
     produces: tuple[str, ...] = ()
     notes: str = ""
+    endpoint: str = ""
+    protocol: str = ""
+    locality: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -41,6 +44,12 @@ STATIC_CAPABILITIES = (
     Capability("audio.tts", "minimax_m3", "model_tool", "media_scoped", produces=("audio_artifact",)),
     Capability("video.analyze", "minimax_m3", "model_tool", "media_scoped", produces=("candidate_multimodal",)),
     Capability("voice.realtime", "personaplex_local", "voice_io", "loopback", produces=("audio_stream",), notes="127.0.0.1:8631; Harness remains on 8630."),
+    Capability("model.transport.ollama", "ollama", "transport", "loopback",
+               endpoint="127.0.0.1:11434",
+               protocol="native_ollama+openai_compat+anthropic_messages",
+               locality="transport_local_process; model_execution=derived_from_selected_model",
+               produces=("model_response",),
+               notes="transport_locality != model_execution_locality; :cloud model = remote execution, non-:cloud = local; NOT 'local inference' by port alone"),
 )
 
 

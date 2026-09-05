@@ -1,7 +1,16 @@
 """Parse merged model output as JSON artifact — never treat half-JSON as PASS."""
 from __future__ import annotations
+
 import json
 import re
+import sys
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parents[2] / "grid-sovereign-runtime"
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from field_lane.schema import SCHEMA_LOOSE, COMPILE_SEMANTICS_PARSE_ONLY  # noqa: E402
 
 
 def _strip_fences(text: str) -> str:
@@ -28,12 +37,20 @@ def parse_json_artifact(raw: str) -> dict:
         if not candidate:
             continue
         try:
-            return {"ok": True, "json": json.loads(candidate), "merged_json_valid": True}
+            return {
+                "ok": True,
+                "json": json.loads(candidate),
+                "merged_json_valid": True,
+                "schema": SCHEMA_LOOSE,
+                "compile_semantics": COMPILE_SEMANTICS_PARSE_ONLY,
+            }
         except json.JSONDecodeError as e:
             last_err = str(e)
     return {
         "ok": False,
         "status": "INCOMPLETE_ARTIFACT",
         "merged_json_valid": False,
+        "schema": SCHEMA_LOOSE,
+        "compile_semantics": COMPILE_SEMANTICS_PARSE_ONLY,
         "error": last_err,
     }

@@ -1,0 +1,2455 @@
+{
+ "_engine": {
+  "risk_assets_down": [
+   "SP500",
+   "NASDAQ",
+   "GLD",
+   "SLV"
+  ],
+  "down_count": 4,
+  "of": 6,
+  "vix_chg_pct": -0.26,
+  "tlt_chg_pct": -0.35,
+  "uup_chg_pct": 0.23,
+  "tape_flags": {
+   "VIX": "冲高回落",
+   "FXI": "冲高回落",
+   "KWEB": "冲高回落",
+   "EWZ": "冲高回落",
+   "EWJ": "冲高回落"
+  },
+  "rotation_leaders": [
+   {
+    "name": "BABA",
+    "chg_pct": 0.75
+   },
+   {
+    "name": "EEM",
+    "chg_pct": 0.11
+   },
+   {
+    "name": "FXI",
+    "chg_pct": 0.1
+   }
+  ],
+  "sector_leaders": [
+   {
+    "name": "SMH半导体",
+    "chg_pct": -0.13,
+    "mom20_pct": 10.09,
+    "high52_dist_pct": -17.01
+   },
+   {
+    "name": "XLK科技",
+    "chg_pct": 0.47,
+    "mom20_pct": 9.62,
+    "high52_dist_pct": -7.88
+   },
+   {
+    "name": "XLE能源",
+    "chg_pct": 0.91,
+    "mom20_pct": 6.78,
+    "high52_dist_pct": -1.76
+   }
+  ],
+  "sector_laggards": [
+   {
+    "name": "XLP必选消费",
+    "chg_pct": -0.17,
+    "mom20_pct": -1.13,
+    "high52_dist_pct": -4.04
+   },
+   {
+    "name": "XLRE地产",
+    "chg_pct": -0.41,
+    "mom20_pct": -1.71,
+    "high52_dist_pct": -12.81
+   },
+   {
+    "name": "XLU公用",
+    "chg_pct": 0.43,
+    "mom20_pct": -3.15,
+    "high52_dist_pct": -8.87
+   }
+  ],
+  "rotation_divergence": [
+   "FXI",
+   "EEM",
+   "BABA"
+  ],
+  "liquidation_watch": false,
+  "trend_regime": "上升趋势",
+  "breadth_20d_spread": -1.9,
+  "index_mom20": {
+   "SP500": 4.9,
+   "NASDAQ": 6.8,
+   "RSP": 3.0
+  },
+  "rsi14_tape": [
+   {
+    "name": "SP500",
+    "rsi14": 53.7,
+    "close_loc": 0.55,
+    "tape_flag": ""
+   },
+   {
+    "name": "NASDAQ",
+    "rsi14": 49.7,
+    "close_loc": 0.52,
+    "tape_flag": ""
+   },
+   {
+    "name": "VIX",
+    "rsi14": 47.3,
+    "close_loc": 0.03,
+    "tape_flag": "冲高回落"
+   },
+   {
+    "name": "GLD",
+    "rsi14": 66.3,
+    "close_loc": 0.29,
+    "tape_flag": ""
+   },
+   {
+    "name": "USO",
+    "rsi14": 52.4,
+    "close_loc": 0.76,
+    "tape_flag": ""
+   },
+   {
+    "name": "TLT",
+    "rsi14": 52.0,
+    "close_loc": 0.46,
+    "tape_flag": ""
+   }
+  ],
+  "index_session_split": {
+   "SP500": {
+    "overnight20_pct": 3.41,
+    "intraday20_pct": 1.42
+   },
+   "NASDAQ": {
+    "overnight20_pct": 5.29,
+    "intraday20_pct": 1.39
+   }
+  },
+  "risk_corr20": 0.07,
+  "credit_20d_spread": 0.32,
+  "defensive_rot_20d": -7.04,
+  "risk_alerts": [],
+  "amc_tonight": [
+   {
+    "symbol": "CRM",
+    "rsi14": 60.8,
+    "chg5_pct": -0.89,
+    "chg_pct": -0.7,
+    "price": 204.255,
+    "adv20_usd": 2355469564,
+    "close_loc": 0.77,
+    "vol_x20": 0.42,
+    "chg10_pct": 5.66,
+    "up5": 1,
+    "dist_high20_pct": -4.18,
+    "mcap_b": 167.28,
+    "days_out": 0,
+    "tier": "flat",
+    "dk_risk": false,
+    "earn_score": 40,
+    "earn_why": "F1 78(换手1.41%/日) | F2 34(5日-0.9% 10日+5.7% 5根1涨 距20日高-4.2%) | F3 42(loc0.77 日-0.7% 量0.4x) | F4 0(财报今日盘后(预排)) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 77.8,
+     "F2_trend": 33.6,
+     "F3_tape": 41.9,
+     "F4_event": 0.0,
+     "F5_options": null
+    },
+    "fmp_board": false
+   },
+   {
+    "symbol": "HPQ",
+    "rsi14": 57.6,
+    "chg5_pct": -0.94,
+    "chg_pct": 0.47,
+    "price": 29.66,
+    "adv20_usd": 394406187,
+    "close_loc": 0.72,
+    "vol_x20": 0.41,
+    "chg10_pct": 1.3,
+    "up5": 3,
+    "dist_high20_pct": -7.86,
+    "mcap_b": 27.12,
+    "days_out": 0,
+    "tier": "flat",
+    "dk_risk": false,
+    "earn_score": 40,
+    "earn_why": "F1 79(换手1.45%/日) | F2 31(5日-0.9% 10日+1.3% 5根3涨 距20日高-7.9%) | F3 45(loc0.72 日+0.5% 量0.4x) | F4 0(财报今日盘后(预排)) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 78.7,
+     "F2_trend": 30.7,
+     "F3_tape": 45.1,
+     "F4_event": 0.0,
+     "F5_options": null
+    },
+    "fmp_board": false
+   },
+   {
+    "symbol": "VEEV",
+    "rsi14": 67.6,
+    "chg5_pct": -1.84,
+    "chg_pct": -0.16,
+    "price": 246.39,
+    "adv20_usd": 402509519,
+    "close_loc": 0.85,
+    "vol_x20": 0.34,
+    "chg10_pct": 2.02,
+    "up5": 1,
+    "dist_high20_pct": -2.8,
+    "mcap_b": 40.02,
+    "days_out": 0,
+    "tier": "flat",
+    "dk_risk": false,
+    "earn_score": 38,
+    "earn_why": "F1 68(换手1.01%/日) | F2 33(5日-1.8% 10日+2.0% 5根1涨 距20日高-2.8%) | F3 47(loc0.85 日-0.2% 量0.3x) | F4 0(财报今日盘后(预排)) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 67.9,
+     "F2_trend": 32.8,
+     "F3_tape": 46.8,
+     "F4_event": 0.0,
+     "F5_options": null
+    },
+    "fmp_board": false
+   },
+   {
+    "symbol": "P",
+    "rsi14": 62.8,
+    "chg5_pct": -2.8,
+    "chg_pct": 5.88,
+    "price": 108.86,
+    "adv20_usd": 322905574,
+    "close_loc": 0.88,
+    "vol_x20": 0.73,
+    "chg10_pct": -2.28,
+    "up5": 2,
+    "dist_high20_pct": -8.6,
+    "mcap_b": 36.19,
+    "days_out": 0,
+    "tier": "oversold",
+    "dk_risk": false,
+    "earn_score": 37,
+    "earn_why": "F1 64(换手0.89%/日) | F2 19(5日-2.8% 10日-2.3% 5根2涨 距20日高-8.6%) | F3 70(loc0.88 日+5.9% 量0.7x) | F4 0(财报今日盘后(预排)) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 64.3,
+     "F2_trend": 18.5,
+     "F3_tape": 69.9,
+     "F4_event": 0.0,
+     "F5_options": null
+    },
+    "fmp_board": false
+   },
+   {
+    "symbol": "NTNX",
+    "rsi14": 63.9,
+    "chg5_pct": 0.78,
+    "chg_pct": -0.77,
+    "price": 65.93,
+    "adv20_usd": 158336359,
+    "close_loc": 0.57,
+    "vol_x20": 0.58,
+    "chg10_pct": 1.98,
+    "up5": 2,
+    "dist_high20_pct": -4.28,
+    "mcap_b": 17.82,
+    "days_out": 0,
+    "tier": "run-up",
+    "dk_risk": false,
+    "earn_score": 37,
+    "earn_why": "F1 64(换手0.89%/日) | F2 37(5日+0.8% 10日+2.0% 5根2涨 距20日高-4.3%) | F3 35(loc0.57 日-0.8% 量0.6x) | F4 0(财报今日盘后(预排)) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 64.2,
+     "F2_trend": 37.3,
+     "F3_tape": 35.0,
+     "F4_event": 0.0,
+     "F5_options": null
+    },
+    "fmp_board": false
+   },
+   {
+    "symbol": "SNPS",
+    "rsi14": 52.2,
+    "chg5_pct": 2.38,
+    "chg_pct": 0.49,
+    "price": 410.77499,
+    "adv20_usd": 608273976,
+    "close_loc": 0.46,
+    "vol_x20": 0.57,
+    "chg10_pct": -0.37,
+    "up5": 2,
+    "dist_high20_pct": -3.52,
+    "mcap_b": 78.65,
+    "days_out": 0,
+    "tier": "run-up",
+    "dk_risk": false,
+    "earn_score": 36,
+    "earn_why": "F1 60(换手0.77%/日) | F2 39(5日+2.4% 10日-0.4% 5根2涨 距20日高-3.5%) | F3 37(loc0.46 日+0.5% 量0.6x) | F4 0(财报今日盘后(预排)) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 60.1,
+     "F2_trend": 39.3,
+     "F3_tape": 36.5,
+     "F4_event": 0.0,
+     "F5_options": null
+    },
+    "fmp_board": false
+   },
+   {
+    "symbol": "CRWD",
+    "rsi14": 42.6,
+    "chg5_pct": -5.93,
+    "chg_pct": 2.32,
+    "price": 189.672,
+    "adv20_usd": 1564823016,
+    "close_loc": 1.0,
+    "vol_x20": 0.65,
+    "chg10_pct": -14.48,
+    "up5": 2,
+    "dist_high20_pct": -16.63,
+    "mcap_b": 193.14,
+    "days_out": 0,
+    "tier": "oversold",
+    "dk_risk": false,
+    "earn_score": 32,
+    "earn_why": "F1 62(换手0.81%/日) | F2 10(5日-5.9% 10日-14.5% 5根2涨 距20日高-16.6%) | F3 62(loc1.00 日+2.3% 量0.7x) | F4 0(财报今日盘后(预排)) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 61.5,
+     "F2_trend": 10.0,
+     "F3_tape": 62.2,
+     "F4_event": 0.0,
+     "F5_options": null
+    },
+    "fmp_board": false
+   },
+   {
+    "symbol": "OKTA",
+    "rsi14": 38.3,
+    "chg5_pct": -7.91,
+    "chg_pct": -0.44,
+    "price": 130.035,
+    "adv20_usd": 368233098,
+    "close_loc": 0.54,
+    "vol_x20": 0.55,
+    "chg10_pct": -11.72,
+    "up5": 1,
+    "dist_high20_pct": -16.85,
+    "mcap_b": 21.6,
+    "days_out": 0,
+    "tier": "oversold",
+    "dk_risk": false,
+    "earn_score": 31,
+    "earn_why": "F1 83(换手1.70%/日) | F2 5(5日-7.9% 10日-11.7% 5根1涨 距20日高-16.9%) | F3 35(loc0.54 日-0.4% 量0.6x) | F4 0(财报今日盘后(预排)) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 83.4,
+     "F2_trend": 5.0,
+     "F3_tape": 35.3,
+     "F4_event": 0.0,
+     "F5_options": null
+    },
+    "fmp_board": false
+   },
+   {
+    "symbol": "A",
+    "rsi14": 62.4,
+    "chg5_pct": -1.59,
+    "chg_pct": -1.18,
+    "price": 152.94501,
+    "adv20_usd": 274566250,
+    "close_loc": 0.16,
+    "vol_x20": 0.68,
+    "chg10_pct": 3.17,
+    "up5": 3,
+    "dist_high20_pct": -4.71,
+    "mcap_b": 43.2,
+    "days_out": 0,
+    "tier": "flat",
+    "dk_risk": false,
+    "earn_score": 12,
+    "earn_why": "F1 54(换手0.64%/日) | F2 39(5日-1.6% 10日+3.2% 5根3涨 距20日高-4.7%) | F3 20(loc0.16 日-1.2% 量0.7x) | F4 0(财报今日盘后(预排)) | F5 -(F5 缺(Theta 无快照)) | F6 弱势收低-20",
+    "subs": {
+     "F1_money": 54.4,
+     "F2_trend": 39.3,
+     "F3_tape": 19.6,
+     "F4_event": 0.0,
+     "F5_options": null
+    },
+    "fmp_board": false
+   },
+   {
+    "symbol": "NVDA",
+    "rsi14": 46.7,
+    "chg5_pct": -3.45,
+    "chg_pct": -1.41,
+    "price": 210.05,
+    "adv20_usd": 24549936131,
+    "close_loc": 0.14,
+    "vol_x20": 0.52,
+    "chg10_pct": -6.27,
+    "up5": 1,
+    "dist_high20_pct": -7.84,
+    "mcap_b": 5087.62,
+    "days_out": 0,
+    "tier": "oversold",
+    "dk_risk": false,
+    "earn_score": 0,
+    "earn_why": "F1 46(换手0.48%/日) | F2 12(5日-3.5% 10日-6.3% 5根1涨 距20日高-7.8%) | F3 18(loc0.14 日-1.4% 量0.5x) | F4 0(财报今日盘后(预排)) | F5 -(F5 缺(Theta 无快照)) | F6 弱势收低-20",
+    "subs": {
+     "F1_money": 46.3,
+     "F2_trend": 12.3,
+     "F3_tape": 18.0,
+     "F4_event": 0.0,
+     "F5_options": null
+    },
+    "fmp_board": false
+   }
+  ],
+  "market_movers": [
+   {
+    "symbol": "CRE",
+    "side": "gainers",
+    "chg_pct": 155.25,
+    "price": 6.56,
+    "name": "Cre8 Enterprise Limited Class A Ordinary"
+   },
+   {
+    "symbol": "XPON",
+    "side": "gainers",
+    "chg_pct": 55.88,
+    "price": 8.215,
+    "name": "Expion360 Inc."
+   },
+   {
+    "symbol": "RDIB",
+    "side": "gainers",
+    "chg_pct": 53.47,
+    "price": 14.58,
+    "name": "Reading International, Inc."
+   },
+   {
+    "symbol": "GRML",
+    "side": "losers",
+    "chg_pct": -44.59,
+    "price": 5.3801,
+    "name": "Greenland Mines Ltd."
+   },
+   {
+    "symbol": "WETO",
+    "side": "losers",
+    "chg_pct": -37.58,
+    "price": 17.67,
+    "name": "Wetour Robotics Limited"
+   },
+   {
+    "symbol": "WSHP",
+    "side": "gainers",
+    "chg_pct": 35.13,
+    "price": 6.3375,
+    "name": "WeShop Holdings Limited Class A Ordinary"
+   },
+   {
+    "symbol": "ANF",
+    "side": "gainers",
+    "chg_pct": 30.86,
+    "price": 142.51,
+    "name": "Abercrombie & Fitch Co."
+   },
+   {
+    "symbol": "DAIC",
+    "side": "gainers",
+    "chg_pct": 27.45,
+    "price": 4.945,
+    "name": "CID HoldCo, Inc."
+   },
+   {
+    "symbol": "VMAR",
+    "side": "gainers",
+    "chg_pct": 23.14,
+    "price": 8.844,
+    "name": "Vision Marine Technologies Inc."
+   },
+   {
+    "symbol": "ELMD",
+    "side": "losers",
+    "chg_pct": -19.51,
+    "price": 31.665,
+    "name": "Electromed, Inc."
+   },
+   {
+    "symbol": "BHVN",
+    "side": "gainers",
+    "chg_pct": 18.15,
+    "price": 16.9899,
+    "name": "Biohaven Ltd."
+   },
+   {
+    "symbol": "QFIN",
+    "side": "losers",
+    "chg_pct": -18.09,
+    "price": 9.4438,
+    "name": "Qfin Holdings, Inc."
+   },
+   {
+    "symbol": "GENB",
+    "side": "losers",
+    "chg_pct": -18.03,
+    "price": 16.705,
+    "name": "Generate Biomedicines, Inc."
+   },
+   {
+    "symbol": "BVC",
+    "side": "losers",
+    "chg_pct": -18.01,
+    "price": 12.02,
+    "name": "BitVentures Limited"
+   },
+   {
+    "symbol": "IPST",
+    "side": "losers",
+    "chg_pct": -17.99,
+    "price": 6.38,
+    "name": "IP Strategy Holdings, Inc."
+   },
+   {
+    "symbol": "JEM",
+    "side": "losers",
+    "chg_pct": -17.88,
+    "price": 5.58,
+    "name": "707 Cayman Holdings Limited Ordinary Sha"
+   },
+   {
+    "symbol": "EXYN",
+    "side": "gainers",
+    "chg_pct": 17.55,
+    "price": 3.785,
+    "name": "Exyn Technologies, Inc."
+   },
+   {
+    "symbol": "QBTZ",
+    "side": "gainers",
+    "chg_pct": 17.3,
+    "price": 3.695,
+    "name": "Defiance Daily Target 2X Short QBTS ETF"
+   },
+   {
+    "symbol": "SCYX",
+    "side": "gainers",
+    "chg_pct": 16.99,
+    "price": 6.0717,
+    "name": "SCYNEXIS, Inc."
+   },
+   {
+    "symbol": "EXOD",
+    "side": "losers",
+    "chg_pct": -16.67,
+    "price": 8.075,
+    "name": "Exodus Movement, Inc."
+   },
+   {
+    "symbol": "BZ",
+    "side": "gainers",
+    "chg_pct": 16.48,
+    "price": 18.975,
+    "name": "Kanzhun Limited"
+   },
+   {
+    "symbol": "MRNX",
+    "side": "losers",
+    "chg_pct": -16.09,
+    "price": 86.5001,
+    "name": "Daily Target 2X Long MRNA ETF"
+   },
+   {
+    "symbol": "AKAN",
+    "side": "losers",
+    "chg_pct": -16.09,
+    "price": 4.1535,
+    "name": "Akanda Corp."
+   },
+   {
+    "symbol": "XXII",
+    "side": "gainers",
+    "chg_pct": 15.4,
+    "price": 3.4735,
+    "name": "22nd Century Group, Inc."
+   }
+  ],
+  "most_active": [
+   {
+    "symbol": "BITO",
+    "price": 10.61,
+    "chg_pct": -0.46904
+   },
+   {
+    "symbol": "TSLL",
+    "price": 8.905,
+    "chg_pct": -2.03521
+   },
+   {
+    "symbol": "CRE",
+    "price": 6.56,
+    "chg_pct": 155.25292
+   },
+   {
+    "symbol": "NVDA",
+    "price": 210.0293,
+    "chg_pct": -1.41784
+   },
+   {
+    "symbol": "AAL",
+    "price": 13.98,
+    "chg_pct": 0.21505
+   },
+   {
+    "symbol": "SNAP",
+    "price": 5.405,
+    "chg_pct": -8.69932
+   },
+   {
+    "symbol": "NVD",
+    "price": 4.485,
+    "chg_pct": 2.86697
+   },
+   {
+    "symbol": "INTC",
+    "price": 87.82,
+    "chg_pct": 0.38866
+   },
+   {
+    "symbol": "DAIC",
+    "price": 4.945,
+    "chg_pct": 27.44845
+   },
+   {
+    "symbol": "SPCX",
+    "price": 138.0632,
+    "chg_pct": 0.08206049
+   },
+   {
+    "symbol": "ONDS",
+    "price": 8.175,
+    "chg_pct": -0.78883
+   },
+   {
+    "symbol": "SMR",
+    "price": 9.115,
+    "chg_pct": -7.08461
+   },
+   {
+    "symbol": "XPON",
+    "price": 8.215,
+    "chg_pct": 55.88235
+   },
+   {
+    "symbol": "PATH",
+    "price": 16.695,
+    "chg_pct": 0.21008
+   },
+   {
+    "symbol": "IBIT",
+    "price": 44.5,
+    "chg_pct": -0.49195
+   },
+   {
+    "symbol": "NU",
+    "price": 15.275,
+    "chg_pct": 0.89168
+   },
+   {
+    "symbol": "TQQQ",
+    "price": 70.365,
+    "chg_pct": 0.13519
+   },
+   {
+    "symbol": "SPDN",
+    "price": 8.535,
+    "chg_pct": 0.17606
+   },
+   {
+    "symbol": "META",
+    "price": 577.7442,
+    "chg_pct": 1.34974
+   },
+   {
+    "symbol": "NKE",
+    "price": 38.6073,
+    "chg_pct": -2.21049
+   },
+   {
+    "symbol": "BSX",
+    "price": 48.225,
+    "chg_pct": -3.27918
+   },
+   {
+    "symbol": "ETHA",
+    "price": 18.605,
+    "chg_pct": 0.02688172
+   },
+   {
+    "symbol": "SOXS",
+    "price": 48.33,
+    "chg_pct": -0.18587
+   },
+   {
+    "symbol": "IREN",
+    "price": 40.0699,
+    "chg_pct": -5.07013
+   }
+  ],
+  "_ma_err": null,
+  "theme_heat": [
+   {
+    "theme": "Asset Management - Leveraged",
+    "n": 6,
+    "avg_chg": 2.6,
+    "up_ratio": 0.67,
+    "hot": true,
+    "money_confirmed": true,
+    "members": [
+     {
+      "symbol": "WXET",
+      "chg_pct": 12.36
+     },
+     {
+      "symbol": "NVD",
+      "chg_pct": 2.87
+     },
+     {
+      "symbol": "SOXL",
+      "chg_pct": 0.48
+     },
+     {
+      "symbol": "SPDN",
+      "chg_pct": 0.18
+     },
+     {
+      "symbol": "QID",
+      "chg_pct": -0.07
+     },
+     {
+      "symbol": "SOXS",
+      "chg_pct": -0.19
+     }
+    ]
+   },
+   {
+    "theme": "Internet Content & Information",
+    "n": 4,
+    "avg_chg": 11.06,
+    "up_ratio": 0.75,
+    "hot": true,
+    "money_confirmed": true,
+    "members": [
+     {
+      "symbol": "WSHP",
+      "chg_pct": 35.13
+     },
+     {
+      "symbol": "BZ",
+      "chg_pct": 16.48
+     },
+     {
+      "symbol": "META",
+      "chg_pct": 1.35
+     },
+     {
+      "symbol": "SNAP",
+      "chg_pct": -8.7
+     }
+    ]
+   },
+   {
+    "theme": "Electrical Equipment & Parts",
+    "n": 2,
+    "avg_chg": 24.4,
+    "up_ratio": 0.5,
+    "hot": true,
+    "money_confirmed": true,
+    "members": [
+     {
+      "symbol": "XPON",
+      "chg_pct": 55.88
+     },
+     {
+      "symbol": "SMR",
+      "chg_pct": -7.08
+     }
+    ]
+   },
+   {
+    "theme": "Information Technology Services",
+    "n": 2,
+    "avg_chg": 11.19,
+    "up_ratio": 0.5,
+    "hot": true,
+    "money_confirmed": true,
+    "members": [
+     {
+      "symbol": "DAIC",
+      "chg_pct": 27.45
+     },
+     {
+      "symbol": "IREN",
+      "chg_pct": -5.07
+     }
+    ]
+   },
+   {
+    "theme": "Software - Infrastructure",
+    "n": 2,
+    "avg_chg": 6.38,
+    "up_ratio": 1.0,
+    "hot": true,
+    "money_confirmed": true,
+    "members": [
+     {
+      "symbol": "GRRR",
+      "chg_pct": 12.54
+     },
+     {
+      "symbol": "PATH",
+      "chg_pct": 0.21
+     }
+    ]
+   },
+   {
+    "theme": "Asset Management",
+    "n": 3,
+    "avg_chg": -0.79,
+    "up_ratio": 0.33,
+    "hot": false,
+    "money_confirmed": true,
+    "members": [
+     {
+      "symbol": "TQQQ",
+      "chg_pct": 0.14
+     },
+     {
+      "symbol": "BITO",
+      "chg_pct": -0.47
+     },
+     {
+      "symbol": "TSLL",
+      "chg_pct": -2.04
+     }
+    ]
+   },
+   {
+    "theme": "Biotechnology",
+    "n": 2,
+    "avg_chg": 15.49,
+    "up_ratio": 1.0,
+    "hot": false,
+    "money_confirmed": false,
+    "members": [
+     {
+      "symbol": "BHVN",
+      "chg_pct": 18.15
+     },
+     {
+      "symbol": "AKTX",
+      "chg_pct": 12.83
+     }
+    ]
+   },
+   {
+    "theme": "Asset Management - Cryptocurrency",
+    "n": 2,
+    "avg_chg": -0.23,
+    "up_ratio": 0.5,
+    "hot": false,
+    "money_confirmed": true,
+    "members": [
+     {
+      "symbol": "ETHA",
+      "chg_pct": 0.03
+     },
+     {
+      "symbol": "IBIT",
+      "chg_pct": -0.49
+     }
+    ]
+   },
+   {
+    "theme": "Semiconductors",
+    "n": 2,
+    "avg_chg": -0.51,
+    "up_ratio": 0.5,
+    "hot": false,
+    "money_confirmed": true,
+    "members": [
+     {
+      "symbol": "INTC",
+      "chg_pct": 0.39
+     },
+     {
+      "symbol": "NVDA",
+      "chg_pct": -1.42
+     }
+    ]
+   },
+   {
+    "theme": "Communication Equipment",
+    "n": 2,
+    "avg_chg": -0.66,
+    "up_ratio": 0.0,
+    "hot": false,
+    "money_confirmed": true,
+    "members": [
+     {
+      "symbol": "NOK",
+      "chg_pct": -0.53
+     },
+     {
+      "symbol": "ONDS",
+      "chg_pct": -0.79
+     }
+    ]
+   },
+   {
+    "theme": "Financial - Capital Markets",
+    "n": 2,
+    "avg_chg": -2.28,
+    "up_ratio": 0.5,
+    "hot": false,
+    "money_confirmed": true,
+    "members": [
+     {
+      "symbol": "BMNR",
+      "chg_pct": 1.31
+     },
+     {
+      "symbol": "MARA",
+      "chg_pct": -5.87
+     }
+    ]
+   },
+   {
+    "theme": "Specialty Business Services",
+    "n": 1,
+    "avg_chg": 155.25,
+    "up_ratio": 1.0,
+    "hot": false,
+    "money_confirmed": true,
+    "members": [
+     {
+      "symbol": "CRE",
+      "chg_pct": 155.25
+     }
+    ]
+   }
+  ],
+  "comove": [
+   {
+    "n": 7,
+    "cohesion": 0.85,
+    "avg_chg": 45.96,
+    "med_chg": 30.86,
+    "share_up": 1.0,
+    "money": false,
+    "hot": false,
+    "industries": [
+     "Apparel - Retail",
+     "Asset Management - Leveraged",
+     "Biotechnology",
+     "Entertainment",
+     "Internet Content & Information",
+     "Specialty Business Services"
+    ],
+    "members": [
+     {
+      "symbol": "CRE",
+      "chg_pct": 155.25
+     },
+     {
+      "symbol": "RDIB",
+      "chg_pct": 53.47
+     },
+     {
+      "symbol": "WSHP",
+      "chg_pct": 35.13
+     },
+     {
+      "symbol": "ANF",
+      "chg_pct": 30.86
+     },
+     {
+      "symbol": "BHVN",
+      "chg_pct": 18.15
+     },
+     {
+      "symbol": "BZ",
+      "chg_pct": 16.48
+     },
+     {
+      "symbol": "WXET",
+      "chg_pct": 12.36
+     }
+    ]
+   },
+   {
+    "n": 4,
+    "cohesion": 0.81,
+    "avg_chg": 0.12,
+    "med_chg": 0.26,
+    "share_up": 0.0,
+    "money": true,
+    "hot": false,
+    "industries": [
+     "Asset Management",
+     "Asset Management - Leveraged",
+     "Communication Equipment",
+     "Semiconductors"
+    ],
+    "members": [
+     {
+      "symbol": "SOXL",
+      "chg_pct": 0.48414
+     },
+     {
+      "symbol": "INTC",
+      "chg_pct": 0.38866
+     },
+     {
+      "symbol": "TQQQ",
+      "chg_pct": 0.13519
+     },
+     {
+      "symbol": "NOK",
+      "chg_pct": -0.5314
+     }
+    ]
+   },
+   {
+    "n": 4,
+    "cohesion": 0.88,
+    "avg_chg": 0.09,
+    "med_chg": -0.22,
+    "share_up": 0.0,
+    "money": true,
+    "hot": false,
+    "industries": [
+     "Asset Management",
+     "Asset Management - Cryptocurrency",
+     "Financial - Capital Markets"
+    ],
+    "members": [
+     {
+      "symbol": "BMNR",
+      "chg_pct": 1.30943
+     },
+     {
+      "symbol": "ETHA",
+      "chg_pct": 0.02688172
+     },
+     {
+      "symbol": "BITO",
+      "chg_pct": -0.46904
+     },
+     {
+      "symbol": "IBIT",
+      "chg_pct": -0.49195
+     }
+    ]
+   }
+  ],
+  "streak_board": [
+   "AAL",
+   "BITO",
+   "BMNR",
+   "DAIC",
+   "ETHA",
+   "EXYN",
+   "IBIT",
+   "INTC",
+   "NU",
+   "NVD",
+   "PATH",
+   "PMI",
+   "SNAP",
+   "SPCX",
+   "TKNS",
+   "TQQQ",
+   "XPON"
+  ],
+  "regime": {
+   "tier": "满",
+   "why": "VIX 15.4",
+   "kelly_fraction": 0.167,
+   "kelly_note": "命中 40/60 p=0.67 b=1.00 f*=0.33 → half-Kelly 16.7%",
+   "hits": 40,
+   "misses": 20
+  },
+  "trend_board": [
+   {
+    "symbol": "JKHY",
+    "trend_score": 10,
+    "trend_why": "5日5涨+2 5日+13.4%+2 10日+13.0%+1 RSI72+1 放量1.4x+1 近52周高+1 收高位+1 末根收涨+1",
+    "price": 173.62,
+    "chg5_pct": 13.39,
+    "chg10_pct": 13.01,
+    "up5": 5,
+    "rsi14": 72.3,
+    "vol_x20": 1.37,
+    "adv20_musd": 152.4,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "MRK",
+    "trend_score": 9,
+    "trend_why": "5日3涨+1 5日+15.7%+2 10日+19.9%+1 RSI78+1 放量1.2x+1 近52周高+1 收高位+1 末根收涨+1",
+    "price": 156.43,
+    "chg5_pct": 15.73,
+    "chg10_pct": 19.94,
+    "up5": 3,
+    "rsi14": 77.6,
+    "vol_x20": 1.25,
+    "adv20_musd": 1514.2,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "CRCL",
+    "trend_score": 9,
+    "trend_why": "5日4涨+2 5日+28.3%+2 10日+29.3%+1 RSI72+1 放量1.3x+1 收高位+1 末根收涨+1",
+    "price": 92.02,
+    "chg5_pct": 28.29,
+    "chg10_pct": 29.31,
+    "up5": 4,
+    "rsi14": 72.1,
+    "vol_x20": 1.34,
+    "adv20_musd": 974.1,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "FCX",
+    "trend_score": 9,
+    "trend_why": "5日5涨+2 5日+20.5%+2 10日+16.0%+1 RSI73+1 近52周高+1 收高位+1 末根收涨+1",
+    "price": 79.91,
+    "chg5_pct": 20.49,
+    "chg10_pct": 16.03,
+    "up5": 5,
+    "rsi14": 72.9,
+    "vol_x20": 1.12,
+    "adv20_musd": 966.9,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "NEM",
+    "trend_score": 9,
+    "trend_why": "5日5涨+2 5日+16.5%+2 10日+15.3%+1 RSI78+1 近52周高+1 收高位+1 末根收涨+1",
+    "price": 135.14,
+    "chg5_pct": 16.52,
+    "chg10_pct": 15.3,
+    "up5": 5,
+    "rsi14": 78.0,
+    "vol_x20": 0.93,
+    "adv20_musd": 850.3,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "B",
+    "trend_score": 9,
+    "trend_why": "5日5涨+2 5日+16.1%+2 10日+21.8%+1 RSI75+1 近52周高+1 收高位+1 末根收涨+1",
+    "price": 48.87,
+    "chg5_pct": 16.11,
+    "chg10_pct": 21.78,
+    "up5": 5,
+    "rsi14": 75.3,
+    "vol_x20": 0.86,
+    "adv20_musd": 491.8,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "ILMN",
+    "trend_score": 9,
+    "trend_why": "5日5涨+2 5日+19.5%+2 10日+16.7%+1 RSI72+1 近52周高+1 收高位+1 末根收涨+1",
+    "price": 224.99,
+    "chg5_pct": 19.49,
+    "chg10_pct": 16.67,
+    "up5": 5,
+    "rsi14": 72.2,
+    "vol_x20": 0.9,
+    "adv20_musd": 425.8,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "TEM",
+    "trend_score": 9,
+    "trend_why": "5日4涨+2 5日+39.2%+2 10日+23.4%+1 RSI66+1 放量1.2x+1 收高位+1 末根收涨+1",
+    "price": 68.73,
+    "chg5_pct": 39.24,
+    "chg10_pct": 23.42,
+    "up5": 4,
+    "rsi14": 66.1,
+    "vol_x20": 1.23,
+    "adv20_musd": 412.2,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "SCCO",
+    "trend_score": 9,
+    "trend_why": "5日4涨+2 5日+17.0%+2 10日+13.0%+1 RSI69+1 近52周高+1 收高位+1 末根收涨+1",
+    "price": 219.7,
+    "chg5_pct": 16.99,
+    "chg10_pct": 12.97,
+    "up5": 4,
+    "rsi14": 69.3,
+    "vol_x20": 0.66,
+    "adv20_musd": 216.7,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "ELAN",
+    "trend_score": 9,
+    "trend_why": "5日4涨+2 5日+6.1%+2 10日+10.4%+1 RSI56+1 近52周高+1 收高位+1 末根收涨+1",
+    "price": 25.09,
+    "chg5_pct": 6.13,
+    "chg10_pct": 10.38,
+    "up5": 4,
+    "rsi14": 55.8,
+    "vol_x20": 0.61,
+    "adv20_musd": 207.2,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "FNV",
+    "trend_score": 9,
+    "trend_why": "5日5涨+2 5日+16.7%+2 10日+12.9%+1 RSI76+1 近52周高+1 收高位+1 末根收涨+1",
+    "price": 271.77,
+    "chg5_pct": 16.66,
+    "chg10_pct": 12.89,
+    "up5": 5,
+    "rsi14": 76.5,
+    "vol_x20": 0.9,
+    "adv20_musd": 194.1,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "TECK",
+    "trend_score": 9,
+    "trend_why": "5日5涨+2 5日+12.1%+2 RSI70+1 放量1.3x+1 近52周高+1 收高位+1 末根收涨+1",
+    "price": 71.62,
+    "chg5_pct": 12.06,
+    "chg10_pct": 8.29,
+    "up5": 5,
+    "rsi14": 70.2,
+    "vol_x20": 1.33,
+    "adv20_musd": 190.5,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "TXG",
+    "trend_score": 9,
+    "trend_why": "5日4涨+2 5日+16.3%+2 10日+10.7%+1 RSI72+1 放量1.3x+1 近52周高+1 末根收涨+1",
+    "price": 64.72,
+    "chg5_pct": 16.34,
+    "chg10_pct": 10.67,
+    "up5": 4,
+    "rsi14": 71.5,
+    "vol_x20": 1.29,
+    "adv20_musd": 176.1,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "FUTU",
+    "trend_score": 9,
+    "trend_why": "5日4涨+2 5日+15.7%+2 10日+19.5%+1 RSI68+1 放量2.2x+1 收高位+1 末根收涨+1",
+    "price": 125.63,
+    "chg5_pct": 15.7,
+    "chg10_pct": 19.47,
+    "up5": 4,
+    "rsi14": 67.6,
+    "vol_x20": 2.21,
+    "adv20_musd": 150.3,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "EXEL",
+    "trend_score": 9,
+    "trend_why": "5日4涨+2 5日+6.8%+2 10日+10.5%+1 RSI60+1 近52周高+1 收高位+1 末根收涨+1",
+    "price": 56.72,
+    "chg5_pct": 6.78,
+    "chg10_pct": 10.5,
+    "up5": 4,
+    "rsi14": 60.0,
+    "vol_x20": 0.73,
+    "adv20_musd": 148.3,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "HBM",
+    "trend_score": 9,
+    "trend_why": "5日4涨+2 5日+16.6%+2 10日+11.3%+1 RSI70+1 近52周高+1 收高位+1 末根收涨+1",
+    "price": 30.79,
+    "chg5_pct": 16.58,
+    "chg10_pct": 11.28,
+    "up5": 4,
+    "rsi14": 70.3,
+    "vol_x20": 0.52,
+    "adv20_musd": 138.2,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "MTCH",
+    "trend_score": 9,
+    "trend_why": "5日5涨+2 5日+9.0%+2 10日+14.6%+1 RSI67+1 近52周高+1 收高位+1 末根收涨+1",
+    "price": 42.18,
+    "chg5_pct": 9.02,
+    "chg10_pct": 14.62,
+    "up5": 5,
+    "rsi14": 67.1,
+    "vol_x20": 1.08,
+    "adv20_musd": 126.4,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "IAG",
+    "trend_score": 9,
+    "trend_why": "5日5涨+2 5日+21.9%+2 10日+22.1%+1 RSI77+1 近52周高+1 收高位+1 末根收涨+1",
+    "price": 22.17,
+    "chg5_pct": 21.88,
+    "chg10_pct": 22.08,
+    "up5": 5,
+    "rsi14": 77.4,
+    "vol_x20": 0.83,
+    "adv20_musd": 112.9,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "CAI",
+    "trend_score": 9,
+    "trend_why": "5日4涨+2 5日+33.6%+2 10日+21.1%+1 RSI80+1 放量1.3x+1 收高位+1 末根收涨+1",
+    "price": 28.01,
+    "chg5_pct": 33.57,
+    "chg10_pct": 21.05,
+    "up5": 4,
+    "rsi14": 79.9,
+    "vol_x20": 1.26,
+    "adv20_musd": 112.6,
+    "flags": [],
+    "asof": "2026-08-25"
+   },
+   {
+    "symbol": "EGO",
+    "trend_score": 9,
+    "trend_why": "5日5涨+2 5日+24.4%+2 10日+23.1%+1 RSI79+1 近52周高+1 收高位+1 末根收涨+1",
+    "price": 48.14,
+    "chg5_pct": 24.36,
+    "chg10_pct": 23.15,
+    "up5": 5,
+    "rsi14": 78.9,
+    "vol_x20": 0.95,
+    "adv20_musd": 109.7,
+    "flags": [],
+    "asof": "2026-08-25"
+   }
+  ],
+  "trend_universe_n": 2923,
+  "trend_rejected_n": 2656,
+  "candidate_pool": [
+   {
+    "symbol": "BMNR",
+    "score": 87,
+    "score_why": "F1 100(换手5.17%/日) | F2 94(5日+24.3% 10日+40.6% 5根5涨 距20日高-2.4%) | F3 57(loc0.96 日+1.3% 量0.6x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 100.0,
+     "F2_trend": 93.9,
+     "F3_tape": 56.7,
+     "F4_event": null,
+     "F5_options": null
+    },
+    "eyes": [
+     "连涨"
+    ],
+    "price": 25.15,
+    "chg_pct": 1.33,
+    "adv20_musd": 740.8,
+    "mcap_b": 14.32,
+    "rsi14": 78.8,
+    "close_loc": 0.96,
+    "vol_x20": 0.58,
+    "high52_dist_pct": -81.37,
+    "chg5_pct": 24.26,
+    "days_to_earnings": null,
+    "flags": [
+     "RSI79过热",
+     "缺F4/F5"
+    ]
+   },
+   {
+    "symbol": "TEM",
+    "score": 80,
+    "score_why": "F1 100(换手3.52%/日) | F2 81(5日+13.5% 10日+27.3% 5根4涨 距20日高-4.7%) | F3 50(loc0.77 日+1.2% 量0.4x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 100.0,
+     "F2_trend": 81.4,
+     "F3_tape": 49.8,
+     "F4_event": null,
+     "F5_options": null
+    },
+    "eyes": [
+     "趋势🔥"
+    ],
+    "price": 69.54,
+    "chg_pct": 1.18,
+    "adv20_musd": 428.9,
+    "mcap_b": 12.18,
+    "rsi14": 66.8,
+    "close_loc": 0.77,
+    "vol_x20": 0.44,
+    "high52_dist_pct": -32.65,
+    "chg5_pct": 13.53,
+    "days_to_earnings": null,
+    "flags": [
+     "缺F4/F5"
+    ]
+   },
+   {
+    "symbol": "PATH",
+    "score": 74,
+    "score_why": "F1 100(换手11.32%/日) | F2 72(5日+5.9% 10日+9.5% 5根5涨 距20日高-1.4%) | F3 44(loc0.71 日+0.3% 量0.5x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 100.0,
+     "F2_trend": 72.2,
+     "F3_tape": 44.1,
+     "F4_event": null,
+     "F5_options": null
+    },
+    "eyes": [
+     "最活跃",
+     "热簇🔥",
+     "连涨"
+    ],
+    "price": 16.71,
+    "chg_pct": 0.3,
+    "adv20_musd": 1006.1,
+    "mcap_b": 8.89,
+    "rsi14": 71.3,
+    "close_loc": 0.71,
+    "vol_x20": 0.49,
+    "high52_dist_pct": -13.37,
+    "chg5_pct": 5.89,
+    "days_to_earnings": null,
+    "flags": [
+     "缺F4/F5"
+    ]
+   },
+   {
+    "symbol": "ILMN",
+    "score": 72,
+    "score_why": "F1 74(换手1.25%/日) | F2 85(5日+10.2% 10日+17.1% 5根5涨 距20日高-0.8%) | F3 46(loc0.77 日+0.4% 量0.5x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 74.2,
+     "F2_trend": 85.4,
+     "F3_tape": 46.5,
+     "F4_event": null,
+     "F5_options": null
+    },
+    "eyes": [
+     "趋势🔥"
+    ],
+    "price": 225.8963,
+    "chg_pct": 0.4,
+    "adv20_musd": 427.0,
+    "mcap_b": 34.18,
+    "rsi14": 72.6,
+    "close_loc": 0.77,
+    "vol_x20": 0.47,
+    "high52_dist_pct": -50.49,
+    "chg5_pct": 10.19,
+    "days_to_earnings": null,
+    "flags": [
+     "缺F4/F5"
+    ]
+   },
+   {
+    "symbol": "FUTU",
+    "score": 69,
+    "score_why": "F1 66(换手0.93%/日) | F2 88(5日+15.8% 10日+20.5% 5根4涨 距20日高-1.3%) | F3 41(loc0.55 日+0.9% 量0.6x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 65.7,
+     "F2_trend": 87.9,
+     "F3_tape": 41.1,
+     "F4_event": null,
+     "F5_options": null
+    },
+    "eyes": [
+     "趋势🔥"
+    ],
+    "price": 126.7213,
+    "chg_pct": 0.87,
+    "adv20_musd": 165.1,
+    "mcap_b": 17.69,
+    "rsi14": 68.3,
+    "close_loc": 0.55,
+    "vol_x20": 0.62,
+    "high52_dist_pct": -36.33,
+    "chg5_pct": 15.81,
+    "days_to_earnings": null,
+    "flags": [
+     "缺F4/F5"
+    ]
+   },
+   {
+    "symbol": "ANF",
+    "score": 69,
+    "score_why": "F1 85(换手1.81%/日) | F2 71(5日+35.4% 10日+27.2% 5根3涨 距20日高-7.6%) | F3 85(loc0.56 日+31.1% 量11.8x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照)) | F6 日+31%单日暴涨-10",
+    "subs": {
+     "F1_money": 85.2,
+     "F2_trend": 71.0,
+     "F3_tape": 85.3,
+     "F4_event": null,
+     "F5_options": null
+    },
+    "eyes": [
+     "异动"
+    ],
+    "price": 142.81,
+    "chg_pct": 31.14,
+    "adv20_musd": 115.0,
+    "mcap_b": 6.35,
+    "rsi14": 77.6,
+    "close_loc": 0.56,
+    "vol_x20": 11.76,
+    "high52_dist_pct": 0.0,
+    "chg5_pct": 35.43,
+    "days_to_earnings": null,
+    "flags": [
+     "RSI78过热",
+     "缺F4/F5"
+    ]
+   },
+   {
+    "symbol": "MTCH",
+    "score": 65,
+    "score_why": "F1 76(换手1.32%/日) | F2 73(5日+6.1% 10日+15.1% 5根4涨 距20日高-0.9%) | F3 37(loc0.56 日-0.2% 量0.3x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 75.9,
+     "F2_trend": 73.4,
+     "F3_tape": 37.2,
+     "F4_event": null,
+     "F5_options": null
+    },
+    "eyes": [
+     "趋势🔥"
+    ],
+    "price": 42.113,
+    "chg_pct": -0.16,
+    "adv20_musd": 130.0,
+    "mcap_b": 9.82,
+    "rsi14": 66.6,
+    "close_loc": 0.56,
+    "vol_x20": 0.31,
+    "high52_dist_pct": -76.01,
+    "chg5_pct": 6.08,
+    "days_to_earnings": null,
+    "flags": [
+     "缺F4/F5"
+    ]
+   },
+   {
+    "symbol": "TXG",
+    "score": 62,
+    "score_why": "F1 92(换手2.25%/日) | F2 53(5日+3.2% 10日+11.1% 5根3涨 距20日高-4.1%) | F3 36(loc0.62 日-0.8% 量0.5x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 91.6,
+     "F2_trend": 53.4,
+     "F3_tape": 36.4,
+     "F4_event": null,
+     "F5_options": null
+    },
+    "eyes": [
+     "趋势🔥"
+    ],
+    "price": 64.18,
+    "chg_pct": -0.83,
+    "adv20_musd": 183.4,
+    "mcap_b": 8.15,
+    "rsi14": 70.0,
+    "close_loc": 0.62,
+    "vol_x20": 0.53,
+    "high52_dist_pct": -66.38,
+    "chg5_pct": 3.2,
+    "days_to_earnings": null,
+    "flags": [
+     "缺F4/F5"
+    ]
+   },
+   {
+    "symbol": "EXEL",
+    "score": 62,
+    "score_why": "F1 69(换手1.03%/日) | F2 65(5日+4.3% 10日+12.6% 5根3涨 距20日高-0.4%) | F3 46(loc0.80 日-0.0% 量0.2x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 68.6,
+     "F2_trend": 65.2,
+     "F3_tape": 45.8,
+     "F4_event": null,
+     "F5_options": null
+    },
+    "eyes": [
+     "趋势🔥"
+    ],
+    "price": 56.7186,
+    "chg_pct": -0.0,
+    "adv20_musd": 147.0,
+    "mcap_b": 14.26,
+    "rsi14": 60.0,
+    "close_loc": 0.8,
+    "vol_x20": 0.22,
+    "high52_dist_pct": -0.67,
+    "chg5_pct": 4.28,
+    "days_to_earnings": null,
+    "flags": [
+     "缺F4/F5"
+    ]
+   },
+   {
+    "symbol": "IAG",
+    "score": 61,
+    "score_why": "F1 65(换手0.91%/日) | F2 79(5日+10.2% 10日+20.3% 5根4涨 距20日高-2.6%) | F3 28(loc0.51 日-1.9% 量0.5x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 64.8,
+     "F2_trend": 78.6,
+     "F3_tape": 28.1,
+     "F4_event": null,
+     "F5_options": null
+    },
+    "eyes": [
+     "趋势🔥"
+    ],
+    "price": 21.739,
+    "chg_pct": -1.94,
+    "adv20_musd": 113.9,
+    "mcap_b": 12.57,
+    "rsi14": 73.3,
+    "close_loc": 0.51,
+    "vol_x20": 0.46,
+    "high52_dist_pct": -11.52,
+    "chg5_pct": 10.24,
+    "days_to_earnings": null,
+    "flags": [
+     "缺F4/F5"
+    ]
+   },
+   {
+    "symbol": "TECK",
+    "score": 60,
+    "score_why": "F1 51(换手0.57%/日) | F2 78(5日+8.7% 10日+8.7% 5根5涨 距20日高-0.4%) | F3 44(loc0.70 日+0.1% 量0.8x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 51.2,
+     "F2_trend": 77.5,
+     "F3_tape": 43.9,
+     "F4_event": null,
+     "F5_options": null
+    },
+    "eyes": [
+     "趋势🔥"
+    ],
+    "price": 71.68,
+    "chg_pct": 0.08,
+    "adv20_musd": 197.4,
+    "mcap_b": 34.62,
+    "rsi14": 70.3,
+    "close_loc": 0.7,
+    "vol_x20": 0.75,
+    "high52_dist_pct": 0.0,
+    "chg5_pct": 8.69,
+    "days_to_earnings": null,
+    "flags": [
+     "缺F4/F5"
+    ]
+   },
+   {
+    "symbol": "JKHY",
+    "score": 60,
+    "score_why": "F1 75(换手1.28%/日) | F2 70(5日+5.8% 10日+13.2% 5根4涨 距20日高-1.4%) | F3 22(loc0.16 日-0.7% 量0.3x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照))",
+    "subs": {
+     "F1_money": 75.0,
+     "F2_trend": 70.1,
+     "F3_tape": 21.7,
+     "F4_event": null,
+     "F5_options": null
+    },
+    "eyes": [
+     "趋势🔥"
+    ],
+    "price": 172.4505,
+    "chg_pct": -0.67,
+    "adv20_musd": 156.8,
+    "mcap_b": 12.25,
+    "rsi14": 70.1,
+    "close_loc": 0.16,
+    "vol_x20": 0.3,
+    "high52_dist_pct": -18.3,
+    "chg5_pct": 5.76,
+    "days_to_earnings": null,
+    "flags": [
+     "缺F4/F5"
+    ]
+   }
+  ],
+  "pool_rejected": [
+   {
+    "symbol": "BHVN",
+    "clause": "20日成交额 $27M<$100M 地板",
+    "price": 16.99,
+    "eyes": [
+     "异动"
+    ]
+   },
+   {
+    "symbol": "BITO",
+    "clause": "ETF 不入池(IV 结构不适合单腿 call)",
+    "eyes": [
+     "最活跃",
+     "连涨"
+    ]
+   },
+   {
+    "symbol": "BZ",
+    "clause": "20日成交额 $71M<$100M 地板",
+    "price": 18.965,
+    "eyes": [
+     "异动",
+     "热簇🔥"
+    ]
+   },
+   {
+    "symbol": "CRE",
+    "clause": "price $6.54<$10 地板",
+    "price": 6.5356,
+    "eyes": [
+     "异动",
+     "最活跃"
+    ]
+   },
+   {
+    "symbol": "DAIC",
+    "clause": "price $4.91<$10 地板",
+    "price": 4.91,
+    "eyes": [
+     "异动",
+     "最活跃",
+     "热簇🔥",
+     "连涨"
+    ]
+   },
+   {
+    "symbol": "ETHA",
+    "clause": "ETF 不入池(IV 结构不适合单腿 call)",
+    "eyes": [
+     "最活跃",
+     "连涨"
+    ]
+   },
+   {
+    "symbol": "EXYN",
+    "clause": "price $3.77<$10 地板",
+    "price": 3.77,
+    "eyes": [
+     "异动",
+     "连涨"
+    ]
+   },
+   {
+    "symbol": "GRRR",
+    "clause": "20日成交额 $15M<$100M 地板",
+    "price": 15.6949,
+    "eyes": [
+     "热簇🔥"
+    ]
+   },
+   {
+    "symbol": "IBIT",
+    "clause": "ETF 不入池(IV 结构不适合单腿 call)",
+    "eyes": [
+     "最活跃",
+     "连涨"
+    ]
+   },
+   {
+    "symbol": "NVD",
+    "clause": "ETF 不入池(IV 结构不适合单腿 call)",
+    "eyes": [
+     "最活跃",
+     "热簇🔥",
+     "连涨"
+    ]
+   },
+   {
+    "symbol": "ONDS",
+    "clause": "price $8.17<$10 地板",
+    "price": 8.1658,
+    "eyes": [
+     "最活跃"
+    ]
+   },
+   {
+    "symbol": "PMI",
+    "clause": "price $8.41<$10 地板",
+    "price": 8.4117,
+    "eyes": [
+     "连涨"
+    ]
+   },
+   {
+    "symbol": "QBTZ",
+    "clause": "ETF 不入池(IV 结构不适合单腿 call)",
+    "eyes": [
+     "异动"
+    ]
+   },
+   {
+    "symbol": "QID",
+    "clause": "ETF 不入池(IV 结构不适合单腿 call)",
+    "eyes": [
+     "热簇🔥"
+    ]
+   },
+   {
+    "symbol": "RDIB",
+    "clause": "20日成交额 $0M<$100M 地板",
+    "price": 14.4999,
+    "eyes": [
+     "异动"
+    ]
+   },
+   {
+    "symbol": "SCYX",
+    "clause": "price $5.96<$10 地板",
+    "price": 5.965,
+    "eyes": [
+     "异动"
+    ]
+   },
+   {
+    "symbol": "SMR",
+    "clause": "price $9.10<$10 地板",
+    "price": 9.1011,
+    "eyes": [
+     "最活跃",
+     "热簇🔥"
+    ]
+   },
+   {
+    "symbol": "SNAP",
+    "clause": "price $5.42<$10 地板",
+    "price": 5.415,
+    "eyes": [
+     "最活跃",
+     "热簇🔥",
+     "连涨"
+    ]
+   },
+   {
+    "symbol": "SOXL",
+    "clause": "ETF 不入池(IV 结构不适合单腿 call)",
+    "eyes": [
+     "热簇🔥"
+    ]
+   },
+   {
+    "symbol": "SOXS",
+    "clause": "ETF 不入池(IV 结构不适合单腿 call)",
+    "eyes": [
+     "最活跃",
+     "热簇🔥"
+    ]
+   },
+   {
+    "symbol": "SPDN",
+    "clause": "ETF 不入池(IV 结构不适合单腿 call)",
+    "eyes": [
+     "最活跃",
+     "热簇🔥"
+    ]
+   },
+   {
+    "symbol": "TKNS",
+    "clause": "ETF 不入池(IV 结构不适合单腿 call)",
+    "eyes": [
+     "连涨"
+    ]
+   },
+   {
+    "symbol": "TQQQ",
+    "clause": "ETF 不入池(IV 结构不适合单腿 call)",
+    "eyes": [
+     "最活跃",
+     "连涨"
+    ]
+   },
+   {
+    "symbol": "TSLL",
+    "clause": "ETF 不入池(IV 结构不适合单腿 call)",
+    "eyes": [
+     "最活跃"
+    ]
+   },
+   {
+    "symbol": "VMAR",
+    "clause": "price $8.78<$10 地板",
+    "price": 8.78,
+    "eyes": [
+     "异动"
+    ]
+   },
+   {
+    "symbol": "WSHP",
+    "clause": "price $6.35<$10 地板",
+    "price": 6.35,
+    "eyes": [
+     "异动",
+     "热簇🔥"
+    ]
+   },
+   {
+    "symbol": "WXET",
+    "clause": "ETF 不入池(IV 结构不适合单腿 call)",
+    "eyes": [
+     "热簇🔥"
+    ]
+   },
+   {
+    "symbol": "XPON",
+    "clause": "price $8.18<$10 地板",
+    "price": 8.1787,
+    "eyes": [
+     "异动",
+     "最活跃",
+     "热簇🔥",
+     "连涨"
+    ]
+   },
+   {
+    "symbol": "XXII",
+    "clause": "price $3.42<$10 地板",
+    "price": 3.425,
+    "eyes": [
+     "异动"
+    ]
+   },
+   {
+    "symbol": "B",
+    "clause": "score 32<45 入池最低分(F1 54(换手0.63%/日) | F2 69(5日+5.8% 10日+15.8% 5根4涨 距20日高-2.8%) | F3 20(loc0.32 日-2.3% 量0.5x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照)) | F6 弱势收低-20)",
+    "price": 47.765,
+    "eyes": [
+     "趋势🔥"
+    ]
+   },
+   {
+    "symbol": "BSX",
+    "clause": "score 43<45 入池最低分(F1 78(换手1.42%/日) | F2 13(5日-7.2% 10日-6.1% 5根2涨 距20日高-8.9%) | F3 45(loc0.85 日-3.2% 量1.2x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照)))",
+    "price": 48.275,
+    "eyes": [
+     "最活跃"
+    ]
+   },
+   {
+    "symbol": "CAI",
+    "clause": "score 42<45 入池最低分(F1 81(换手1.57%/日) | F2 73(5日+17.8% 10日+20.4% 5根3涨 距20日高-5.4%) | F3 17(loc0.30 日-4.3% 量0.4x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照)) | F6 弱势收低-20)",
+    "price": 26.8032,
+    "eyes": [
+     "趋势🔥"
+    ]
+   },
+   {
+    "symbol": "EGO",
+    "clause": "score 40<45 入池最低分(F1 65(换手0.92%/日) | F2 80(5日+12.7% 10日+18.5% 5根4涨 距20日高-2.7%) | F3 19(loc0.27 日-2.3% 量0.5x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照)) | F6 弱势收低-20)",
+    "price": 47.045,
+    "eyes": [
+     "趋势🔥"
+    ]
+   },
+   {
+    "symbol": "FCX",
+    "clause": "score 39<45 入池最低分(F1 64(换手0.87%/日) | F2 79(5日+13.8% 10日+13.5% 5根4涨 距20日高-2.1%) | F3 19(loc0.16 日-1.6% 量0.8x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照)) | F6 弱势收低-20)",
+    "price": 78.59,
+    "eyes": [
+     "趋势🔥"
+    ]
+   },
+   {
+    "symbol": "HBM",
+    "clause": "score 32<45 入池最低分(F1 68(换手1.02%/日) | F2 61(5日+9.1% 10日+7.5% 5根3涨 距20日高-2.8%) | F3 13(loc0.16 日-2.7% 量0.3x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照)) | F6 弱势收低-20)",
+    "price": 29.97,
+    "eyes": [
+     "趋势🔥"
+    ]
+   },
+   {
+    "symbol": "IREN",
+    "clause": "score 19<45 入池最低分(F1 100(换手13.21%/日) | F2 5(5日-6.7% 10日-8.5% 5根1涨 距20日高-18.7%) | F3 14(loc0.22 日-5.3% 量0.5x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照)) | F6 弱势收低-20)",
+    "price": 39.97,
+    "eyes": [
+     "最活跃",
+     "热簇🔥"
+    ]
+   },
+   {
+    "symbol": "MRK",
+    "clause": "score 23<45 入池最低分(F1 41(换手0.41%/日) | F2 55(5日+1.1% 10日+15.8% 5根2涨 距20日高-1.9%) | F3 26(loc0.40 日-1.6% 量0.4x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照)) | F6 弱势收低-20)",
+    "price": 153.88,
+    "eyes": [
+     "趋势🔥"
+    ]
+   },
+   {
+    "symbol": "NEM",
+    "clause": "score 33<45 入池最低分(F1 54(换手0.62%/日) | F2 68(5日+5.8% 10日+12.4% 5根4涨 距20日高-2.1%) | F3 27(loc0.48 日-2.0% 量0.4x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照)) | F6 弱势收低-20)",
+    "price": 132.4,
+    "eyes": [
+     "趋势🔥"
+    ]
+   },
+   {
+    "symbol": "NKE",
+    "clause": "score 16<45 入池最低分(F1 85(换手1.79%/日) | F2 5(5日-5.9% 10日-4.6% 5根1涨 距20日高-10.6%) | F3 23(loc0.21 日-2.1% 量1.0x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照)) | F6 弱势收低-20)",
+    "price": 38.635,
+    "eyes": [
+     "最活跃"
+    ]
+   },
+   {
+    "symbol": "NVDA",
+    "clause": "score 0<45 入池最低分(F1 46(换手0.48%/日) | F2 12(5日-3.5% 10日-6.3% 5根1涨 距20日高-7.8%) | F3 18(loc0.14 日-1.4% 量0.5x) | F4 0(财报今日盘后(预排)) | F5 -(F5 缺(Theta 无快照)) | F6 弱势收低-20)",
+    "price": 210.05,
+    "eyes": [
+     "最活跃"
+    ]
+   },
+   {
+    "symbol": "SCCO",
+    "clause": "score 10<45 入池最低分(F1 5(换手0.12%/日) | F2 62(5日+9.7% 10日+9.5% 5根3涨 距20日高-3.3%) | F3 8(loc0.01 日-2.8% 量0.4x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照)) | F6 弱势收低-20)",
+    "price": 213.47,
+    "eyes": [
+     "趋势🔥"
+    ]
+   },
+   {
+    "symbol": "SPCX",
+    "clause": "score 39<45 入池最低分(F1 63(换手0.84%/日) | F2 20(5日-1.2% 10日-5.6% 5根2涨 距20日高-7.9%) | F3 40(loc0.64 日+0.0% 量0.3x) | F4 -(无事件) | F5 -(F5 缺(Theta 无快照)))",
+    "price": 137.95,
+    "eyes": [
+     "最活跃",
+     "连涨"
+    ]
+   }
+  ],
+  "pool_universe_n": 61,
+  "floor_rejected": {
+   "amc_tonight": [
+    {
+     "symbol": "URBN",
+     "clause": "20日成交额 $74M<$100M 地板",
+     "price": 80.62
+    },
+    {
+     "symbol": "OOMA",
+     "clause": "20日成交额 $8M<$100M 地板",
+     "price": 20.61
+    },
+    {
+     "symbol": "PAHC",
+     "clause": "20日成交额 $6M<$100M 地板",
+     "price": 36.0282
+    },
+    {
+     "symbol": "STDN",
+     "clause": "20日成交额 $8M<$100M 地板",
+     "price": 13.805
+    },
+    {
+     "symbol": "LTRX",
+     "clause": "price $5.67<$10 地板",
+     "price": 5.67
+    },
+    {
+     "symbol": "MESO",
+     "clause": "20日成交额 $3M<$100M 地板",
+     "price": 16.795
+    }
+   ]
+  },
+  "prev_review": {
+   "date": "2026-08-25",
+   "hit": "5/6",
+   "rolling": {
+    "days": 5,
+    "legs": 24,
+    "hit_rate_pct": 58.3
+   },
+   "watch": [
+    "AAL",
+    "ABCL",
+    "AIAI",
+    "AIFU",
+    "AMIX",
+    "AMOD",
+    "ANTA",
+    "AVXL",
+    "BEG",
+    "BITO",
+    "BMNR",
+    "BNS",
+    "BRNX",
+    "BTG",
+    "BZ",
+    "CAPR",
+    "CDLR",
+    "CMCT",
+    "CONL",
+    "CRML",
+    "CTRN",
+    "CUE",
+    "DAIC",
+    "DFNS",
+    "DKS",
+    "DLLL",
+    "DNN",
+    "DY",
+    "EH",
+    "ETHA",
+    "EXOD",
+    "FUTG",
+    "FVN",
+    "GEMG",
+    "GLGG",
+    "GRML",
+    "GRRR",
+    "HEI",
+    "IBIT",
+    "IMTX",
+    "INTC",
+    "INTU",
+    "IPST",
+    "IREN",
+    "JEM",
+    "KORU",
+    "KURA",
+    "MAIR",
+    "MARA",
+    "MEI",
+    "MRNA",
+    "MRNX",
+    "MRVL",
+    "MRVU",
+    "MSTR",
+    "MUU",
+    "MVLL",
+    "NCTY",
+    "NIPG",
+    "NKE",
+    "NOK",
+    "NU",
+    "NVD",
+    "NVDA",
+    "NYAX",
+    "OESX",
+    "PATH",
+    "PMI",
+    "PSQH",
+    "PUR",
+    "RYOJ",
+    "SCCO",
+    "SDOT",
+    "SHMD",
+    "SJM",
+    "SLQT",
+    "SMCI",
+    "SMCX",
+    "SMCZ",
+    "SMR",
+    "SMTC",
+    "SMTK",
+    "SOFI",
+    "SOXL",
+    "SOXS",
+    "SPCX",
+    "SQQQ",
+    "SUPX",
+    "TQQQ",
+    "TSLL",
+    "UUUG",
+    "WSM",
+    "XPON",
+    "XSPIX",
+    "ZM",
+    "ZSTK"
+   ],
+   "rejected_review": [
+    {
+     "ticker": "INTC",
+     "chg_pct": 0.25,
+     "reason": "high52_dist=-36.12%距高点远，趋势弱于NVDA，且日内分量为负，降杠杆下优先NVDA",
+     "flag_misskill": false
+    },
+    {
+     "ticker": "IREN",
+     "chg_pct": 6.03,
+     "reason": "high52_dist=-46.29%趋势弱，市值仅14.6B，波动大，T+0风险高",
+     "flag_misskill": true
+    },
+    {
+     "ticker": "SPCX",
+     "chg_pct": 2.19,
+     "reason": "距52周高-31%非强势票，日内分量为负降杠杆下不选",
+     "flag_misskill": true
+    },
+    {
+     "ticker": "BMNR",
+     "chg_pct": 2.82,
+     "reason": "RSI78过热且距52周高-82%，追高风险",
+     "flag_misskill": true
+    },
+    {
+     "ticker": "NVDA",
+     "chg_pct": 2.19,
+     "reason": "池前三但距52周高-9.63%，且明日盘后财报，S1预排明晨易受财报前波动干扰，故未选入S1",
+     "flag_misskill": true
+    },
+    {
+     "ticker": "MRNA",
+     "chg_pct": 14.36,
+     "reason": "池前三但RSI 72.5过热，且昨日同逻辑call失败-4.3%，今日追高需回踩确认，暂不选",
+     "flag_misskill": true
+    },
+    {
+     "ticker": "DKS",
+     "chg_pct": -30.68,
+     "reason": "earnings_movers榜首-30.68%，财报暴雷超卖，无正向催化，不追空put也不做call，排除",
+     "flag_misskill": false
+    }
+   ]
+  }
+ },
+ "ds": {
+  "macro": {
+   "sp500_bias": "中性震荡",
+   "nasdaq_bias": "中性震荡",
+   "confidence": "中",
+   "logic": "SP500盘中-0.04%，NASDAQ-0.18%，VIX冲高回落但-0.26%，trend_regime上升趋势；breadth_20d_spread -1.9显示巨头独舞，广度缺失；index_session_split日内分量为正(SP500 1.42, NASDAQ 1.39)，但今日盘中偏弱，需警惕冲高回落",
+   "key_levels": "SP500盘初高点7688.36为短期阻力，盘初低点7657.41为支撑；NASDAQ盘初高点26180，低点26021.63；当前价位接近盘中低位，关注能否守稳"
+  },
+  "candidates": [
+   {
+    "slot": 1,
+    "slot_name": "主池",
+    "empty": false,
+    "empty_reason": "",
+    "rank": 1,
+    "rank_reason": "score 80，F1资金密度100(换手3.52%)，F2趋势81(5日+13.5%)，RSI66.8未过热，流动性强",
+    "ticker": "TEM",
+    "direction": "call",
+    "evidence": [
+     {
+      "source": "candidate_pool",
+      "item": "TEM score 80，F1 100，F2 81，RSI 66.8，chg5_pct 13.53，adv20_usd 428.9M",
+      "why": "资金密度极高，趋势强劲，RSI未超70，距20日高-4.7%非追高位置"
+     }
+    ],
+    "key_levels": "阻力为20日高点附近，支撑为今日盘中低点(相对表述)；close_loc 0.77显示盘中收高位",
+    "liquidity": "20日成交额428.9M>100M地板，换手3.52%，大中盘，期权活跃度估计充足，扛得住T+0",
+    "strategy": {
+     "type": "单腿 call",
+     "strike_logic": "0DTE平值或轻度虚值，不追高",
+     "expiry": "0DTE",
+     "entry_condition": "回踩不破今日盘中低点，且放量(vol_x20≥1.5)突破早盘高点；当前vol_x20 0.44无放量，需等待信号",
+     "entry_window_pst": "13:45-14:30 回踩确认后轻仓",
+     "exit_window_pst": "15:30 未达预期离场，15:50 硬平仓",
+     "stop": "跌破今日盘中低点或亏损超2%止损",
+     "abandon": "若放量下跌或VIX冲高，放弃",
+     "earnings_note": "无",
+     "t0_exit": "收盘前强制平仓，不留隔夜"
+    },
+    "liquidity_check": {
+     "mcap_b": 12.5,
+     "avg_vol": 6365003,
+     "floor_b": 2.0,
+     "verdict": "过闸"
+    },
+    "tape_check": {
+     "rsi14": 66.8,
+     "close_loc": 0.77,
+     "tape_flag": "",
+     "chg_pct": 1.18
+    },
+    "floor_check": {
+     "price": 69.54,
+     "adv20_musd": 428.9,
+     "verdict": "过地板"
+    }
+   },
+   {
+    "slot": 2,
+    "slot_name": "财报",
+    "empty": false,
+    "empty_reason": "",
+    "rank": 2,
+    "rank_reason": "AMC初筛，earn_score前三CRM/HPQ/VEEV，趋势均平淡，无显著动量，观察不建仓",
+    "ticker": "CRM",
+    "direction": "call",
+    "evidence": [
+     {
+      "source": "amc_tonight",
+      "item": "CRM earn_score 40，F1 78，F2 34，F3 42，tier flat，dk_risk false；HPQ earn_score 40；VEEV earn_score 38",
+      "why": "财报今日盘后，初筛观察，无趋势优势，等待12:45财报班处理"
+     }
+    ],
+    "key_levels": "CRM距20日高-4.2%，阻力在20日高点，支撑在今日低点",
+    "liquidity": "CRM 20日成交额2355M，流动性极好",
+    "strategy": {
+     "type": "单腿 call",
+     "strike_logic": "观察，不建仓",
+     "expiry": "观察",
+     "entry_condition": "观察——建仓窗在12:45财报班",
+     "entry_window_pst": "观察——建仓窗在12:45财报班",
+     "exit_window_pst": "无",
+     "stop": "无",
+     "abandon": "无",
+     "earnings_note": "今日盘后AMC财报，采用T+0动量豁免，收盘前强制清仓",
+     "t0_exit": "观察不建仓"
+    },
+    "liquidity_check": {
+     "mcap_b": 167.38,
+     "avg_vol": 7221650,
+     "floor_b": 2.0,
+     "verdict": "过闸"
+    },
+    "tape_check": {
+     "rsi14": 60.8,
+     "close_loc": 0.77,
+     "tape_flag": "",
+     "chg_pct": -0.7
+    },
+    "floor_check": {
+     "price": 204.255,
+     "adv20_musd": 2355.5,
+     "verdict": "过地板"
+    }
+   },
+   {
+    "slot": 3,
+    "slot_name": "事件",
+    "empty": true,
+    "empty_reason": "8-K均为常规披露，无重大并购/FDA直接关联标的；FDA条目未点名公司，无够格流动性标的",
+    "liquidity_check": {
+     "mcap_b": null,
+     "floor_b": 2.0,
+     "verdict": "无实测——DS 的 liquidity 按估计对待"
+    }
+   },
+   {
+    "slot": 4,
+    "slot_name": "引擎位",
+    "empty": false,
+    "empty_reason": "",
+    "rank": 3,
+    "rank_reason": "rotation_leaders BABA +0.75, FXI +0.1, EEM +0.11，资金迁徙迹象；FUTU 5日+15.8%，RSI68.3未超70",
+    "ticker": "FUTU",
+    "direction": "call",
+    "evidence": [
+     {
+      "source": "cross_asset",
+      "item": "rotation_divergence: FXI, EEM, BABA；rotation_leaders: BABA +0.75, EEM +0.11, FXI +0.1",
+      "why": "资金向中国资产迁徙，FUTU作为中概金融科技受益"
+     },
+     {
+      "source": "candidate_pool",
+      "item": "FUTU score 69，F2趋势88(5日+15.8%, 10日+20.5%)，RSI68.3，adv20_usd 165.1M",
+      "why": "趋势强，RSI未过热，流动性过闸"
+     }
+    ],
+    "key_levels": "阻力为20日高点，支撑为今日盘中低点；close_loc 0.55显示盘中中性",
+    "liquidity": "20日成交额165.1M>100M，换手0.93%，大中盘ADR，期权活跃，流动性充足",
+    "strategy": {
+     "type": "单腿 call",
+     "strike_logic": "0DTE平值，不追高",
+     "expiry": "0DTE",
+     "entry_condition": "回踩不破今日低点，且放量突破早盘高点；当前vol_x20 0.62无放量，轻仓试多",
+     "entry_window_pst": "13:45-14:30",
+     "exit_window_pst": "15:30 未达预期离场，15:50 硬平仓",
+     "stop": "跌破今日盘中低点止损",
+     "abandon": "若美股时段中国ETF冲高回落或VIX拉升，放弃",
+     "earnings_note": "无",
+     "t0_exit": "收盘前强制平仓，不留隔夜"
+    },
+    "liquidity_check": {
+     "mcap_b": 17.74,
+     "avg_vol": 1532379,
+     "floor_b": 2.0,
+     "verdict": "过闸"
+    },
+    "tape_check": {
+     "rsi14": 68.3,
+     "close_loc": 0.55,
+     "tape_flag": "",
+     "chg_pct": 0.87
+    },
+    "floor_check": {
+     "price": 126.7213,
+     "adv20_musd": 165.1,
+     "verdict": "过地板"
+    }
+   }
+  ],
+  "no_candidate_reason": "",
+  "rejected": [
+   {
+    "ticker": "BMNR",
+    "reason": "score 87最高但RSI78过热，距52周高-81%，追高风险大，需回踩确认"
+   },
+   {
+    "ticker": "ANF",
+    "reason": "score 69，单日暴涨31%，RSI77.6，距20日高-7.6%，动量透支，不追"
+   },
+   {
+    "ticker": "ILMN",
+    "reason": "score 72，RSI72.6超70，距52周高-50.5%，非强势票，需回踩"
+   }
+  ],
+  "hedge": {
+   "distribution_risk": "低",
+   "regime": "无明显风险",
+   "basis": "VIX 15.4低位，liquidation_watch false，risk_alerts空，trend_regime上升趋势，无对冲需求",
+   "legs": [],
+   "note": "风险低暂不对冲：VIX 15.4，liquidation_watch false，risk_alerts空，上升趋势延续"
+  },
+  "data_gaps": [
+   {
+    "item": "期权活跃度",
+    "status": "无实测",
+    "handling": "以20日成交额和换手率代理流动性，未使用期权链数据"
+   },
+   {
+    "item": "盘中实时报价",
+    "status": "采集为盘后IEX口径",
+    "handling": "关键位用相对表述，避免精确点位"
+   }
+  ],
+  "conclusion": "盘中指数偏弱但趋势未破，S1 TEM趋势强流动性好可轻仓，S4 FUTU资金迁徙跟随，S2观察AMC，S3空槽，风险低不对冲。"
+ }
+}

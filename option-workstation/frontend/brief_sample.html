@@ -1,0 +1,42 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>SCOUT · MORNING · 2026-08-05</title><style>
+:root{--bg:#e6e6e2;--panel:#ffffff;--line:#9c9c94;
+--ink:#1a1a18;--dim:#5a5a54;--faint:#8a8a82;--gold:#9a7b2f;--grn:#1f7a4c;
+--red:#c23b4a;--f1:12px;--f2:14px;--f3:16px;--f6:28px;
+--sans:-apple-system,"PingFang SC","Hiragino Sans GB",sans-serif;
+--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;padding:0 0 60px;background:var(--bg);color:var(--ink);font:var(--f2)/1.65 var(--sans)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+header{position:sticky;top:0;display:flex;gap:12px;align-items:center;height:48px;padding:0 14px;
+background:rgba(230,230,226,.97);border-bottom:1px solid var(--line);z-index:5}
+header h1{font:700 var(--f3) var(--mono);letter-spacing:.18em;margin:0}
+header .sub{color:var(--faint);font-size:var(--f1)}
+.banner{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:12px;padding:9px 14px;
+border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 1px 2px rgba(28,28,26,.06);font-size:var(--f1)}
+.banner b{font-size:var(--f2)}
+section{margin:0 12px 14px}
+h2{font-size:var(--f1);color:var(--dim);letter-spacing:.12em;margin:18px 2px 8px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px;box-shadow:0 1px 2px rgba(28,28,26,.08)}
+.badge{display:inline-block;border:1px solid var(--grn);color:var(--grn);border-radius:999px;
+padding:2px 12px;font:var(--f1) var(--mono)}
+.tick{display:flex;gap:12px;align-items:center;margin:8px 0 2px}
+.tick .sym{font:700 var(--f6) var(--mono);letter-spacing:.04em}
+.pill{border:1.5px solid var(--grn);color:var(--grn);border-radius:999px;padding:2px 14px;font:600 var(--f2) var(--mono)}
+.pill.put{border-color:var(--red);color:var(--red)}
+.kv{display:flex;justify-content:space-between;gap:14px;padding:4px 0;font-size:var(--f2);
+border-bottom:1px dashed rgba(28,28,26,.14)}
+.kv:last-child{border:0}
+.kv b{color:var(--dim);font-weight:500;white-space:nowrap}
+.kv span{text-align:right}
+details{margin-top:10px}
+summary{cursor:pointer;color:#2f5f9e;font-size:var(--f2)}
+.ev{border-left:2px solid var(--line);padding:6px 0 6px 12px;margin:8px 0}
+.ev .src{color:var(--gold);font:var(--f1) var(--mono)}
+.ev .why{color:var(--dim);font-size:var(--f1)}
+.empty{border:1px dashed var(--line);border-radius:12px;padding:20px;color:var(--dim);text-align:center;line-height:1.8}
+table{width:100%;border-collapse:collapse;font-size:var(--f1)}
+th{color:var(--dim);text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);font-weight:500}
+td{padding:5px 8px;border-bottom:1px solid rgba(28,28,26,.10);vertical-align:top}
+p{margin:7px 0}
+footer{margin:24px 12px 0;color:var(--faint);font-size:10px;font-family:var(--mono)}
+</style></head><body><header><h1>SCOUT</h1><span class="sub">morning · 2026-08-05 · 参谋作业,Lyra 拍板</span></header><div class="banner"><b>晨会交易任务单</b><span class="num">2026-08-05</span><span>SP500 <b>中性震荡</b></span><span>NASDAQ <b>看跌</b></span><span>置信 <b>中</b></span><span>出货风险 <b style="color:var(--red)">高</b></span></div><section><h2>一 · 大盘方向</h2><div class="card"><div class="kv"><b>逻辑</b><span>x</span></div><div class="kv"><b>关键位</b><span>y</span></div></div></section><section><h2>二 · 池内候选</h2><div class="empty">今日池内无事件驱动候选<br><span style="font-size:var(--f1)">事件已出尽</span></div></section><section><h2>三 · 对冲(拉高出货/黑天鹅雷达)</h2><div class="card"><div class="kv"><b>风险评估</b><span style="color:var(--red)">高</span></div><div class="kv"><b>依据</b><span>SP500 tape_flag=冲高回落(close_loc 0.27),fear_greed 82 极贪,GLD +2.1% 强势收高</span></div></div><div class="card"><span class="badge">HEDGE 2026-08-05</span><div class="tick"><span class="sym">GLD</span><span class="pill">CALL</span></div><div class="kv"><b>形态</b><span>单腿 call</span></div><div class="kv"><b>行权价逻辑</b><span>ATM 上一档</span></div><div class="kv"><b>到期</b><span>本周五</span></div><div class="kv"><b>入场条件</b><span>高开不回补</span></div><div class="kv"><b>止损</b><span>权利金 -30%</span></div><div class="kv"><b>作废条件</b><span>SP500 收复日高</span></div><div class="kv"><b>T+0 平仓</b><span>15:30 ET 前了结</span></div><details><summary>展开解析(证据出处)</summary><div class="ev"><div class="src">hedge_assets</div><div>GLD chg +2.1%,close_loc 0.9</div><div class="why">避险资金已在移动</div></div></details></div></section><section><h2>五 · 结论</h2><div class="card">防守日。</div></section><footer>build scout · UI=sample hedge 结构 + 白底灰框(禁全黑) · 渲染:_render_structured/_cand_card</footer></body></html>

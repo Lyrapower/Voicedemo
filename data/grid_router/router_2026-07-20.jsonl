@@ -1,0 +1,5 @@
+{"ts": "2026-07-21T04:53:29Z", "route": "core", "reason": "model:core", "model": "demo/aster", "chars": 7}
+{"ts": "2026-07-21T05:23:27Z", "route": "core", "reason": "model:core", "model": "demo/aster", "chars": 5}
+{"ts": "2026-07-21T05:53:49Z", "route": "cloud", "reason": "model:cloud", "model": "claude-code", "chars": 3459}
+{"ts": "2026-07-21T05:55:28Z", "route": "cloud", "reason": "slash:/scan", "model": "claude-code", "chars": 3453}
+{"ts": "2026-07-21T06:36:47Z", "route": "cloud", "reason": "slash:/scan", "model": "claude-code", "chars": 3453}
