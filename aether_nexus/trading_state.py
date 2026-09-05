@@ -287,11 +287,33 @@ def _brief_block(
     }
 
 
+def _decode_rvol_gate(value: Any) -> str:
+    if value is None:
+        return "warming"
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in ("pass", "fail", "warming", "auction"):
+            return v
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return "warming"
+    if n <= -1.5:
+        return "auction"
+    if n <= -0.5:
+        return "warming"
+    if n >= 0.5:
+        return "pass"
+    return "fail"
+
+
 def _heat_leader_cards(heat: list[dict]) -> list[dict[str, Any]]:
-    """First-screen = heat 表顶行(已按 RET 5M 高→低); 禁止另用 RET 1D 造成首卡≠热力第一行。"""
+    """First-screen = heat 表顶行; 只从 gate=pass 取。"""
     equity = [
         h for h in heat
-        if h.get("sym") and not str(h["sym"]).endswith("-USD") and h.get("ret5m") is not None
+        if h.get("sym") and not str(h["sym"]).endswith("-USD")
+        and h.get("ret5m") is not None
+        and str(h.get("rvol_gate") or "") == "pass"
     ]
     if equity:
         top, col, label = equity[0], "ret5m", "RET 5M"
@@ -381,10 +403,12 @@ def _heat_from_pulse(pulse: dict | None) -> tuple[list[dict], dict[str, Any]]:
         out.append({
             "sym": sym,
             "bfs": bool(e.get("bfs")),
-            "source": e.get("source") or ("scan" if e.get("bfs") else "watchlist"),
+            "source": e.get("source") or ("bfs" if e.get("bfs") else "watchlist"),
             "last": e.get("last"),
             "ret1d": (ret1d * 100) if ret1d is not None else None,
             "ret5m": (fac.get("ret_5m") or 0) * 100 if fac.get("ret_5m") is not None else None,
+            "rvol": fac.get("rvol"),
+            "rvol_gate": _decode_rvol_gate(fac.get("rvol_gate")),
             "ret30m": (fac.get("ret_30m") or 0) * 100 if fac.get("ret_30m") is not None else None,
             "mom_20d_pct": mom_pct,
             "rev_5d_pct": rev_pct,
@@ -419,16 +443,23 @@ def _heat_from_pulse(pulse: dict | None) -> tuple[list[dict], dict[str, Any]]:
         })
     heat_meta = {
         "quote_asof_et": meta.get("quote_asof_et"),
-        "pipeline_delay_s": meta.get("pipeline_delay_s"),
-        "refresh_s": refresh_s,
+        "data_age_s": meta.get("data_age_s"),
+        "pipeline_delay_s": meta.get("data_age_s"),
+        "refresh_s": int(meta.get("heat_refresh_s") or meta.get("refresh_s") or 60),
+        "heat_refresh_s": int(meta.get("heat_refresh_s") or meta.get("refresh_s") or 60),
+        "scan_refresh_s": int(meta.get("scan_refresh_s") or 300),
         "stale_s": HEAT_STALE_S,
         "factor_label": ((pulse or {}).get("factorTruthMeta") or {}).get("label") or "vs env",
         "factor_asof_et": meta.get("quote_asof_et"),
         "store_write_ts": meta.get("store_write_ts"),
         "store_age_s": meta.get("store_age_s"),
-        "face_period_s": meta.get("face_period_s") or refresh_s,
+        "face_period_s": meta.get("heat_face_period_s") or meta.get("face_period_s") or 60,
+        "heat_face_period_s": meta.get("heat_face_period_s") or 60,
+        "scan_face_period_s": meta.get("scan_refresh_s") or 300,
         "age_level": meta.get("age_level"),
-        "next_tick_in_s": meta.get("next_tick_in_s"),
+        "next_tick_in_s": meta.get("heat_next_tick_in_s") or meta.get("next_tick_in_s"),
+        "heat_next_tick_in_s": meta.get("heat_next_tick_in_s"),
+        "scan_next_tick_in_s": meta.get("scan_next_tick_in_s"),
     }
     return out, heat_meta
 
@@ -486,14 +517,16 @@ def _health_from_platform() -> list[dict]:
         "factor": "因子",
     }
     comps = plat.get("components") or {}
-    return [
-        {
+    out = []
+    for key, label in labels.items():
+        st = (comps.get(key) or {}).get("status")
+        out.append({
             "name": label,
-            "ok": (comps.get(key) or {}).get("status") == "ok",
+            "ok": st in ("ok", "closed"),
+            "status": st or "",
             "age": _age_str((comps.get(key) or {}).get("age_s")),
-        }
-        for key, label in labels.items()
-    ]
+        })
+    return out
 
 
 def _env_block(pulse: dict | None) -> dict:
@@ -545,10 +578,12 @@ def build_state(*, grid_store_path: str | None = None) -> dict[str, Any]:
             }
         heat, heat_meta = _heat_from_pulse(pulse)
         heat = [h for h in heat if str(h.get("sym") or "").upper() not in skip]
-        # RET 5M 高→低(空沉底); 与 UI 默认一致
+        # P1+G2: pass × RET 5M, then warming/auction, then fail; 空沉底
+        _gr = {"pass": 0, "warming": 1, "auction": 1, "fail": 2}
         heat = sorted(
             heat,
             key=lambda h: (
+                _gr.get(str(h.get("rvol_gate") or "warming"), 1),
                 0 if h.get("ret5m") is not None else 1,
                 -(float(h["ret5m"]) if h.get("ret5m") is not None else 0.0),
                 int(h.get("env_order") or 999),

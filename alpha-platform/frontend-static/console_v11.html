@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<!--
+  ALPHA PLATFORM · 运维台 · DEDUP v1 · 2026-07-27
+  变更:DEDUP 去克隆(拆 banner/三卡/实时信号/滤除明细); HEATTABLE RET1D+asof
+  接线契约 fetchState() → GET PLATFORM_API.stateUrl:
+    { version, mode, date, stats:{amStatus,amHits,pmStatus,pmHits,width5m,btc},
+      health[], env{}, signal:{quarantine,scanId}, heat[], heatMeta{}, hedge[] }
+  铁律:热力/名单 = 扫描候选置顶 + env 补位 · 永不出 TSLA/GOOGL
+  关键函数:fetchState · renderBfsBar · renderPlatRow · renderHealth · renderHeat · renderHedge
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ALPHA PLATFORM · 运维台</title>
+<style>
+  :root{
+    --font-body:-apple-system,"PingFang SC","SF Pro Text","Helvetica Neue",sans-serif;
+    --font-data:"SF Mono","JetBrains Mono",ui-monospace,Menlo,monospace;
+    --fs-caption:12px; --fs-meta:13px; --fs-body:15px; --fs-title:17px; --fs-price:22px;
+    --lh-display:1.2; --lh-body:1.5;
+    --bg:#0B0E14; --surface:#141824; --border:#232A38;
+    --text-1:#E8ECF4; --text-2:#8B95A7;
+    --gold:#E5B454; --green:#34C77B; --red:#E5484D; --link:#6CA8FF;
+    --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-6:24px;
+    --r-card:12px; --r-badge:6px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg); color:var(--text-1); font-family:var(--font-body);
+    font-size:var(--fs-body); line-height:var(--lh-body);
+    padding:var(--sp-4); padding-bottom:48px; max-width:560px; margin:0 auto}
+  .data{font-family:var(--font-data); font-variant-numeric:tabular-nums}
+  a{color:var(--link); text-decoration:none}
+
+  .brand{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:var(--sp-2)}
+  .brand h1{font-size:var(--fs-title); font-weight:700}
+  .brand .mode{font-size:var(--fs-caption); color:var(--text-2)}
+  .tabs{display:flex; gap:var(--sp-6); border-bottom:1px solid var(--border); margin-bottom:var(--sp-4)}
+  .tab{color:var(--text-2); font-size:var(--fs-body); padding:var(--sp-2) 0 var(--sp-3); min-height:44px}
+  .tab.on{color:var(--text-1); border-bottom:2px solid var(--gold)}
+
+  .banner{display:flex; align-items:center; gap:var(--sp-3); height:40px; padding:0 var(--sp-3);
+    margin-bottom:var(--sp-3); background:var(--surface); border:1px solid var(--border);
+    border-left:3px solid var(--gold); border-radius:var(--r-badge); font-size:var(--fs-meta);
+    white-space:nowrap; overflow-x:auto}
+  .banner .sep{color:var(--text-2)}
+
+  .bfs-bar{display:flex; align-items:center; gap:6px; height:40px; padding:0 var(--sp-3);
+    margin-bottom:var(--sp-3); background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--r-badge); font-size:var(--fs-meta); color:var(--text-2);
+    white-space:nowrap; overflow-x:auto}
+  .bfs-bar .data{color:var(--text-1)}
+  .qbadge{font-size:var(--fs-caption); color:var(--gold); border:1px solid var(--gold);
+    border-radius:var(--r-badge); padding:0 6px; margin-left:4px}
+
+  .plat-row{display:flex; gap:var(--sp-3); margin-bottom:var(--sp-4); flex-wrap:wrap}
+  .plat-chip{flex:1; min-width:120px; background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--r-card); padding:var(--sp-3)}
+  .plat-chip .lbl{font-size:var(--fs-caption); color:var(--text-2); margin-bottom:2px}
+  .plat-chip .val{font-size:var(--fs-price); font-weight:600}
+
+  .health{display:flex; flex-wrap:wrap; gap:var(--sp-3) var(--sp-6);
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--r-card);
+    padding:var(--sp-3) var(--sp-4); margin-bottom:var(--sp-4); font-size:var(--fs-meta)}
+  .health .lbl{color:var(--text-2); font-size:var(--fs-caption); margin-bottom:2px}
+  .health .st{display:flex; align-items:center; gap:6px}
+  .health .age{color:var(--text-2); font-size:var(--fs-caption)}
+  .health .env{flex-basis:100%; font-size:var(--fs-caption); color:var(--text-2)}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block}
+  .dot.bad{background:var(--red)}
+
+  section{margin-bottom:var(--sp-6)}
+  .sec-title{font-size:var(--fs-title); font-weight:600; margin-bottom:var(--sp-2)}
+  .sec-sub{font-size:var(--fs-meta); color:var(--text-2); font-weight:400}
+  .heat-asof{font-size:var(--fs-caption); color:var(--text-2); margin-bottom:var(--sp-2)}
+
+  .heat-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:var(--r-card); background:var(--surface)}
+  /* 桌面可横滑看全列;手机禁止 min-width,否则 RET 被裁成「+0」像乱序 */
+  table.heat{width:100%; border-collapse:collapse; font-size:var(--fs-meta); table-layout:fixed}
+  table.heat th{font-size:var(--fs-caption); font-weight:400; color:var(--text-2); text-align:right;
+    padding:var(--sp-3); cursor:pointer; user-select:none}
+  table.heat th:first-child{text-align:left}
+  table.heat th.sort-active{color:var(--gold)}
+  table.heat th .arr{color:var(--gold)}
+  table.heat td{padding:var(--sp-3); border-top:1px solid var(--border); text-align:right; font-family:var(--font-data);
+    white-space:nowrap; overflow:hidden; text-overflow:clip}
+  table.heat td:first-child{text-align:left; font-weight:600; white-space:normal}
+  table.heat td.ret{font-variant-numeric:tabular-nums; font-size:15px; font-weight:600}
+  table.heat tr.stale td{opacity:.72; color:var(--text-2)}
+  td.ret-fail{opacity:.45; color:var(--text-2)}
+  td.pos{background:rgba(52,199,123,.14); color:var(--green)}
+  td.neg{background:rgba(229,72,77,.14); color:var(--red)}
+  .bfs-chip{font-size:var(--fs-caption); border:1px solid var(--green); color:var(--green);
+    border-radius:var(--r-badge); padding:0 5px}
+  .bfs-chip.q{border-color:var(--gold); color:var(--gold)}
+  .age-badge{font-size:10px; color:var(--text-2)}
+  .sym-cell{display:flex; flex-direction:column; gap:4px; align-items:flex-start}
+  .sym-cell .t{font-weight:700; letter-spacing:.02em}
+  .sym-cell .meta{display:flex; flex-wrap:wrap; gap:4px; align-items:center}
+  .src-chip{font-size:10px; padding:1px 5px; border-radius:4px; border:1px solid var(--border); color:var(--text-2)}
+  .src-chip.scan{border-color:rgba(108,168,255,.5); color:var(--link)}
+  .src-chip.watchlist{border-color:rgba(229,180,84,.45); color:var(--gold)}
+  .verify-strip{font:11px var(--font-data); color:var(--gold); margin:0 0 10px; letter-spacing:.04em}
+  .scroll-hint{font-size:var(--fs-caption); color:var(--text-2); text-align:right; margin-top:6px}
+  @media (min-width:561px){
+    table.heat{min-width:560px; table-layout:auto}
+  }
+  @media (max-width:560px){
+    table.heat th, table.heat td{padding:10px 12px}
+    table.heat col.sym{width:58%}
+    table.heat col.ret{width:42%}
+    .scroll-hint{display:none}
+  }
+  #data-age{font-size:var(--fs-caption); font-family:var(--font-data); color:var(--text-2);
+    margin-bottom:var(--sp-3); padding:6px 10px; border:1px solid var(--border); border-radius:var(--r-badge)}
+  #data-age.amber{border-color:rgba(229,180,84,.55); color:var(--gold); background:rgba(229,180,84,.08)}
+  footer{margin-top:var(--sp-6); font-size:var(--fs-caption); color:var(--text-2); text-align:center}
+</style>
+</head>
+<body>
+  <div class="brand">
+    <h1>ALPHA PLATFORM</h1>
+    <div class="mode data" id="mode"></div>
+  </div>
+  <div class="tabs">
+    <span class="tab on">运维台</span>
+    <a class="tab" id="lnk-workshop" href="#">ALPHA 工坊</a>
+    <a class="tab" id="lnk-field" href="#">粒子场</a>
+  </div>
+
+  <div class="verify-strip" id="verify-strip">验版 heat-sort-v3 · 热力序=RET 5M↓ · 入口 /alpha/app/ · 手机只露标的+RET</div>
+  <div id="data-age" title="仪表宪法:store 最后写入 vs 本面最后读取;超周期×2 琥珀">数据龄 · …</div>
+  <div class="bfs-bar" id="bfs-bar"></div>
+  <div class="plat-row" id="plat-row"></div>
+  <div class="health" id="health"></div>
+
+  <section>
+    <div class="sec-title">因子热力 <span class="sec-sub" id="heat-sub">· RET 5M（quote 快照，近 300s）· 观察面 = env 9 + 席 8 · 量能门 RVOL≥1.5</span></div>
+    <div class="heat-asof" id="heat-asof"></div>
+    <div class="heat-wrap"><table class="heat" id="heat"></table></div>
+    <div class="scroll-hint">← 横向滑动 · 点表头切换排序</div>
+    <details style="margin-top:10px;font-size:12px;color:var(--text-2)">
+      <summary style="cursor:pointer" id="scan-cand-sum">涨榜未进席(0)</summary>
+      <div id="scan-cand-body" style="margin-top:8px"></div>
+    </details>
+  </section>
+
+  <section>
+    <div class="sec-title">避险观察 <span class="sec-sub">· 仅观察不构成建议</span></div>
+    <div id="hedge-body"></div>
+  </section>
+
+  <footer>ALPHA PLATFORM · 运维台 · build:2026-07-31-heat-sort-v3 · fetchState·renderBfsBar·renderPlatRow·renderHealth·renderHeat·renderHedge</footer>
+
+<script>
+window.PLATFORM_API = { stateUrl: (location.pathname.includes('/alpha/') ? '/alpha' : '') + '/api/state' };
+const _P = location.pathname.includes('/alpha/') ? '/alpha' : '';
+const _TS = location.hostname.endsWith('.ts.net');
+const ROUTES = {
+  trading: _TS ? `${location.protocol}//${location.hostname}/app/aether.html` : `${location.protocol}//${location.hostname}:8501/app/aether.html`,
+  workshop: `${_P}/app/react/#/workshop`,
+  field: `${_P}/app/react/#/field`
+};
+
+const MOCK = {
+  version:"v0.9-dedup", mode:"paper only · broker=false", date:"2026-07-27",
+  stats:{amStatus:"quarantine", amHits:2, pmStatus:"waiting", pmHits:0, width5m:"3/6", btc:64661},
+  health:[
+    {name:"加密",ok:true,age:"20s"},{name:"美股",ok:true,age:"19s"},
+    {name:"名单",ok:true,age:"19s"},{name:"因子",ok:true,age:"19s"},{name:"BFS",ok:true,age:"19s"}
+  ],
+  env:{count:4, list:"NVDA, PLTR, AMZN, NOW"},
+  signal:{quarantine:true, scanId:"#46435"},
+  heat:[
+    {sym:"ETH-USD",last:1934,ret1d:1.48,ret5m:null,ret30m:null,bid:1934,ask:1934,age_s:30,stale:false,env_order:999},
+    {sym:"NVDA",last:198.92,ret1d:-1.58,ret5m:-0.57,ret30m:-1.41,vol1m:0.13,age_s:120,stale:true,env_order:0,bfs:false},
+    {sym:"PLTR",last:127.23,ret1d:0.42,ret5m:0.11,ret30m:-0.48,vol1m:0.18,age_s:120,stale:true,env_order:1},
+    {sym:"BTC-USD",last:64660,ret1d:0.44,ret5m:null,ret30m:null,bid:64657,ask:64660,age_s:30,stale:false,env_order:999}
+  ],
+  heatMeta:{quote_asof_et:"10:46:32",pipeline_delay_s:42,refresh_s:300,stale_s:600},
+  hedge:[]
+};
+
+const $=s=>document.querySelector(s);
+const el=(t,c,h)=>{const n=document.createElement(t);if(c)n.className=c;if(h!=null)n.innerHTML=h;return n;};
+const fmt=(n,d=2)=>Number(n).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
+
+async function fetchState(){
+  try{const r=await fetch(window.PLATFORM_API.stateUrl,{cache:"no-store"}); if(!r.ok)throw 0; return {live:true,data:await r.json()};}
+  catch(_){return {live:false,data:MOCK};}
+}
+
+function setFallbackBanner(live){
+  let fb=$("#fallback-banner");
+  if(!fb){ fb=el("div","banner"); fb.id="fallback-banner"; $("#bfs-bar")?.before(fb); }
+  if(!live){ fb.hidden=false; fb.replaceChildren(el("span",null,"回退态"),el("span","sep","·"),el("span",null,"MOCK · API 不可达")); }
+  else fb.hidden=true;
+}
+
+function renderBfsBar(st){
+  const q=st.stats.bfsAm?.status==="quarantine" || st.stats.amStatus==="quarantine";
+  const bar=$("#bfs-bar");
+  bar.replaceChildren();
+  if(st.stats.bfsAm?.chain){
+    bar.append(document.createTextNode("BFS AM · "));
+    bar.append(el("span","data", st.stats.bfsAm.chain));
+  } else {
+    const am=st.stats.amStatus==="waiting" ? "未扫" : `${st.stats.amHits||0}命中`;
+    bar.append(document.createTextNode("BFS · AM "));
+    bar.append(el("span","data",am));
+  }
+  if(q) bar.append(el("span","qbadge","隔离中"));
+  bar.append(document.createTextNode(" · PM "));
+  const pm=st.stats.bfsPm?.status==="waiting" ? "未扫" : (st.stats.bfsPm?.chain || `${st.stats.pmHits||0}命中`);
+  bar.append(el("span","data", typeof pm==="string" && pm.includes("原始") ? pm : pm));
+  bar.append(document.createTextNode(" · "));
+  bar.append(el("span","data",st.signal?.scanId||st.stats.bfsAm?.scanId||"#?"));
+  bar.append(document.createTextNode(" → "));
+  const a=el("a",null,"决策面"); a.href=ROUTES.trading; bar.append(a);
+}
+
+function renderPlatRow(st){
+  const row=$("#plat-row"); row.replaceChildren();
+  function chip(l,v){ const b=el("div","plat-chip"); b.append(el("div","lbl",l),el("div","val data",v)); return b; }
+  row.append(chip("5M 宽度", st.stats.width5m||"—"));
+  row.append(chip("BTC", st.stats.btc!=null?`$${fmt(st.stats.btc,0)}`:"—"));
+}
+
+function renderHealth(st){
+  const hl=$("#health"); hl.replaceChildren();
+  (st.health||[]).forEach(h=>{
+    const b=el("div"); b.append(el("div","lbl",h.name));
+    const stx=el("div","st"); stx.append(el("span","dot"+(h.ok?"":" bad")), el("span",null,h.ok?"ok":"fail"), el("span","age",h.age));
+    b.append(stx); hl.append(b);
+  });
+  // 名单展示与热力同序(RET 5M 高→低),避免「名单一行乱、热力又一种序」
+  const heatSyms=(st.heat||[]).filter(h=>h.sym&&!String(h.sym).endsWith("-USD")).map(h=>h.sym);
+  const list=heatSyms.length?heatSyms.join(", "):(st.env?.list||"—");
+  const cnt=heatSyms.length||st.env?.count||0;
+  if(st.env||heatSyms.length) hl.append(el("div","env",`名单 heat序 <span class="data">${cnt}</span> · <span class="data">${list}</span>`));
+}
+
+let _heatState=null, _heatSort={col:"ret5m", asc:false}; // 默认 RET 5M 高→低
+// 手机首屏只露 标的+RET5M+最新,避免横滑看错列当「乱序」
+const HEAT_COLS=[
+  {key:"sym",label:"标的",type:"sym"},
+  {key:"ret5m",label:"RET 5M",type:"num",pct:true},
+  {key:"rvol",label:"RVOL",type:"num",mobileHide:true},
+  {key:"last",label:"最新",type:"num",mobileHide:true},
+  {key:"ret30m",label:"RET 30M",type:"num",pct:true,mobileHide:true},
+  {key:"vol1m",label:"VOL 1M",type:"num",pct:true,mobileHide:true},
+  {key:"ret1d",label:"RET 1D",type:"num",pct:true,mobileHide:true},
+  {key:"bid",label:"BID",type:"num",mobileHide:true},
+  {key:"ask",label:"ASK",type:"num",mobileHide:true},
+  {key:"env_order",label:"名单",type:"num"},
+];
+const _isNarrow=()=>window.matchMedia && window.matchMedia("(max-width:560px)").matches;
+
+function _heatVal(row,col){
+  if(col.key==="sym") return row.sym||"";
+  const v=row[col.key]; if(v==null||v==="") return null;
+  const n=Number(v); return Number.isFinite(n)?n:null;
+}
+function _gateRank(r){
+  const g=r.rvol_gate||r.gate;
+  if(g==="pass"||g===1) return 0;
+  if(g==="fail"||g===0) return 2;
+  return 1;
+}
+function _sortedHeat(rows){
+  const col=HEAT_COLS.find(c=>c.key===_heatSort.col)||HEAT_COLS.find(c=>c.key==="ret5m");
+  const dir=_heatSort.asc?1:-1; // asc=false → 高→低
+  return rows.slice().sort((a,b)=>{
+    if(col.key==="ret5m" && !_heatSort.asc){
+      const gr=_gateRank(a)-_gateRank(b);
+      if(gr) return gr;
+    }
+    const av=_heatVal(a,col), bv=_heatVal(b,col);
+    if(col.type==="sym"){
+      const cmp=String(av).localeCompare(String(bv));
+      return dir*cmp;
+    }
+    // 空值永远沉底(不参与 reverse 顶到最上)
+    if(av==null&&bv==null) return (a.env_order??999)-(b.env_order??999);
+    if(av==null) return 1;
+    if(bv==null) return -1;
+    if(av===bv) return (a.env_order??999)-(b.env_order??999);
+    return av<bv?-dir:dir;
+  });
+}
+function relAge(s){
+  if(s==null) return "";
+  if(s<3600) return `${Math.round(s/60)}m前`;
+  return `${Math.round(s/3600)}h前`;
+}
+
+function renderDataAge(st){
+  const elAge=$("#data-age"); if(!elAge) return;
+  const sa=st.syncAge||{}, meta=st.heatMeta||{};
+  const storeAge=sa.store_age_s!=null?sa.store_age_s:meta.store_age_s;
+  const period=sa.face_period_s||meta.heat_face_period_s||meta.face_period_s||meta.heat_refresh_s||meta.refresh_s||60;
+  const amber=sa.age_level==="amber"||meta.age_level==="amber"||(storeAge!=null&&storeAge>period*2);
+  const heatTick=sa.heat_next_tick_in_s??meta.heat_next_tick_in_s??meta.next_tick_in_s;
+  const scanTick=sa.scan_next_tick_in_s??meta.scan_next_tick_in_s;
+  const readAge=sa.read_ts!=null?Math.max(0,Math.floor(Date.now()/1000-sa.read_ts)):null;
+  elAge.className=amber?"amber":"";
+  elAge.textContent=`数据龄 · store写 ${storeAge!=null?storeAge+"s":"—"} · 本面读 ${readAge!=null?readAge+"s":"—"} · 周期 ${period}s`
+    +(amber?" · 琥珀(>2×)":"")+(heatTick!=null?` · 下轮热力 T-${heatTick}s`:"")+(scanTick!=null?` · 下轮扫描 T-${scanTick}s`:"");
+}
+
+function renderHeat(st){
+  _heatState=st;
+  const meta=st.heatMeta||{};
+  const heatTick=meta.heat_next_tick_in_s??meta.next_tick_in_s;
+  const scanTick=meta.scan_next_tick_in_s;
+  const sub=$("#heat-sub");
+  if(sub) sub.textContent=`· RET 5M（quote 快照，近 300s）· 观察面 = env 9 + 席 8 · 量能门 RVOL≥1.5`
+    +(heatTick!=null?` · 下轮热力 T-${heatTick}s`:"")+(scanTick!=null?` · 下轮扫描 T-${scanTick}s`:"");
+  const asof=$("#heat-asof");
+  asof.textContent = meta.quote_asof_et
+    ? `报价 ${meta.quote_asof_et} ET · 数据龄 ${meta.data_age_s??meta.pipeline_delay_s??"—"}s`+(heatTick!=null?` · 下轮热力 T-${heatTick}s`:"")
+    : (heatTick!=null?`下轮热力 T-${heatTick}s`:"");
+  const ht=$("#heat"); ht.replaceChildren();
+  const q=st.signal?.quarantine;
+  const narrow=_isNarrow();
+  const cols=HEAT_COLS.filter(c=>!c.hidden && !(narrow && c.mobileHide));
+  const thead=el("tr");
+  cols.forEach(c=>{
+    const th=el("th", _heatSort.col===c.key?"sort-active":"", c.label);
+    if(_heatSort.col===c.key) th.append(el("span","arr", _heatSort.asc?"▲":"▼"));
+    th.addEventListener("click",()=>{ if(_heatSort.col===c.key) _heatSort.asc=!_heatSort.asc; else {_heatSort.col=c.key;_heatSort.asc=false;} renderHeat(_heatState); });
+    thead.append(th);
+  });
+  ht.append(thead);
+  function pct(v, retCol){
+    if(v==null) return el("td", retCol?"ret":null,"—");
+    const td=el("td", (v>0?"pos":v<0?"neg":"")+(retCol?" ret":""), (v>0?"+":"")+fmt(v)+"%");
+    return td;
+  }
+  function pctVol(v){ if(v==null) return el("td",null,"—"); return el("td",null,fmt(v)+"%"); }
+  // equity 在前(已按 RET5M↓), crypto 沉底 — 视觉上不再和股票搅在一起
+  const rows=_sortedHeat(st.heat||[]);
+  const eq=rows.filter(r=>!String(r.sym||"").endsWith("-USD"));
+  const crypto=rows.filter(r=>String(r.sym||"").endsWith("-USD"));
+  [...eq, ...crypto].forEach(r=>{
+    const tr=el("tr", r.stale?"stale":"");
+    cols.forEach(c=>{
+      if(c.key==="sym"){
+        const td0=el("td");
+        const box=el("div","sym-cell");
+        const age=r.stale&&r.age_s!=null?relAge(r.age_s):"";
+        box.append(el("div","t", r.sym||"—"));
+        const meta=el("div","meta");
+        if(r.bfs) meta.append(el("span","bfs-chip"+(q?" q":""),"BFS"));
+        const src=r.source||(r.bfs?"scan":"watchlist");
+        meta.append(el("span","src-chip "+src, src));
+        if(age && !narrow) meta.append(el("span","age-badge",age));
+        box.append(meta);
+        if(age) td0.title=age;
+        td0.append(box);
+        tr.append(td0); return;
+      }
+      if(c.key==="last"){ tr.append(el("td",null,r.last!=null?fmt(r.last):"—")); return; }
+      if(c.key==="vol1m"){ tr.append(pctVol(r.vol1m)); return; }
+      if(c.key==="ret5m"){
+        const cell=pct(r.ret5m, true);
+        if(r.rvol_gate==="fail") cell.className=(cell.className?cell.className+" ":"")+"ret-fail";
+        tr.append(cell); return;
+      }
+      if(c.key==="rvol"){
+        tr.append(el("td", r.rvol_gate==="fail"?"ret-fail":"", r.rvol!=null?fmt(r.rvol,1):"—")); return;
+      }
+      if(c.pct){ tr.append(pct(r[c.key], c.key==="ret5m")); return; }
+      if(c.key==="bid"){ tr.append(el("td",null,r.bid!=null?fmt(r.bid):"—")); return; }
+      if(c.key==="ask"){ tr.append(el("td",null,r.ask!=null?fmt(r.ask):"—")); return; }
+      tr.append(el("td",null,"—"));
+    });
+    ht.append(tr);
+  });
+  const hint=$(".scroll-hint");
+  if(hint) hint.textContent=narrow?"手机列=标的 + RET 5M↓":"← 横向滑动看更多列 · 点表头切换排序";
+  const cands=st.scan_candidates||[];
+  const sum=$("#scan-cand-sum"); if(sum) sum.textContent=`涨榜未进席(${cands.length})`;
+  const body=$("#scan-cand-body");
+  if(body){
+    body.replaceChildren();
+    if(!cands.length){ body.textContent="无超额扫描候选"; }
+    else {
+      const tbl=el("table","heat"); const hr=el("tr");
+      ["标的","来源","score","last_on"].forEach(h=>hr.append(el("th",null,h)));
+      tbl.append(hr);
+      cands.forEach(r=>{
+        const tr=el("tr");
+        tr.append(el("td",null,r.symbol||"—"), el("td",null,r.label||r.source||"movers"),
+          el("td",null,r.score!=null?fmt(r.score,2):"—"), el("td",null,r.last_on||"—"));
+        tbl.append(tr);
+      });
+      body.append(tbl);
+    }
+  }
+}
+
+function renderHedge(st){
+  const hb=$("#hedge-body"); hb.replaceChildren();
+  if(!st.hedge?.length){ hb.append(el("div",null,"避险池未配置")); return; }
+  const wrap=el("div","heat-wrap"); const ht=el("table","heat");
+  const hrow=el("tr"); ["标的","RET 5M▼","最新","RET 30M"].forEach(h=>hrow.append(el("th",null,h)));
+  ht.append(hrow);
+  function pct(v){ if(v==null)return el("td",null,"—"); return el("td", v>0?"pos":v<0?"neg":"", (v>0?"+":"")+fmt(v)+"%"); }
+  const hedge=st.hedge.slice().sort((a,b)=>{
+    const av=a.ret5m!=null?Number(a.ret5m):null, bv=b.ret5m!=null?Number(b.ret5m):null;
+    if(av==null&&bv==null) return String(a.sym||"").localeCompare(String(b.sym||""));
+    if(av==null) return 1; if(bv==null) return -1;
+    return bv-av;
+  });
+  hedge.forEach(r=>{
+    const tr=el("tr");
+    tr.append(el("td",null,r.sym), pct(r.ret5m), el("td",null,r.last!=null?fmt(r.last):"—"), pct(r.ret30m));
+    ht.append(tr);
+  });
+  wrap.append(ht); hb.append(wrap);
+}
+
+function render(st,live){
+  if(!st?.stats||!st.heat){ setFallbackBanner(true); return; }
+  setFallbackBanner(live);
+  if(!live){ // A1: API 不可达 — do NOT render MOCK data as live. Show error placeholders.
+    ["data-age","bfs-bar","plat-row","health","heat","hedge"].forEach(id=>{
+      const e=$("#"+id); if(e) e.replaceChildren(el("div","err","API 不可达 · 数据未刷新"));
+    });
+    return;
+  }
+  $("#mode").textContent=`${st.version} · ${st.mode}`;
+  $("#lnk-workshop").href=ROUTES.workshop;
+  $("#lnk-field").href=ROUTES.field;
+  renderDataAge(st); renderBfsBar(st); renderPlatRow(st); renderHealth(st); renderHeat(st); renderHedge(st);
+}
+
+fetchState().then(({live,data:st})=>render(st,live));
+setInterval(()=>fetchState().then(({live,data:st})=>render(st,live)), 12000);
+</script>
+</body>
+</html>

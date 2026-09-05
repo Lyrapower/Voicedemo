@@ -206,6 +206,7 @@
   table.movers td{padding:var(--sp-3); border-top:1px solid var(--border); text-align:right; font-family:var(--font-data)}
   table.movers td:first-child{text-align:left; font-weight:600}
   table.movers tr.stale td{opacity:.72; color:var(--text-2)}
+  td.ret-fail{opacity:.45; color:var(--text-2)}
   .bfs-note{font-size:var(--fs-caption); color:var(--text-2); margin-top:4px}
 
   /* ── 热力表 ── */
@@ -308,7 +309,7 @@
     <section id="sec-signals"></section>
 
     <section id="movers-sec">
-      <div class="sec-title">SP500 全域 · Daily Movers · Top 20</div>
+      <div class="sec-title">标普 ∪ 流动性宇宙 · Daily Movers · RET 1D</div>
       <div class="movers-note" id="movers-asof"></div>
       <div class="movers-toggle">
         <button type="button" id="movers-up" class="active">涨榜</button>
@@ -319,7 +320,7 @@
     </section>
 
     <section id="heat-sec">
-      <div class="sec-title">env 观察面 <span class="sec-sub" id="env-sub">· SP500 候选池 · 1-5 分钟</span></div>
+      <div class="sec-title">env 观察面 <span class="sec-sub" id="env-sub">· RET 5M（quote 快照，近 300s）· 观察面 = env 9 + 席 8 · 量能门 RVOL≥1.5</span></div>
       <div class="bfs-note">BFS 徽章 = 当日 AM 命中,不是排序键</div>
       <div class="heat-asof" id="heat-asof"></div>
       <div class="heat-wrap"><table class="heat" id="heat"></table></div>
@@ -599,6 +600,7 @@ const HEAT_COLS=[
   {key:"sym",label:"标的",type:"sym"},
   {key:"last",label:"最新",type:"num"},
   {key:"ret5m",label:"RET 5M",type:"num",pct:true},
+  {key:"rvol",label:"RVOL",type:"num"},
   {key:"ret30m",label:"RET 30M",type:"num",pct:true},
   {key:"ret1d",label:"RET 1D",type:"num",pct:true},
   {key:"mom_20d_pct",label:"MOM_20D",type:"num",factor:true},
@@ -606,7 +608,7 @@ const HEAT_COLS=[
   {key:"vol_20d_pct",label:"VOL_20D",type:"num",factor:true},
   {key:"bid",label:"BID",type:"num"},
   {key:"ask",label:"ASK",type:"num"},
-  {key:"env_order",label:"env",type:"num",hidden:true},
+  {key:"env_order",label:"名单",type:"num"},
 ];
 
 function _heatVal(row,col){
@@ -618,10 +620,20 @@ function _heatVal(row,col){
   return Number.isFinite(n)?n:null;
 }
 
+function _gateRank(r){
+  const g=r.rvol_gate||r.gate;
+  if(g==="pass"||g===1) return 0;
+  if(g==="fail"||g===0) return 2;
+  return 1;
+}
 function _sortedHeat(rows){
   const col=HEAT_COLS.find(c=>c.key===_heatSort.col)||HEAT_COLS.find(c=>c.key==="ret5m");
   const dir=_heatSort.asc?1:-1; // asc=false → 高→低; 禁止 reverse(会把空值顶到最上)
   return rows.slice().sort((a,b)=>{
+    if(col.key==="ret5m" && ! _heatSort.asc){
+      const gr=_gateRank(a)-_gateRank(b);
+      if(gr) return gr;
+    }
     const av=_heatVal(a,col), bv=_heatVal(b,col);
     if(col.type==="sym"){
       const cmp=String(av).localeCompare(String(bv));
@@ -641,7 +653,7 @@ function renderDailyMovers(st){
   const asofEl=$("#movers-asof");
   const stale=meta.stale||meta.status==="stale"||meta.status==="empty";
   if(meta.asof_et){
-    asofEl.textContent=`asof ${meta.asof_et} ET · ${meta.with_data||0}/${meta.universe||"?"} 有数据${stale?" · 陈旧":""}`;
+    asofEl.textContent=`universe=${meta.universe??"?"} / with_data=${meta.with_data??0} · asof ${meta.asof_et} ET${stale?" · 陈旧":""}`;
   } else {
     asofEl.textContent=stale?"Daily Movers 管线断 · 陈旧标":"等待 worker 计算 SP500 daily bars…";
   }
@@ -703,16 +715,17 @@ function renderHeat(st){
   const env=st.env||{};
   const envN=env.count||(st.heat||[]).filter(h=>!String(h.sym||"").endsWith("-USD")).length;
   const meta=st.heatMeta||{};
-  const tick=meta.next_tick_in_s;
-  $("#env-sub").textContent=`· heat(${envN}) · tick ${meta.refresh_s||300}s · ${(meta.factor_label)||"vs env"}`
-    +(tick!=null?` · 下轮 tick T-${tick}s`:"");
+  const heatTick=meta.heat_next_tick_in_s??meta.next_tick_in_s;
+  const scanTick=meta.scan_next_tick_in_s;
+  $("#env-sub").textContent=`· RET 5M（quote 快照，近 300s）· 观察面 = env 9 + 席 8 · 量能门 RVOL≥1.5 · heat(${envN})`
+    +(heatTick!=null?` · 下轮热力 T-${heatTick}s`:"")+(scanTick!=null?` · 下轮扫描 T-${scanTick}s`:"");
   const asof=$("#heat-asof");
   if(meta.quote_asof_et){
-    const delay = meta.pipeline_delay_s!=null ? ` · 管线延迟 ${meta.pipeline_delay_s}s` : "";
+    const delay = (meta.data_age_s??meta.pipeline_delay_s)!=null ? ` · 数据龄 ${meta.data_age_s??meta.pipeline_delay_s}s` : "";
     const fac = meta.factor_asof_et ? ` · 因子 asof ${meta.factor_asof_et}` : "";
-    const t = tick!=null ? ` · 下轮 tick T-${tick}s` : "";
+    const t = heatTick!=null ? ` · 下轮热力 T-${heatTick}s` : "";
     asof.textContent = `报价 ${meta.quote_asof_et} ET${delay}${fac}${t}`;
-  } else asof.textContent = tick!=null ? `下轮 tick T-${tick}s` : "";
+  } else asof.textContent = heatTick!=null ? `下轮热力 T-${heatTick}s` : "";
 
   const ht=$("#heat"); ht.replaceChildren();
   const rows=st.heat||[];
@@ -757,6 +770,15 @@ function renderHeat(st){
         return;
       }
       if(c.key==="last"){ tr.append(el("td",null,r.last!=null?fmt(r.last):"—")); return; }
+      if(c.key==="ret5m"){
+        const cell=pctCell(r.ret5m);
+        if(r.rvol_gate==="fail") cell.className=(cell.className?cell.className+" ":"")+"ret-fail";
+        tr.append(cell); return;
+      }
+      if(c.key==="rvol"){
+        const cell=el("td", r.rvol_gate==="fail"?"ret-fail":"", r.rvol!=null?fmt(r.rvol,1):"—");
+        tr.append(cell); return;
+      }
       if(c.pct){ tr.append(pctCell(r[c.key])); return; }
       if(c.factor){ tr.append(factorCell(r[c.key])); return; }
       if(c.key==="bid"){ tr.append(el("td",null,r.bid!=null?fmt(r.bid):"—")); return; }
