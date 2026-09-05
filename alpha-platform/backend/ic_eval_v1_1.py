@@ -44,12 +44,18 @@ def _load_universe(path: str) -> list[str]:
 
 
 def load_bars(db_path: str, start: str | None = None, end: str | None = None,
-              symbols: list[str] | None = None) -> dict[str, list[Bar]]:
+              symbols: list[str] | None = None, exclude_src: tuple[str, ...] = ()) -> dict[str, list[Bar]]:
     con = sqlite3.connect(db_path)
     q = "SELECT ts,symbol,o,h,l,c,v FROM daily_bars"
     args: list = []
+    clauses: list[str] = []
     if symbols:
-        q += " WHERE symbol IN (%s)" % ",".join("?" * len(symbols)); args += symbols
+        clauses.append("symbol IN (%s)" % ",".join("?" * len(symbols))); args += symbols
+    if exclude_src:
+        clauses.append("(" + " AND ".join("IFNULL(src,'') != ?" for _ in exclude_src) + ")")
+        args += list(exclude_src)
+    if clauses:
+        q += " WHERE " + " AND ".join(clauses)
     q += " ORDER BY symbol, ts"
     out: dict[str, list[Bar]] = defaultdict(list)
     for ts, sym, o, h, l, c, v in con.execute(q, args):
@@ -220,6 +226,39 @@ def evaluate(bars: dict[str, list[Bar]], factor: Callable, horizon: int) -> dict
     return s
 
 
+def evaluate_regime(bars: dict[str, list[Bar]], factor: Callable, horizon: int,
+                    labels: dict[str, str], min_n: int | None = None) -> dict:
+    """Per-bucket IC. min_n defaults to MIN_N; thicker sample does not lower the gate."""
+    import regime as RG
+    min_n = MIN_N if min_n is None else min_n
+    full = evaluate(bars, factor, horizon)
+    fv = factor(bars)
+    fwd = forward_returns(bars, horizon)
+    by_b: dict[str, list[tuple[str, float, int]]] = defaultdict(list)
+    ics = daily_ic(fv, fwd)
+    for d, ic, n in ics:
+        lab = labels.get(d)
+        if not lab or lab == "data_short":
+            continue
+        by_b[lab].append((d, ic, n))
+    buckets = {}
+    for lab, rows in sorted(by_b.items()):
+        s = summarize(rows)
+        s["horizon"] = horizon
+        s["daily"] = rows
+        mid = max(1, len(rows) // 2)
+        s["half_a"] = summarize(rows[:mid])
+        s["half_b"] = summarize(rows[mid:])
+        v, why = RG.bucket_verdict(
+            s["n_obs"], s["ic_mean"], s["ic_t"], rows,
+            min_n=min_n, full_mean=full.get("ic_mean"), bucket=lab,
+        )
+        s["verdict"] = v
+        s["reason"] = why
+        buckets[lab] = s
+    return {"full": full, "buckets": buckets, "min_n": min_n}
+
+
 def write_lineage(summary: dict, lineage_id: int, receipt_path: str, verdict: str, reason: str) -> int | None:
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -331,6 +370,8 @@ def _main(argv: list[str]) -> int:
     ap.add_argument("--start"); ap.add_argument("--end"); ap.add_argument("--lineage-id", type=int)
     ap.add_argument("--receipt", default="")
     ap.add_argument("--universe", default=None, help="json 文件 {symbols:[...]} 或 [...];run 必填,不默认全表")
+    ap.add_argument("--regime", default=None, choices=["trend", "breadth", "vol"],
+                    help="分桶 IC;缺省则主路径不变")
     a = ap.parse_args(argv[1:])
     if a.cmd == "selftest":
         return selftest()
@@ -344,7 +385,29 @@ def _main(argv: list[str]) -> int:
         print("--universe required (json 文件,不默认全表)"); return 2
     symbols = _load_universe(a.universe)
     t0 = time.time()
-    bars = load_bars(a.db, a.start, a.end, symbols=symbols)
+    need = list(dict.fromkeys(symbols + (["SPY"] if a.regime in ("trend", "vol", "breadth") else [])))
+    excl = ("alpaca_iex",) if a.regime else ()
+    bars = load_bars(a.db, a.start, a.end, symbols=need, exclude_src=excl)
+    if a.regime:
+        import regime as RG
+        labels = RG.labels_for(a.regime, bars, universe=symbols)
+        univ_bars = {s: bars[s] for s in symbols if s in bars}
+        pack = evaluate_regime(univ_bars, FACTORS[a.factor], a.horizon, labels)
+        print(json.dumps({
+            "factor": a.factor, "horizon": a.horizon, "regime": a.regime, "min_n": pack["min_n"],
+            "full": {k: pack["full"].get(k) for k in ("n_obs", "ic_mean", "ic_std", "ic_t")},
+            "buckets": {
+                lab: {
+                    "n_obs": s["n_obs"], "ic_mean": s["ic_mean"], "ic_t": s["ic_t"],
+                    "half_a": s["half_a"].get("ic_mean"), "half_b": s["half_b"].get("ic_mean"),
+                    "verdict": s["verdict"], "reason": s["reason"],
+                } for lab, s in pack["buckets"].items()
+            },
+            "elapsed": round(time.time() - t0, 1),
+        }, ensure_ascii=False, default=str))
+        if a.lineage_id:
+            _write_regime_evals(a.lineage_id, a.regime, pack, a.receipt)
+        return 0
     s = evaluate(bars, FACTORS[a.factor], a.horizon)
     v, reason = auto_verdict(s)
     print(f"factor={a.factor} h={a.horizon} symbols={len(bars)} days={s['n_obs']} window={s.get('first')}..{s.get('last')}")
@@ -356,6 +419,36 @@ def _main(argv: list[str]) -> int:
         eid = write_lineage(s, a.lineage_id, a.receipt, v, reason)
         print(f"lineage evals id={eid}")
     return 0
+
+
+def _ensure_regime_cols(con: sqlite3.Connection) -> None:
+    cols = {r[1] for r in con.execute("PRAGMA table_info(evals)")}
+    if "regime" not in cols:
+        con.execute("ALTER TABLE evals ADD COLUMN regime TEXT")
+    if "bucket" not in cols:
+        con.execute("ALTER TABLE evals ADD COLUMN bucket TEXT")
+
+
+def _write_regime_evals(lineage_id: int, regime: str, pack: dict, receipt: str) -> None:
+    try:
+        import factor_lineage_v1_1 as FL
+    except Exception as e:
+        print(f"[ic_eval] lineage 不可用:{e}")
+        return
+    con = FL.connect()
+    _ensure_regime_cols(con)
+    con.commit()
+    for lab, s in pack["buckets"].items():
+        v = s["verdict"]
+        stored = v if v in FL.VERDICTS else ("watch" if v.startswith("watch") or v == "regime_flip" else "reject")
+        eid = FL.record_eval(
+            lineage_id, s.get("first") or "", s.get("last") or "", f"{s.get('horizon')}d",
+            s["n_obs"], s["ic_mean"], s["ic_std"], "close_to_close",
+            None, receipt, stored, s.get("reason") or "",
+        )
+        con.execute("UPDATE evals SET regime=?, bucket=? WHERE id=?", (regime, lab, eid))
+    con.commit()
+    con.close()
 
 
 if __name__ == "__main__":
