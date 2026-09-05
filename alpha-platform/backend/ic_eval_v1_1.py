@@ -52,8 +52,10 @@ def load_bars(db_path: str, start: str | None = None, end: str | None = None,
     if symbols:
         clauses.append("symbol IN (%s)" % ",".join("?" * len(symbols))); args += symbols
     if exclude_src:
-        clauses.append("(" + " AND ".join("IFNULL(src,'') != ?" for _ in exclude_src) + ")")
-        args += list(exclude_src)
+        cols = {r[1] for r in con.execute("PRAGMA table_info(daily_bars)")}
+        if "src" in cols:
+            clauses.append("(" + " AND ".join("IFNULL(src,'') != ?" for _ in exclude_src) + ")")
+            args += list(exclude_src)
     if clauses:
         q += " WHERE " + " AND ".join(clauses)
     q += " ORDER BY symbol, ts"
@@ -370,8 +372,8 @@ def _main(argv: list[str]) -> int:
     ap.add_argument("--start"); ap.add_argument("--end"); ap.add_argument("--lineage-id", type=int)
     ap.add_argument("--receipt", default="")
     ap.add_argument("--universe", default=None, help="json 文件 {symbols:[...]} 或 [...];run 必填,不默认全表")
-    ap.add_argument("--regime", default=None, choices=["trend", "breadth", "vol"],
-                    help="分桶 IC;缺省则主路径不变")
+    ap.add_argument("--regime", default=None, choices=["trend", "breadth", "width", "vol"],
+                    help="v4 联合 HAC;缺省则主路径 evaluate() 不变。不写 evals。")
     a = ap.parse_args(argv[1:])
     if a.cmd == "selftest":
         return selftest()
@@ -390,23 +392,23 @@ def _main(argv: list[str]) -> int:
     bars = load_bars(a.db, a.start, a.end, symbols=need, exclude_src=excl)
     if a.regime:
         import regime as RG
-        labels = RG.labels_for(a.regime, bars, universe=symbols)
+        import regime_stats as RS
+        kind = "width" if a.regime == "breadth" else a.regime
+        labels = RG.labels_for(kind, bars, universe=symbols)
         univ_bars = {s: bars[s] for s in symbols if s in bars}
-        pack = evaluate_regime(univ_bars, FACTORS[a.factor], a.horizon, labels)
+        full = evaluate(univ_bars, FACTORS[a.factor], a.horizon)
+        y = {d: ic for d, ic, _n in full["daily"]}
+        dates = sorted(y)
+        jt = RS.joint_test(dates, y, labels, kind, a.horizon)
         print(json.dumps({
-            "factor": a.factor, "horizon": a.horizon, "regime": a.regime, "min_n": pack["min_n"],
-            "full": {k: pack["full"].get(k) for k in ("n_obs", "ic_mean", "ic_std", "ic_t")},
-            "buckets": {
-                lab: {
-                    "n_obs": s["n_obs"], "ic_mean": s["ic_mean"], "ic_t": s["ic_t"],
-                    "half_a": s["half_a"].get("ic_mean"), "half_b": s["half_b"].get("ic_mean"),
-                    "verdict": s["verdict"], "reason": s["reason"],
-                } for lab, s in pack["buckets"].items()
-            },
+            "factor": a.factor, "horizon": a.horizon, "regime": kind,
+            "wrote_evals": False,
+            "full": {k: full.get(k) for k in ("n_obs", "ic_mean", "ic_std", "ic_t")},
+            "joint": {k: jt.get(k) for k in ("ok", "reason", "p_L1", "p_L2", "p_robust", "W_L1", "W_L2", "b")},
             "elapsed": round(time.time() - t0, 1),
         }, ensure_ascii=False, default=str))
         if a.lineage_id:
-            _write_regime_evals(a.lineage_id, a.regime, pack, a.receipt)
+            print("[ic_eval] --regime does not write evals (v4 R11)")
         return 0
     s = evaluate(bars, FACTORS[a.factor], a.horizon)
     v, reason = auto_verdict(s)

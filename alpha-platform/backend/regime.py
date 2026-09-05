@@ -92,21 +92,44 @@ def breadth_sp500(bars: dict[str, list[Bar]], universe: Iterable[str]) -> dict[s
     return out
 
 
+def _log_std20(closes: list[float]) -> float | None:
+    """20 log-return sample std (ddof=1). Need 21 close levels."""
+    if len(closes) < 21:
+        return None
+    w = closes[-21:]
+    logs = []
+    for j in range(1, 21):
+        if w[j - 1] <= 0 or w[j] <= 0:
+            return None
+        logs.append(math.log(w[j] / w[j - 1]))
+    if len(logs) < 20:
+        return None
+    m = sum(logs) / 20
+    var = sum((x - m) ** 2 for x in logs) / 19
+    return math.sqrt(var) if var >= 0 else None
+
+
+def emp_quantile(last: float, window: list[float]) -> float:
+    """(#< + 0.5·#=) / n  — R1 midrank percentile."""
+    n = len(window)
+    if n <= 0:
+        return float("nan")
+    less = sum(1 for v in window if v < last)
+    eq = sum(1 for v in window if v == last)
+    return (less + 0.5 * eq) / n
+
+
 def vol_spy(bars: dict[str, list[Bar]], spy: str = "SPY") -> dict[str, str]:
-    """SPY 20d realized vol, 60-day percentile. Label[t] uses ≤ t-1."""
+    """SPY 20d log-vol, 60-obs midrank percentile. Label[t] uses ≤ t-1."""
     closes = _closes(bars.get(spy) or [])
     dates = [d for d, _ in closes]
-    # vol observation dated asof = last close used (t-1 for label t)
     vol_series: list[tuple[str, float]] = []
     for i in range(20, len(closes)):
         asof = dates[i]
-        window = [c for d, c in closes[: i + 1]]
-        rets = [window[j] / window[j - 1] - 1.0 for j in range(len(window) - 20, len(window)) if window[j - 1]]
-        if len(rets) < 20:
+        v = _log_std20([c for _, c in closes[: i + 1]])
+        if v is None:
             continue
-        m = sum(rets) / 20
-        var = sum((r - m) ** 2 for r in rets) / 20
-        vol_series.append((asof, math.sqrt(var)))
+        vol_series.append((asof, v))
     out: dict[str, str] = {}
     for i, t in enumerate(dates):
         asof = dates[i - 1] if i else None
@@ -117,28 +140,128 @@ def vol_spy(bars: dict[str, list[Bar]], spy: str = "SPY") -> dict[str, str]:
             continue
         last = hist[-1][1]
         window = [v for _, v in hist[-60:]]
-        rank = sum(1 for v in window if v <= last) / len(window)
-        if rank > 0.7:
+        q = emp_quantile(last, window)
+        if q > 0.70:
             out[t] = "high"
-        elif rank < 0.3:
+        elif q < 0.30:
             out[t] = "low"
         else:
             out[t] = "mid"
     return out
 
 
+def width_bucket_from_counts(U: int, M: int, N: int) -> str | None:
+    """R1 width interval. Both ends must land in the same bucket or label is missing."""
+    if N <= 0:
+        return None
+    lo = U / N
+    hi = (U + M) / N
+
+    def _b(p: float) -> str:
+        if p > 0.60:
+            return "high"
+        if p < 0.40:
+            return "low"
+        return "mid"
+
+    a, b = _b(lo), _b(hi)
+    return a if a == b else None
+
+
+def width_sp500(
+    bars: dict[str, list[Bar]],
+    universe: Iterable[str],
+    members_on: dict[str, set[str]] | None = None,
+) -> dict[str, str]:
+    """Width label[t] from t-1 members. Missing window ≠ 'not above'; denom does not shrink."""
+    univ = [u.upper() for u in universe]
+    by_sym = {s: _closes(bars.get(s) or []) for s in univ}
+    if members_on:
+        all_dates = sorted(members_on.keys())
+    else:
+        all_dates = sorted({d for rows in by_sym.values() for d, _ in rows})
+    out: dict[str, str] = {}
+    for i, t in enumerate(all_dates):
+        asof = all_dates[i - 1] if i else None
+        if asof is None:
+            continue
+        members = [s.upper() for s in (members_on[asof] if members_on else univ)]
+        N = len(members)
+        if N <= 0:
+            continue
+        U = 0
+        M = 0
+        for s in members:
+            hist = [c for d, c in by_sym.get(s, []) if d <= asof]
+            ma = _sma(hist, 20)
+            if ma is None:
+                M += 1
+                continue
+            if hist[-1] > ma:
+                U += 1
+        lab = width_bucket_from_counts(U, M, N)
+        if lab:
+            out[t] = lab
+    return out
+
+
+def width_diagnostics(
+    bars: dict[str, list[Bar]],
+    universe: Iterable[str],
+    members_on: dict[str, set[str]] | None = None,
+) -> dict[str, dict]:
+    """Per-t N/U/M and interval for the receipt. Label missing days omitted from labels only."""
+    univ = [u.upper() for u in universe]
+    by_sym = {s: _closes(bars.get(s) or []) for s in univ}
+    if members_on:
+        all_dates = sorted(members_on.keys())
+    else:
+        all_dates = sorted({d for rows in by_sym.values() for d, _ in rows})
+    diag: dict[str, dict] = {}
+    for i, t in enumerate(all_dates):
+        asof = all_dates[i - 1] if i else None
+        if asof is None:
+            continue
+        members = [s.upper() for s in (members_on[asof] if members_on else univ)]
+        N = len(members)
+        U = 0
+        M = 0
+        for s in members:
+            hist = [c for d, c in by_sym.get(s, []) if d <= asof]
+            if _sma(hist, 20) is None:
+                M += 1
+            elif hist[-1] > _sma(hist, 20):
+                U += 1
+        lab = width_bucket_from_counts(U, M, N) if N else None
+        diag[t] = {
+            "N": N, "U": U, "M": M,
+            "lo": (U / N) if N else None,
+            "hi": ((U + M) / N) if N else None,
+            "label": lab,
+        }
+    return diag
+
+
 REGIMES = {
     "trend": trend_spy,
     "breadth": breadth_sp500,
+    "width": width_sp500,
     "vol": vol_spy,
 }
 
 
-def labels_for(kind: str, bars: dict[str, list[Bar]], universe: Iterable[str] | None = None) -> dict[str, str]:
+def labels_for(
+    kind: str,
+    bars: dict[str, list[Bar]],
+    universe: Iterable[str] | None = None,
+    members_on: dict[str, set[str]] | None = None,
+) -> dict[str, str]:
     if kind == "trend":
         return trend_spy(bars)
     if kind == "vol":
         return vol_spy(bars)
+    if kind == "width":
+        return width_sp500(bars, universe or bars.keys(), members_on=members_on)
     if kind == "breadth":
         return breadth_sp500(bars, universe or bars.keys())
     raise ValueError(f"unknown regime {kind}")

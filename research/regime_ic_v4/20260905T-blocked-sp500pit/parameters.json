@@ -1,0 +1,20 @@
+{
+  "schema": "regime-ic-v4",
+  "universe": "sp500_pit",
+  "horizon": 5,
+  "blocked": {
+    "universe": "historical-sp500-constituent HTTP 402; fmp_hist=0; symbol-change n=100 from 2026-06-24 only"
+  },
+  "tag": "ex-post PIT reconstruction",
+  "adv500_auto": false,
+  "t10": {
+    "n_diff": 139,
+    "n": 500,
+    "wilson": [
+      0.2405,
+      0.3188
+    ],
+    "seed": 20260905,
+    "calib": "fail_G5"
+  }
+}
