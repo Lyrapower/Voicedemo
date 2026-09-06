@@ -150,9 +150,13 @@ class CCExecutor:
         rp=jd/"RESULT.md"
         result=rp.read_text(encoding="utf-8") if rp.exists() else out.decode("utf-8","replace")
         ok=proc.returncode==0
+        tools={str(t) for t in (job.get("allowed_tools") or [])}
+        goal=str(job.get("goal") or "")
+        if ok and "Bash" not in tools and "Bash" in goal and not rp.exists():
+            ok=False
         if cc_model:
             _record_cc_provenance(job, cc_model, cc_endpoint, prompt, result, ok,
-                                  status="EXECUTED" if ok else "FAILED",
+                                  status="EXECUTED" if ok else ("DENIED" if "Bash" in goal and "Bash" not in tools else "FAILED"),
                                   error=stderr_txt if not ok else "")
         return {"ok":ok,"returncode":proc.returncode,
                 "stdout":out.decode("utf-8","replace"),"stderr":err.decode("utf-8","replace"),
