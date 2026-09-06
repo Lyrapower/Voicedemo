@@ -10,11 +10,12 @@ Port is registered here **before** bind or launchd. Duplicate bind = refuse.
 | 8515 | 127.0.0.1 | b11 workbench UI | — | API is 8501, not this port |
 | 8520 | 127.0.0.1 | Aether watcher | — | |
 | 8600 | 127.0.0.1 | Alpha platform | — | |
-| 8630 | 127.0.0.1 | Grid Harness (`app.harness.server`) `/health` `/api/capabilities` | **no** | Session uvicorn only. Do not install LaunchAgent until this row says yes. |
-| 8631 | 127.0.0.1 | PersonaPlex / Kokoro voice | — | Harness stays on 8630 |
-| 8787 | 127.0.0.1 | Entry B / Aster particles | `com.demo.garden.aster8787` | Not harness |
+| 8630 | 127.0.0.1 | Grid Harness api (`harness_resident`) `/health` `/api/jobs` `/api/capabilities` | `com.grid.harness-api` | owner=`harness_resident`; local; token from `.env` not plist |
+| 8631 | 127.0.0.1 | kokoro-tts (PersonaPlex / Kokoro) | `com.grid.kokoro-tts-8631` | in register; voice package later; harness stays on 8630 |
+| 8787 | 127.0.0.1 | Entry B / Aster particles | `com.demo.garden.aster8787` | Not harness; do not confuse with 8788 |
+| 8788 | — | closed | — | telemetry stub; default off (D8) |
 | 8790 | 127.0.0.1 | ASTER FIELD bridge | `com.demo.field.bridge8790` | |
 | 1234 | 127.0.0.1 | LM Studio model API | — | local OpenAI-compatible endpoint; owner=LM Studio process; execution=local model inference; default model **config-derived** (`config/aster.toml` `api_model_id`); NOT "Aster proxy" — Aster is a model served here, not the port's identity |
 | 11434 | 127.0.0.1 | Ollama API | — | transport only; native Ollama API + OpenAI-compat + Anthropic Messages; execution=local_or_cloud_by_selected_model; **NOT "local inference"** (`:cloud` model = remote execution) |
 
-**8630:** registered 2026-08-26. Not in launchd. Cross-ref `PORT_PROCESS_CONVENTION.md`.
+**8630:** GOLIVE v1.3 owner=`harness_resident`. launchd `com.grid.harness-api`. Cross-ref `PORT_PROCESS_CONVENTION.md`.

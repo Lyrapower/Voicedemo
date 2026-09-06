@@ -83,6 +83,11 @@ python3 scripts/aster_tab_fingerprint_probe.py
 
 Rollback is not complete until `grid-sovereign-runtime/traces/proof/aster_tab_fingerprint.json` shows `served_by: gateway-v4.11` on gateway non-stream and stream probes.
 
+## Harness GOLIVE exceptions (2026-09-05)
+
+- **L5 kimi alias:** `kimi_k3` is silently aliased to `glm53` on gateway. Harness never sends `kimi_k3`. Do not add a kimi route. Do not change gateway to "fix" the alias.
+- **L7 cc lane :11434:** claude CLI talks to Ollama `:11434` directly and does **not** go through `:8501`. This is a registered 8501 exception. Model names still follow the 8501 route table. Adding Anthropic Messages passthrough on 8501 is a Lyra unlock, not this package. Do not build an 8503 bridge.
+
 ## Deferred work (queued)
 
 See `work_orders/WO-2026-07-04-gateway-dynamic-models.md` — dynamic `/v1/models` and `/health` `substrate_models` are **out of scope** until post–dry-run review.
