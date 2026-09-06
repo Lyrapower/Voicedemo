@@ -1,5 +1,5 @@
 from __future__ import annotations
-import asyncio, time
+import asyncio, os, time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -7,6 +7,10 @@ from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+from .envutil import DEMO_ROOT, ensure_demo_on_path, load_harness_env
+load_harness_env()
+ensure_demo_on_path()
 
 from .config import load_config
 from .db import Store
@@ -26,6 +30,8 @@ supervisor_task=None
 relay_task=None
 stale_task=None
 
+KNOWN_WORKERS={"local","fast","deep","full","research","cc"}
+
 class JobCreate(BaseModel):
     channel:str="grid"
     goal:str=Field(min_length=1)
@@ -34,6 +40,14 @@ class JobCreate(BaseModel):
     allowed_paths:list[str]=Field(default_factory=lambda:["."])
     cloud_allowed:bool|None=None
     approval_mode:str="write_ok_no_deploy"
+    read_only:bool=False
+    kind:str="chat"
+
+class ApiJobBody(BaseModel):
+    worker:str="local"
+    kind:str="chat"
+    content:str=Field(min_length=1)
+    read_only:bool=True
 
 class SessionCreate(BaseModel):
     agent_id:str
@@ -65,12 +79,15 @@ def worker_for_agent(agent_id:str)->str:
     if agent_id.startswith("research"): return "research"
     raise HTTPException(400,f"unknown agent_id: {agent_id}")
 
-def _gate_reason(worker:str,cloud_allowed:bool,approval_mode:str)->str|None:
+def _gate_reason(worker:str,cloud_allowed:bool,approval_mode:str,read_only:bool=False)->str|None:
     """v1.3 执行门。危险操作默认回审批(设计 v1 链路隔离第 2 条):
-    - cc = 本机任意代码执行,除非调用方显式 approval_mode="auto"(须过鉴权),一律先 blocked;
+    - cc write/money = 本机任意代码执行,除非调用方显式 approval_mode="auto"(须过鉴权),一律先 blocked;
+    - cc read_only = L4 出生 queued 自动跑(围栏在 cc.py / create 时强制);
     - fast/deep/full/research 直连云,cloud_allowed 未显式 true 一律先 blocked(与升级路径同一条门,
       不再有免检通道;v1.2 的 if worker in {fast,deep,full,research}: ca=True 三处静默放行已全部拆除)。
     审批复用现有流:approve/resume 按钮或 POST /jobs/{id}/requeue。"""
+    if worker=="cc" and read_only:
+        return None
     if worker=="cc" and approval_mode!="auto":
         return "cc execution requires approval"
     if worker in {"fast","deep","full","research"} and not cloud_allowed:
@@ -79,10 +96,19 @@ def _gate_reason(worker:str,cloud_allowed:bool,approval_mode:str)->str|None:
 
 def create_job_internal(body:JobCreate):
     ca=cfg.policy.cloud_default if body.cloud_allowed is None else bool(body.cloud_allowed)
+    ro=bool(body.read_only)
+    tools=list(body.allowed_tools)
+    paths=list(body.allowed_paths)
+    if body.worker=="cc" and ro:
+        tools=[t for t in (tools or ["Read","Grep","Glob"]) if t not in {"Bash","Write","Edit"}]
+        if not tools:
+            tools=["Read","Grep","Glob"]
+        paths=[str(DEMO_ROOT)]
     job=store.create_job(channel=body.channel,goal=body.goal,worker=body.worker,
-        allowed_tools=body.allowed_tools,allowed_paths=body.allowed_paths,
-        cloud_allowed=ca,approval_mode=body.approval_mode)
-    reason=_gate_reason(body.worker,ca,body.approval_mode)
+        allowed_tools=tools,allowed_paths=paths,
+        cloud_allowed=ca,approval_mode=body.approval_mode,
+        read_only=ro,kind=body.kind)
+    reason=_gate_reason(body.worker,ca,body.approval_mode,read_only=ro)
     if reason:
         job=store.update_job(job["job_id"],status="blocked",last_step="awaiting_approval")
         store.append_event(job["job_id"],"blocked",{"reason":reason})
@@ -172,7 +198,9 @@ async def stale_loop():
 async def lifespan(app:FastAPI):
     global supervisor_task,relay_task,stale_task
     sessions.ensure_resident_sessions()
-    supervisor_task=asyncio.create_task(supervisor.run_forever())
+    role=os.getenv("HARNESS_ROLE","all")
+    if role in {"all","supervisor"}:
+        supervisor_task=asyncio.create_task(supervisor.run_forever())
     stale_task=asyncio.create_task(stale_loop())
     if cfg.relay.enabled:
         relay=OutboundRelayClient(cfg,relay_handler,event_source=lambda after: store.list_stream_events(after_seq=after,limit=500))
@@ -190,7 +218,7 @@ import os as _os
 _HARNESS_TOKEN=_os.getenv("GRID_HARNESS_TOKEN","").strip()
 _AUTH_EXEMPT_PREFIXES=("/mobile","/health")
 if not _HARNESS_TOKEN:
-    print("[harness] WARNING: GRID_HARNESS_TOKEN 未设置——:8787 API 无鉴权裸奔,仅限单人可信主机")
+    print("[harness] WARNING: GRID_HARNESS_TOKEN 未设置——API 无鉴权裸奔,仅限单人可信主机")
 
 @app.middleware("http")
 async def _auth_gate(request,call_next):
@@ -249,6 +277,45 @@ async def health():
         },
     }
 
+@app.get("/api/capabilities")
+async def api_capabilities():
+    from app.harness.resource_gate import export_capability_surface
+    surface=export_capability_surface()
+    surface["web.fetch"]="DENIED"
+    return surface
+
+@app.post("/api/jobs")
+async def api_create_job(body:ApiJobBody):
+    if body.worker not in KNOWN_WORKERS:
+        job=store.create_job(channel="grid",goal=body.content,worker=body.worker,
+            allowed_tools=[],allowed_paths=["."],cloud_allowed=False,
+            approval_mode="write_ok_no_deploy",read_only=bool(body.read_only),
+            kind=body.kind,status="blocked",last_step="UNKNOWN_WORKER")
+        store.append_event(job["job_id"],"blocked",{"reason":"UNKNOWN_WORKER"})
+        return {"job_id":job["job_id"],"status":job["status"],"last_step":job["last_step"]}
+    job=create_job_internal(JobCreate(
+        channel="grid",goal=body.content,worker=body.worker,
+        cloud_allowed=True if body.worker=="local" else False,
+        approval_mode="auto" if body.read_only else "write_ok_no_deploy",
+        read_only=bool(body.read_only),kind=body.kind,
+    ))
+    return {"job_id":job["job_id"],"status":job["status"],"last_step":job.get("last_step")}
+
+@app.get("/api/jobs/{job_id}")
+async def api_get_job(job_id:str):
+    try: job=store.get_job(job_id)
+    except KeyError: raise HTTPException(404,"job not found")
+    return {
+        "job_id":job["job_id"],
+        "status":job["status"],
+        "worker":job["worker"],
+        "kind":job.get("kind"),
+        "read_only":job.get("read_only"),
+        "last_step":job.get("last_step"),
+        "receipt_event_id":job.get("receipt_event_id"),
+        "events":store.list_events(job_id),
+    }
+
 @app.post("/jobs")
 async def create_job(body:JobCreate): return create_job_internal(body)
 
@@ -267,6 +334,8 @@ async def requeue(job_id:str):
     except KeyError: raise HTTPException(404,"job not found")
     if job["status"] not in {"failed","blocked","interrupted"}:
         raise HTTPException(409,f"cannot requeue from {job['status']}")
+    if job.get("worker")=="cc" or job.get("kind")=="money_moving" or not job.get("read_only",True):
+        raise HTTPException(409,"requeue only for read_only")
     return store.update_job(job_id,status="queued",last_step="manual_requeue")
 
 @app.post("/sessions")
