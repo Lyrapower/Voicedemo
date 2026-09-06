@@ -76,18 +76,30 @@ class Store:
 
             """)
             self._conn.commit()
+            self._migrate_jobs()
 
-    def create_job(self, *, channel, goal, worker, allowed_tools, allowed_paths, cloud_allowed, approval_mode):
+    def _migrate_jobs(self):
+        cols={r[1] for r in self._conn.execute("PRAGMA table_info(jobs)")}
+        if "read_only" not in cols:
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN read_only INTEGER NOT NULL DEFAULT 1")
+        if "kind" not in cols:
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat'")
+        if "receipt_event_id" not in cols:
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN receipt_event_id TEXT")
+        self._conn.commit()
+
+    def create_job(self, *, channel, goal, worker, allowed_tools, allowed_paths, cloud_allowed, approval_mode,
+                   read_only=True, kind="chat", status="queued", last_step=None):
         now=time.time(); job_id=f"J-{uuid.uuid4().hex[:12]}"
         with self._lock:
             self._conn.execute("""INSERT INTO jobs(
               job_id,channel,goal,worker,allowed_tools,allowed_paths,cloud_allowed,
-              approval_mode,status,created_at,updated_at
-            ) VALUES(?,?,?,?,?,?,?,?,'queued',?,?)""",
+              approval_mode,status,created_at,updated_at,read_only,kind,last_step
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (job_id,channel,goal,worker,json.dumps(allowed_tools),json.dumps(allowed_paths),
-             int(cloud_allowed),approval_mode,now,now))
+             int(cloud_allowed),approval_mode,status,now,now,int(bool(read_only)),kind,last_step))
             self._conn.commit()
-        self.append_event(job_id,"job_created",{"goal":goal,"worker":worker})
+        self.append_event(job_id,"job_created",{"goal":goal,"worker":worker,"kind":kind,"read_only":bool(read_only)})
         return self.get_job(job_id)
 
     def get_job(self, job_id):
@@ -121,7 +133,7 @@ class Store:
 
     def update_job(self, job_id, **fields):
         fields["updated_at"]=time.time()
-        allowed={"worker","status","retry_count","last_step","last_artifact","pending_tool","cloud_allowed","updated_at"}
+        allowed={"worker","status","retry_count","last_step","last_artifact","pending_tool","cloud_allowed","updated_at","read_only","kind","receipt_event_id"}
         bad=set(fields)-allowed
         if bad: raise ValueError(f"unsupported fields: {sorted(bad)}")
         pairs=", ".join(f"{k}=?" for k in fields)
@@ -153,13 +165,27 @@ class Store:
 
     def requeue_interrupted(self, max_retries):
         with self._lock:
-            rows=self._conn.execute("SELECT job_id,retry_count FROM jobs WHERE status='interrupted'").fetchall()
+            rows=self._conn.execute(
+                "SELECT job_id,retry_count,worker,read_only,kind FROM jobs WHERE status='interrupted'"
+            ).fetchall()
             n=0
             for r in rows:
+                worker=r["worker"]
+                read_only=bool(r["read_only"]) if "read_only" in r.keys() else True
+                kind=r["kind"] if "kind" in r.keys() else "chat"
+                if worker=="cc" or kind=="money_moving" or not read_only:
+                    self._conn.execute(
+                        "UPDATE jobs SET status='blocked',last_step=?,updated_at=? WHERE job_id=?",
+                        ("RETRY_DENIED",time.time(),r["job_id"]))
+                    continue
                 if r["retry_count"] < max_retries:
                     self._conn.execute("""UPDATE jobs SET status='queued',
                     retry_count=retry_count+1,updated_at=? WHERE job_id=?""",(time.time(),r["job_id"]))
                     n+=1
+                else:
+                    self._conn.execute(
+                        "UPDATE jobs SET status='failed',last_step=?,updated_at=? WHERE job_id=?",
+                        ("RETRY_EXHAUSTED",time.time(),r["job_id"]))
             self._conn.commit()
             return n
 
@@ -252,11 +278,15 @@ class Store:
 
     @staticmethod
     def _decode(r):
+        keys=r.keys()
         return {
           "job_id":r["job_id"],"channel":r["channel"],"goal":r["goal"],"worker":r["worker"],
           "allowed_tools":json.loads(r["allowed_tools"]),"allowed_paths":json.loads(r["allowed_paths"]),
           "cloud_allowed":bool(r["cloud_allowed"]),"approval_mode":r["approval_mode"],
           "status":r["status"],"retry_count":r["retry_count"],"last_step":r["last_step"],
           "last_artifact":r["last_artifact"],"pending_tool":r["pending_tool"],
-          "created_at":r["created_at"],"updated_at":r["updated_at"]
+          "created_at":r["created_at"],"updated_at":r["updated_at"],
+          "read_only":bool(r["read_only"]) if "read_only" in keys else True,
+          "kind":r["kind"] if "kind" in keys else "chat",
+          "receipt_event_id":r["receipt_event_id"] if "receipt_event_id" in keys else None,
         }

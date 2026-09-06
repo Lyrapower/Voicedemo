@@ -100,8 +100,12 @@ class CCExecutor:
         # 工具栅栏 = --allowedTools 逐项传。旗标名以本机 CC 版本为准(现场自证点):
         # 若 CC 报 unknown option,本任务按失败响亮返回,绝不静默摘栅栏重跑。
         argv=[self.cfg.cc.binary,"-p",prompt]
-        if job["allowed_tools"]:
-            declared={str(t) for t in job["allowed_tools"]}
+        declared={str(t) for t in (job.get("allowed_tools") or [])}
+        if job.get("read_only"):
+            declared-={"Bash","Write","Edit"}
+            if not declared:
+                declared={"Read","Grep","Glob"}
+        if declared:
             argv+=["--allowedTools",",".join(sorted(declared))]
             # v1.3.1(SOL P0-1):allow 不等于"未列即禁"——CC 的 --allowedTools 只做放行,
             # 未声明工具会回落到用户级 settings(若她全局有宽放行即穿透)。补显式 deny:

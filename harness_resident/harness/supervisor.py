@@ -1,9 +1,11 @@
 from __future__ import annotations
 import asyncio, json, time
 from typing import Any
+from .envutil import ensure_demo_on_path
+ensure_demo_on_path()
 from .config import Config
 from .db import Store
-from .gateway import GatewayClient
+from .gateway import GatewayClient, ModelMismatch
 from .cc import CCExecutor
 from .memory_adapter import MemoryRouter
 from .context import ContextAssembler
@@ -12,9 +14,18 @@ SYSTEM="""You are a resident execution worker inside Grid.
 Return useful work, not roleplay.
 Never claim a tool ran unless the harness actually ran it.
 If you need cloud escalation, emit exactly one JSON object:
-{"action":"escalate","target":"fast|deep|full|research","reason":"..."}
+{"action":"escalate","target":"glm","reason":"..."}
 Do not invent tool results.
 """
+
+_WORKER_RESOURCE={
+    "local":"harness.local_lane",
+    "cc":"harness.cc_lane",
+    "fast":"harness.cloud_lane",
+    "deep":"harness.cloud_lane",
+    "full":"harness.cloud_lane",
+    "research":"harness.cloud_lane",
+}
 
 class Supervisor:
     def __init__(self,cfg:Config,store:Store):
@@ -26,6 +37,16 @@ class Supervisor:
         self.context=ContextAssembler(cfg,store,self.memories)
         self._stop=asyncio.Event()
         self._tasks:dict[str,asyncio.Task]={}
+        self._assert_no_aster()
+
+    def _assert_no_aster(self):
+        routes=[
+            self.cfg.models.local_route,self.cfg.models.fast_route,
+            self.cfg.models.deep_route,self.cfg.models.full_route,
+            self.cfg.models.research_route,
+        ]
+        if any(str(r)=="demo/aster" or str(r).startswith("demo/aster") for r in routes):
+            raise RuntimeError("demo/aster is not a harness lane")
 
     async def startup_recovery(self):
         n=self.store.mark_running_interrupted()
@@ -144,8 +165,58 @@ class Supervisor:
                                        payload={"decision":"reject","note":note})
         return ss
 
+    def _scope_for(self,job:dict[str,Any])->str:
+        if job.get("kind")=="money_moving":
+            return "money_moving"
+        if job.get("read_only",True):
+            return "read_only"
+        return "local_write"
+
+    def _gate_job(self,job:dict[str,Any],*,operation:str="job.run",resource:str|None=None):
+        from app.harness.action_envelope import ActionEnvelope
+        from app.harness.resource_gate import gate
+        jid=job["job_id"]
+        res=resource or _WORKER_RESOURCE.get(job["worker"])
+        if not res:
+            from app.harness.action_envelope import FactualReceipt
+            from app.harness.provenance import record_receipt
+            rc=FactualReceipt(mission_id=jid,action_id=f"{jid}:run",status="DENIED",
+                              executed=False,error="UNKNOWN_WORKER",
+                              metadata={"worker":job["worker"]})
+            record_receipt(rc)
+            return type("D",(),{"allowed":False,"reason":"UNKNOWN_WORKER","receipt":rc})()
+        env=ActionEnvelope(
+            mission_id=jid,
+            action_id=f"{jid}:{operation}",
+            decision_origin="USER",
+            selected_resource=res,
+            operation=operation,
+            authorization_scope=self._scope_for(job),
+            arguments={"worker":job["worker"],"kind":job.get("kind","chat")},
+        )
+        return gate(env)
+
+    def _record_job_receipt(self,job:dict[str,Any],*,status:str,executed:bool,error:str="",
+                            metadata:dict|None=None):
+        from app.harness.action_envelope import FactualReceipt
+        from app.harness.provenance import record_receipt
+        jid=job["job_id"]
+        meta=dict(metadata or {})
+        meta.setdefault("job_id",jid)
+        ev=record_receipt(FactualReceipt(
+            mission_id=jid,action_id=f"{jid}:run",status=status,
+            executed=executed,error=error,metadata=meta,
+        ))
+        self.store.update_job(jid,receipt_event_id=ev.get("event_id") or ev.get("event_hash"))
+        return ev
+
     async def _run_job(self,job:dict[str,Any]):
         jid=job["job_id"]
+        decision=self._gate_job(job)
+        if not decision.allowed:
+            self.store.update_job(jid,status="blocked",last_step="GATE_DENIED")
+            self.store.append_event(jid,"blocked",{"reason":decision.reason or "GATE_DENIED"})
+            return
         sess=self.store.find_session_by_job(jid)
         self.store.update_job(jid,status="running",last_step="dispatch")
         self.store.append_event(jid,"job_started",{"worker":job["worker"]})
@@ -167,6 +238,13 @@ class Supervisor:
                     self.store.update_job(jid,status="done",last_step="cc_done",
                                           last_artifact=result.get("job_dir"))
                     self.store.append_event(jid,"job_result",result)
+                    self._record_job_receipt(job,status="EXECUTED",executed=True,metadata={
+                        "route_id":"cc","route_class":"cc",
+                        "model_requested":getattr(self.cfg.cc,"model",""),
+                        "model_resolved":getattr(self.cfg.cc,"model",""),
+                        "transport_locality":"127.0.0.1:11434",
+                        "model_execution_locality":"derived_from_selected_model",
+                    })
                     if sess:
                         text=result.get("result","")
                         if text:
@@ -185,6 +263,11 @@ class Supervisor:
                 else:
                     self.store.update_job(jid,status="failed",last_step="cc_failed")
                     self.store.append_event(jid,"job_failed",result)
+                    self._record_job_receipt(job,status="FAILED",executed=False,
+                                             error=str(result.get("error") or "cc_failed"),
+                                             metadata={"route_id":"cc","route_class":"cc",
+                                                       "transport_locality":"127.0.0.1:11434",
+                                                       "model_execution_locality":"derived_from_selected_model"})
                     if sess:
                         self.store.update_session(sess["session_id"],state="failed",last_heartbeat=time.time())
                         self.store.append_stream_event(session_id=sess["session_id"],job_id=jid,
@@ -197,8 +280,9 @@ class Supervisor:
 
             esc=self._parse_escalation(result)
             if esc:
-                if not job["cloud_allowed"]:
-                    self.store.update_job(jid,status="blocked",last_step="cloud_escalation_denied")
+                esc_decision=self._gate_job(job,operation="escalate",resource="harness.escalate")
+                if not esc_decision.allowed or not job["cloud_allowed"]:
+                    self.store.update_job(jid,status="blocked",last_step="GATE_DENIED")
                     self.store.append_event(jid,"blocked",{"reason":"cloud escalation denied","request":esc})
                     if sess:
                         self.store.update_session(sess["session_id"],state="waiting_approval",
@@ -208,7 +292,7 @@ class Supervisor:
                                                        kind="waiting_approval",
                                                        payload={"reason":"cloud escalation denied","request":esc})
                     return
-                route=self._route_for(esc["target"])
+                route=self._route_for("glm")
                 effective_worker=self._worker_for_route(route)
                 self.store.append_event(jid,"escalated",esc)
                 if sess:
@@ -218,6 +302,14 @@ class Supervisor:
 
             self.store.update_job(jid,status="done",last_step="completed")
             self.store.append_event(jid,"job_result",{"text":result,"route":route})
+            self._record_job_receipt(job,status="EXECUTED",executed=True,metadata={
+                "route_id":route,
+                "route_class":"local" if "/" in str(route) else "cloud",
+                "model_requested":route,
+                "model_resolved":route,
+                "transport_locality":"127.0.0.1:8501",
+                "model_execution_locality":"local" if effective_worker=="local" else "remote",
+            })
             if sess:
                 self.store.append_message(sess["session_id"],"assistant",result)
                 await self.persist_external_turn(
@@ -235,6 +327,13 @@ class Supervisor:
             # user pause/cancel path already writes state; do not overwrite it
             self.store.append_event(jid,"job_cancelled_runtime",{})
             raise
+        except ModelMismatch as e:
+            self.store.update_job(jid,status="failed",last_step="MODEL_MISMATCH")
+            self.store.append_event(jid,"job_failed",{"error":repr(e)})
+            self._record_job_receipt(job,status="FAILED",executed=False,error=str(e),
+                                     metadata={"route_class":"mismatch"})
+            if sess:
+                self.store.update_session(sess["session_id"],state="failed",last_heartbeat=time.time())
         except Exception as e:
             cur=self.store.get_job(jid)
             rc=cur["retry_count"]
@@ -242,10 +341,16 @@ class Supervisor:
             if sess:
                 self.store.append_stream_event(session_id=sess["session_id"],job_id=jid,
                                                kind="job_exception",payload={"error":repr(e)})
-            if rc < self.cfg.core.max_retries:
+            if job.get("worker")=="cc" or job.get("kind")=="money_moving" or not job.get("read_only",True):
+                self.store.update_job(jid,status="blocked",last_step="RETRY_DENIED")
+                self._record_job_receipt(job,status="FAILED",executed=False,error=repr(e))
+                if sess:
+                    self.store.update_session(sess["session_id"],state="blocked",last_heartbeat=time.time())
+            elif rc < self.cfg.core.max_retries:
                 self.store.update_job(jid,status="queued",retry_count=rc+1,last_step="retry_queued")
             else:
-                self.store.update_job(jid,status="failed",last_step="max_retries_exceeded")
+                self.store.update_job(jid,status="failed",last_step="RETRY_EXHAUSTED")
+                self._record_job_receipt(job,status="FAILED",executed=False,error=repr(e))
                 if sess:
                     self.store.update_session(sess["session_id"],state="failed",last_heartbeat=time.time())
 
@@ -307,6 +412,8 @@ class Supervisor:
         content:str,
         source_surface:str,
     ):
+        # persist: write_mode=gateway_owned → attempted=False; harness worker domain only.
+        # never diary / Memory Palace (those writes are closed).
         domain=self.memories.for_worker(worker)
         result=await domain.write_turn(
             session_id=session_id,
@@ -358,6 +465,7 @@ class Supervisor:
         if w=="deep": return self.cfg.models.deep_route
         if w=="full": return self.cfg.models.full_route
         if w=="research": return self.cfg.models.research_route
+        if w=="glm": return self.cfg.models.deep_route
         raise ValueError(f"unknown worker: {w}")
 
     @staticmethod
@@ -366,5 +474,5 @@ class Supervisor:
         if not(s.startswith("{") and s.endswith("}")): return None
         try: o=json.loads(s)
         except Exception: return None
-        if o.get("action")!="escalate" or o.get("target") not in {"fast","deep","full","research"}: return None
+        if o.get("action")!="escalate" or o.get("target") not in {"glm"}: return None
         return {"target":o["target"],"reason":str(o.get("reason",""))}
