@@ -1,6 +1,10 @@
 from __future__ import annotations
 import os
 import uvicorn
+from harness.envutil import load_harness_env, ensure_demo_on_path, grid_tz_name
+load_harness_env()
+ensure_demo_on_path()
+os.environ.setdefault("GRID_TZ", grid_tz_name())
 from harness.config import load_config
 
 LOOPBACK={"127.0.0.1","::1","localhost"}

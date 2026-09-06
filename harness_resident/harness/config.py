@@ -5,6 +5,8 @@ from pathlib import Path
 import os
 import tomllib
 
+from .envutil import load_harness_env, grid_tz_name
+
 
 @dataclass(frozen=True)
 class CoreConfig:
@@ -163,7 +165,9 @@ def _context_profile(data: dict) -> ContextProfileConfig:
 
 
 def load_config(path: str = "config.toml") -> Config:
+    load_harness_env()
     data = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    os.environ.setdefault("GRID_TZ", grid_tz_name())
     mem = data["memory"]
     ctx = data["context"]
 
