@@ -84,3 +84,17 @@ harness_resident/state/
 harness_resident/.env
 harness_resident/.venv/
 harness_resident/**/__pycache__/
+
+# GOLIVE v1.3 开工前置 pile1 · 运行产物不入库
+**/state/
+deliver/**/evidence/
+aster_grid_v5/traces/
+aster_grid_v5/aster_bridge_data_v5/
+aster_grid_v5/provenance_data_v5/
+aster_grid_v5/sentinel_v5_data/
+aster_grid_v5/**/*.sqlite
+aether_crypto_NONUS_QUARANTINE/state/
+aether_nexus/state/
+aether_watcher/state/
+data/grid_field/*.jsonl
+aster-field/diary_tokens.json
