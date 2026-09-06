@@ -284,6 +284,34 @@ async def api_capabilities():
     surface["web.fetch"]="DENIED"
     return surface
 
+class RwaConnectBody(BaseModel):
+    mission_id:str
+    action_id:str|None=None
+    decision_origin:str
+    run_id:str|None=None
+    operation:str="rwa.onchain_read"
+
+@app.get("/api/rwa/onchain")
+async def rwa_onchain_published():
+    from app.crypto_rwa.rwa_chain_connect import load_published
+    return load_published()
+
+@app.post("/api/rwa/onchain")
+async def rwa_onchain_connect(body:RwaConnectBody):
+    from app.crypto_rwa.rwa_chain_connect import connect_run
+    if any(x in body.operation.lower() for x in ("transfer","send","approve","swap","trade","withdraw")):
+        raise HTTPException(status_code=403,detail="money-moving methods forbidden")
+    ctx={
+        "mission_id":body.mission_id,
+        "action_id":body.action_id or "rwa.onchain_read",
+        "decision_origin":body.decision_origin,
+        "operation":body.operation,
+    }
+    try:
+        return connect_run(ctx,run_id=body.run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400,detail=str(exc)) from exc
+
 @app.post("/api/jobs")
 async def api_create_job(body:ApiJobBody):
     if body.worker not in KNOWN_WORKERS:
