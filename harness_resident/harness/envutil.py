@@ -1,4 +1,4 @@
-"""Load harness_resident/.env and GRID_TZ. Never print secret values."""
+"""Load harness env from GRID_HARNESS_ENV (default ~/.config/grid/harness_resident.env). Never print secret values."""
 from __future__ import annotations
 
 import os
@@ -7,15 +7,21 @@ from zoneinfo import ZoneInfo
 
 HARNESS_ROOT = Path(__file__).resolve().parents[1]
 DEMO_ROOT = Path(__file__).resolve().parents[2]
-ENV_PATH = HARNESS_ROOT / ".env"
+DEFAULT_ENV_PATH = Path.home() / ".config" / "grid" / "harness_resident.env"
 DEFAULT_TZ = "America/Los_Angeles"
 
 
+def env_path() -> Path:
+    raw = (os.environ.get("GRID_HARNESS_ENV") or "").strip()
+    return Path(raw).expanduser() if raw else DEFAULT_ENV_PATH
+
+
 def load_harness_env() -> None:
-    if not ENV_PATH.is_file():
+    path = env_path()
+    if not path.is_file():
         os.environ.setdefault("GRID_TZ", DEFAULT_TZ)
         return
-    for raw in ENV_PATH.read_text(encoding="utf-8").splitlines():
+    for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue

@@ -5,8 +5,9 @@ HOME_DIR="${HOME}"
 PYTHON_BIN="$(command -v python3)"
 mkdir -p "$HOME_DIR/Library/LaunchAgents" "$ROOT/state/logs"
 
-if [[ ! -f "$ROOT/.env" ]]; then
-  echo "missing $ROOT/.env — generate GRID_HARNESS_TOKEN first (package L9)"
+ENV_FILE="${GRID_HARNESS_ENV:-$HOME_DIR/.config/grid/harness_resident.env}"
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "missing $ENV_FILE — copy .env.example there and set GRID_HARNESS_TOKEN (package L9)"
   exit 1
 fi
 

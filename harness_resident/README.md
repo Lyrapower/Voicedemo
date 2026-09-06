@@ -54,7 +54,8 @@ No Slack account/API is required.
 ```bash
 bash install.sh
 source .venv/bin/activate
-cp .env.example .env
+mkdir -p ~/.config/grid
+cp .env.example ~/.config/grid/harness_resident.env
 ```
 
 Edit `config.toml` so the route names match your actual 8501 routes.

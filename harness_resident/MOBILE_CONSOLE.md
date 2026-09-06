@@ -9,7 +9,7 @@ The PWA is under `mobile/`.
 ```text
 By default the harness binds to `127.0.0.1`.
 
-For direct phone access on a trusted LAN, set in `.env`:
+For direct phone access on a trusted LAN, set in `~/.config/grid/harness_resident.env`:
 
 ```bash
 GRID_BIND_HOST=0.0.0.0
