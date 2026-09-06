@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.grid.harness-api</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON__</string>
+    <string>__HOME__/Projects/demo/harness_resident/run_harness.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__HOME__/Projects/demo/harness_resident</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Projects/demo/harness_resident/state/logs/harness-api.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Projects/demo/harness_resident/state/logs/harness-api.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>GRID_TZ</key>
+    <string>America/Los_Angeles</string>
+    <key>HARNESS_ROLE</key>
+    <string>api</string>
+    <key>PYTHONPATH</key>
+    <string>__HOME__/Projects/demo:__HOME__/Projects/demo/harness_resident</string>
+    <key>HARNESS_PROVENANCE_LOG</key>
+    <string>__HOME__/Projects/demo/state/provenance.jsonl</string>
+    <key>PATH</key>
+    <string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>
