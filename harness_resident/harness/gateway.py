@@ -65,8 +65,10 @@ class GatewayClient:
                 raise GatewayError(f"unexpected openai response: {str(d)[:200]}") from e
             if not content.strip():
                 raise GatewayError("empty content from local lane")
-            return {"ok": True, "content": content, "substrate": route, "model": d.get("model", route), "backend": "local",
+            out = {"ok": True, "content": content, "substrate": route, "model": d.get("model", route), "backend": "local",
                     "usage": d.get("usage") or {}, "route_id": d.get("id")}
+            _assert_model_match(route, out)
+            return out
         payload: dict[str, Any] = {"substrate": route, "messages": messages,
                                    "max_tokens": int(max_tokens or self.default_max_tokens), "temperature": temperature,
                                    "memory_sealed": bool(memory_sealed)}
@@ -81,6 +83,7 @@ class GatewayClient:
             raise GatewayError(f"gateway ok=false: {str(data.get('error') or data.get('done_reason'))[:200]}")
         if not str(data.get("content") or "").strip():
             raise GatewayError(f"empty content (done_reason={data.get('done_reason')}):200 不算通")
+        _assert_model_match(route, data)
         return data
 
     async def chat_stream(self, route: str, messages: list[dict[str, Any]], **opts) -> AsyncIterator[str]:
@@ -109,6 +112,16 @@ class GatewayClient:
 
 class GatewayError(RuntimeError):
     pass
+
+
+class ModelMismatch(GatewayError):
+    """响应 model ≠ 请求 route。gateway T2 静默 fallback 的 harness 侧兜底(D3)。"""
+
+
+def _assert_model_match(requested: str, resp: dict) -> None:
+    resolved = resp.get("model") or resp.get("substrate")
+    if requested and resolved and str(resolved) != str(requested):
+        raise ModelMismatch(f"requested {requested!r} resolved {resolved!r}")
 
 
 # ---------- 自测:stub 8501 ----------
