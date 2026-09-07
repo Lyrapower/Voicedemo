@@ -45,6 +45,8 @@ def export_tree(src: str, dst: str) -> dict:
         # do not walk into symlink dirs
         keep = []
         for name in dirnames:
+            if name in {".claude", ".git"}:
+                continue
             p = Path(dirpath) / name
             lst = os.lstat(p)
             if stat.S_ISLNK(lst.st_mode):

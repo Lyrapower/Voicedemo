@@ -15,4 +15,4 @@
 | old fwd | `grid-cc-fwd` left running, unused; not deleted |
 
 Missing broker/image → `BLOCKED_SANDBOX_MISSING`. No host claude fallback.
-Phase 2+ (export, Write/Edit, egress.sock, dev.sock) not enabled.
+Phase 2: safe exporter + /work Write/Edit/Bash. Phase 3+ (egress.sock, dev.sock) not enabled.
