@@ -57,7 +57,10 @@ def _deny(reason: str, url: str, lane: str, db_path, route_id, mission_id, subst
 def _log(db_path, route_id, mission_id, substrate, url, chars, truncated, grade, status):
     if not db_path: return
     try:
-        import harness_contract_v1 as HC
+        try:
+            from . import harness_contract_v1 as HC
+        except ImportError:
+            import harness_contract_v1 as HC
         HC.log_tool_call(db_path, route_id or "", substrate or "", "web.fetch", {"url_host": urllib.parse.urlparse(url).netloc}, None, chars, truncated,
                          mission_id=mission_id, evidence_grade=grade, status=status)
     except Exception:
@@ -84,7 +87,13 @@ def fetch(url: str, lane: str, *, egress_path: str = "EGRESS.md", db_path: str |
         else: headers["Authorization"] = f"Bearer {val}"
     try:
         req = urllib.request.Request(url, headers=headers, method="GET")
-        with (opener or urllib.request.urlopen)(req, timeout=TIMEOUT) as r:
+        ctx = None
+        try:
+            import ssl, certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            ctx = None
+        with (opener or urllib.request.urlopen)(req, timeout=TIMEOUT, **({} if opener else {"context": ctx} if ctx else {})) as r:
             raw = r.read(max_chars * 4 + 1)
             status = getattr(r, "status", 200)
     except urllib.error.HTTPError as e:

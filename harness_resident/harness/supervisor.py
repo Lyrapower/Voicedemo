@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio, json, time
+from pathlib import Path
 from typing import Any
 from .envutil import ensure_demo_on_path
 ensure_demo_on_path()
@@ -234,17 +235,34 @@ class Supervisor:
                 )
                 self._emit_context_receipt(sess,job,context_pack)
                 result=await self.cc.run(job,context_pack=context_pack)
+                if result.get("blocked")=="sandbox_missing" or str(result.get("error") or "")=="BLOCKED_SANDBOX_MISSING":
+                    self.store.update_job(jid,status="blocked",last_step="BLOCKED_SANDBOX_MISSING")
+                    self.store.append_event(jid,"job_blocked",result)
+                    self._record_job_receipt(job,status="DENIED",executed=False,
+                                             error="BLOCKED_SANDBOX_MISSING",
+                                             metadata={"route_id":"cc","route_class":"cc",
+                                                       "sandbox":result.get("sandbox") or "missing"})
+                    if sess:
+                        self.store.update_session(sess["session_id"],state="blocked",last_heartbeat=time.time())
+                        self.store.append_stream_event(session_id=sess["session_id"],job_id=jid,
+                                                       kind="job_blocked",payload=result)
+                    return
                 if result["ok"]:
                     self.store.update_job(jid,status="done",last_step="cc_done",
                                           last_artifact=result.get("job_dir"))
                     self.store.append_event(jid,"job_result",result)
-                    self._record_job_receipt(job,status="EXECUTED",executed=True,metadata={
+                    meta={
                         "route_id":"cc","route_class":"cc",
                         "model_requested":getattr(self.cfg.cc,"model",""),
                         "model_resolved":getattr(self.cfg.cc,"model",""),
                         "transport_locality":"127.0.0.1:11434",
                         "model_execution_locality":"derived_from_selected_model",
-                    })
+                    }
+                    if result.get("sandbox"):
+                        meta["sandbox"]=result.get("sandbox")
+                    if result.get("container"):
+                        meta["container"]=result.get("container")
+                    self._record_job_receipt(job,status="EXECUTED",executed=True,metadata=meta)
                     if sess:
                         text=result.get("result","")
                         if text:
@@ -306,7 +324,7 @@ class Supervisor:
                 "route_id":route,
                 "route_class":"local" if "/" in str(route) else "cloud",
                 "model_requested":route,
-                "model_resolved":route,
+                "model_resolved":getattr(self,"_last_model_resolved",None) or route,
                 "transport_locality":"127.0.0.1:8501",
                 "model_execution_locality":"local" if effective_worker=="local" else "remote",
             })
@@ -365,7 +383,11 @@ class Supervisor:
         )
         self._emit_context_receipt(sess,job,pack)
         messages=pack.to_messages(SYSTEM)
+        text=await self._chat_collect(job,route,sess,messages)
+        text=await self._web_fetch_loop(job,route,worker,sess,messages,text)
+        return text
 
+    async def _chat_collect(self,job,route,sess,messages):
         chunks=[]
         try:
             async for piece in self.gateway.chat_stream(route,messages):
@@ -382,13 +404,42 @@ class Supervisor:
             if chunks:
                 raise
             resp=await self.gateway.chat(route,messages)
+            self._last_model_resolved=resp.get("model") or route
             return self.gateway.extract_text(resp)
 
         if chunks:
+            self._last_model_resolved=route
             return "".join(chunks)
 
         resp=await self.gateway.chat(route,messages)
+        self._last_model_resolved=resp.get("model") or route
         return self.gateway.extract_text(resp)
+
+    async def _web_fetch_loop(self,job,route,worker,sess,messages,text):
+        from .tool_loop import MAX_FETCH_ROUNDS, collect_fetch_urls, format_tool_result, run_fetches
+        db_path=str(self.cfg.core.db_path)
+        if not Path(db_path).is_absolute():
+            db_path=str((Path(__file__).resolve().parents[1]/db_path).resolve())
+        goal=str(job.get("goal") or "")
+        seen=set()
+        for _ in range(MAX_FETCH_ROUNDS):
+            urls=[u for u in collect_fetch_urls(goal,text) if u not in seen]
+            if not urls:
+                return text
+            for u in urls:
+                seen.add(u)
+            results=run_fetches(
+                urls,lane=worker,db_path=db_path,
+                route_id=str(route),mission_id=str(job.get("job_id") or ""),
+            )
+            blob="\n".join(format_tool_result(r) for r in results)
+            self.store.append_event(job["job_id"],"tool_fetch",{"urls":urls,"n":len(results)})
+            messages=list(messages)+[
+                {"role":"assistant","content":text},
+                {"role":"user","content":"工具回注(web.fetch):\n"+blob+"\n用以上结果继续作答。"},
+            ]
+            text=await self._chat_collect(job,route,sess,messages)
+        return text
 
     def _emit_context_receipt(self,sess,job,pack):
         if not self.cfg.memory.emit_context_receipts:

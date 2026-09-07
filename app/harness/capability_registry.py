@@ -64,13 +64,13 @@ STATIC_CAPABILITIES = (
                endpoint="127.0.0.1:8501",
                locality="transport_local_gateway; model_execution=remote",
                produces=("model_response",),
-               notes="glm53/glm52/glm53_full/deepseek_v4 via 8501 /task/cloud_chat"),
+               notes="glm-5.3-flash/glm-5.2/glm-5.3/deepseek-v4-pro via 8501 /task/cloud_chat"),
     Capability("harness.escalate", "harness", "control", "read_only",
                produces=("escalation",),
                notes="escalate target must be glm"),
     Capability("web.fetch", "harness", "tool", "read_only",
-               status="unavailable",
-               notes="DENIED at harness api; no egress fetch from 8630"),
+               status="declared",
+               notes="lanes=fast,deep,full,research,cc; visible per EGRESS.md lanes column"),
 )
 
 
