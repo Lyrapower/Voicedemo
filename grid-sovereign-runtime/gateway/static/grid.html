@@ -139,6 +139,10 @@ body{background-image:radial-gradient(130% 46% at 50% -6%,#16173A 0%,rgba(22,23,
   text-shadow:0 0 22px rgba(180,183,235,.28)}
 .g.qwen{text-shadow:0 0 20px rgba(143,216,232,.22)}
 .g.err{color:var(--hui);font-size:14px;text-shadow:none;font-weight:400}
+.from-grid,.job-card{border:1px solid var(--jie);border-radius:10px;padding:8px 10px;margin:8px 0 10px;
+  background:rgba(18,19,40,.35);font:12px/1.55 var(--sans);white-space:pre-wrap;word-break:break-word}
+.job-card summary{cursor:pointer;font:11px var(--mono);color:var(--hui);list-style:none}
+.job-card[data-st="pending"]{opacity:.7}
 .t{font:10.5px var(--mono);color:var(--an);letter-spacing:.06em;margin:10px 0 0}
 .t i{font-style:normal;color:#565A7C}
 
@@ -296,7 +300,7 @@ body.lane-grid.compile-backend #codeBackendRow{display:flex}
 <script src="/app/grid_verification_client.js?v=2026-07-27-kh-ascii"></script>
 <script>
 "use strict";
-const PAGE_VER="2026-08-02-mem-archive";
+const PAGE_VER="2026-09-06-topo";
 const VOICE_JS_VER="2026-07-23f";
 const $=s=>document.querySelector(s);
 const $$=s=>document.querySelectorAll(s);
@@ -1013,6 +1017,95 @@ function parseSseChunk(ln){
   try{return {obj:JSON.parse(payload)};}catch(e){return null;}
 }
 
+let lastContextHash="";
+function sha3_256_hex(str){
+  const RC=[
+    0x0000000000000001n,0x0000000000008082n,0x800000000000808an,0x8000000080008000n,
+    0x000000000000808bn,0x0000000080000001n,0x8000000080008081n,0x8000000000008009n,
+    0x000000000000008an,0x0000000000000088n,0x0000000080008009n,0x000000008000000an,
+    0x000000008000808bn,0x800000000000008bn,0x8000000000008089n,0x8000000000008003n,
+    0x8000000000008002n,0x8000000000000080n,0x000000000000800an,0x800000008000000an,
+    0x8000000080008081n,0x8000000000008080n,0x0000000080000001n,0x8000000080008008n
+  ];
+  const rot=[
+    0,1,62,28,27,36,44,6,55,20,3,10,43,25,39,41,45,15,21,8,18,2,61,56,14
+  ];
+  const MASK=0xffffffffffffffffn;
+  function rotl(x,n){n=BigInt(n);return ((x<<n)|(x>>(64n-n)))&MASK}
+  const rate=136;
+  const stt=new BigUint64Array(25);
+  const bytes=new TextEncoder().encode(String(str||""));
+  const buf=new Uint8Array(Math.ceil((bytes.length+1+rate)/rate)*rate);
+  buf.set(bytes); buf[bytes.length]=0x06; buf[buf.length-1]|=0x80;
+  function keccakF(){
+    for(let r=0;r<24;r++){
+      const C=new BigUint64Array(5);
+      for(let x=0;x<5;x++) C[x]=stt[x]^stt[x+5]^stt[x+10]^stt[x+15]^stt[x+20];
+      const D=new BigUint64Array(5);
+      for(let x=0;x<5;x++) D[x]=C[(x+4)%5]^rotl(C[(x+1)%5],1);
+      for(let i=0;i<25;i++) stt[i]^=D[i%5];
+      const B=new BigUint64Array(25);
+      for(let x=0;x<5;x++) for(let y=0;y<5;y++){
+        const i=x+5*y, j=y+5*((2*x+3*y)%5);
+        B[j]=rotl(stt[i],rot[i]);
+      }
+      for(let x=0;x<5;x++) for(let y=0;y<5;y++){
+        const i=x+5*y;
+        stt[i]=B[i]^((~B[((x+1)%5)+5*y])&B[((x+2)%5)+5*y]);
+      }
+      stt[0]^=RC[r];
+    }
+  }
+  const dv=new DataView(buf.buffer);
+  for(let off=0;off<buf.length;off+=rate){
+    for(let i=0;i<rate;i+=8) stt[i/8]^=dv.getBigUint64(off+i,true);
+    keccakF();
+  }
+  const out=new Uint8Array(32);
+  const od=new DataView(out.buffer);
+  for(let i=0;i<4;i++) od.setBigUint64(i*8,stt[i],true);
+  return [...out].map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+async function envelopeHash(curText){
+  const hist=(lane==="grid"?gridActiveHist():activeHist(lane)).map(m=>String(m.content||""));
+  const texts=[...hist,String(curText||"")].slice(-8);
+  return sha3_256_hex(texts.join("\n"));
+}
+function harnessBase(){ return "http://127.0.0.1:8630"; }
+function harnessHdrs(){
+  const h={};
+  const tok=st.get("h8630")||"";
+  if(tok) h.Authorization="Bearer "+tok;
+  return h;
+}
+function lastLineOf(s){
+  const lines=String(s||"").split(/\n/).map(x=>x.trim()).filter(Boolean);
+  return lines.length?lines[lines.length-1]:"";
+}
+function elJobCard(rec){
+  const d=document.createElement("details");
+  d.className="job-card";
+  const stt=rec.status||"pending";
+  d.dataset.st=stt;
+  const sum=document.createElement("summary");
+  const end=lastLineOf(rec.worker_output||"")||stt;
+  sum.textContent=(rec.topology_ack?"ack · ":"")+end;
+  const pre=document.createElement("div");
+  pre.textContent=String(rec.worker_output||rec.receipt_line||"");
+  d.appendChild(sum); d.appendChild(pre);
+  M.appendChild(d);
+  return d;
+}
+async function pullReceipt(eventId){
+  if(!eventId) return;
+  try{
+    const r=await fetch(harnessBase()+"/api/receipts/"+encodeURIComponent(eventId),{headers:harnessHdrs()});
+    if(!r.ok) return;
+    const j=await r.json();
+    elJobCard(j);
+    toBottom();
+  }catch(_e){}
+}
 function sha256Hex(text){
   const enc=new TextEncoder().encode(String(text||""));
   return crypto.subtle.digest("SHA-256",enc).then(buf=>{
@@ -1101,6 +1194,14 @@ async function send(){
         (cur==="grid"&&isCompileTask(task))?{task:task}:{},
         backendId?{backend_id:backendId}:{},
         cur==="grid"?{surface:"grid-app"}:{});
+    if(cur==="grid"){
+      const ctxHash=await envelopeHash(text);
+      lastContextHash=ctxHash;
+      reqBody.messages[reqBody.messages.length-1]={role:"user",content:JSON.stringify({
+        origin:"lyra",ts:new Date().toISOString(),text:text,
+        context_hash:ctxHash,fact_refs:[]
+      })};
+    }
     const chatUrl=chatCompletionsUrl(cur);
     if(cur==="grid"&&!useGridVerifyProxy(cur)
        &&GridVerificationClient&&GridVerificationClient.isAsterChatBody(reqBody)){
