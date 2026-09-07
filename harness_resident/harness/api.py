@@ -1,12 +1,19 @@
 from __future__ import annotations
-import asyncio, os, time
+import asyncio, json, os, time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
-from fastapi import FastAPI, HTTPException, WebSocket
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from .ops import classify_steps, execute_steps, parse_action_plan, worker_output_json
+from .topology import (
+    CORS_ORIGIN, clamp_latency_ms, duration_ms_for, last_nonempty_line,
+    provenance_line_raw, record_ack_receipt, record_grid_action, record_tool_receipt,
+    resolve_scope, worker_output_from_events,
+)
 
 from .envutil import DEMO_ROOT, ensure_demo_on_path, load_harness_env
 load_harness_env()
@@ -42,12 +49,20 @@ class JobCreate(BaseModel):
     approval_mode:str="write_ok_no_deploy"
     read_only:bool=False
     kind:str="chat"
+    origin:str=""
+    context_hash:str=""
+    latency_budget_ms:int|None=None
+    steps:list=Field(default_factory=list)
 
 class ApiJobBody(BaseModel):
     worker:str="local"
     kind:str="chat"
     content:str=Field(min_length=1)
     read_only:bool=True
+    origin:str=""
+    context_hash:str=""
+    latency_budget_ms:int|None=None
+    steps:list=Field(default_factory=list)
 
 class SessionCreate(BaseModel):
     agent_id:str
@@ -94,21 +109,127 @@ def _gate_reason(worker:str,cloud_allowed:bool,approval_mode:str,read_only:bool=
         return "cloud worker requires approval or explicit cloud_allowed=true"
     return None
 
-def create_job_internal(body:JobCreate):
-    ca=cfg.policy.cloud_default if body.cloud_allowed is None else bool(body.cloud_allowed)
+def _cc_timeout_ms()->int:
+    return max(1,int(getattr(cfg.cc,"timeout_seconds",120))*1000)
+
+def create_job_internal(body:JobCreate, *, scope:str="full"):
+    origin=(body.origin or "").strip()
+    ctx=(body.context_hash or "").strip()
+    if origin=="grid_compiled" and not ctx:
+        raise HTTPException(400,"grid_compiled requires context_hash")
+    cap=_cc_timeout_ms()
+    latency=clamp_latency_ms(body.latency_budget_ms,cap_ms=cap)
+    classified=None
+    worker=body.worker
     ro=bool(body.read_only)
+    ack=False
+    status="queued"
+    last_step=None
+    tool_out=None
+    steps=list(body.steps or [])
+    if not steps or not any(isinstance(s,dict) and s.get("target") for s in steps):
+        parsed=parse_action_plan(body.goal)
+        if parsed:
+            steps=parsed
+    if origin=="grid_compiled" or steps:
+        classified=classify_steps(steps)
+        if classified["blocked"]:
+            if scope in {"h1","page"}:
+                raise HTTPException(403,"read_only scope cannot post non read_only op")
+            worker="cc"
+            ro=False
+            status="blocked"
+            last_step="OP_DENIED"
+        else:
+            worker=classified["worker"] or "cc"
+            ro=bool(classified["read_only"])
+            ack=bool(classified["topology_ack"])
+            if classified["kind"]=="ack":
+                status="done"
+                last_step="topology_ack"
+            elif classified.get("executor")=="tool":
+                try:
+                    tool_out=execute_steps(steps,allowed_paths=[str(DEMO_ROOT)])
+                except (PermissionError, FileNotFoundError, IsADirectoryError, OSError) as exc:
+                    if scope in {"h1","page"}:
+                        raise HTTPException(403,"read_only scope cannot post non read_only op")
+                    worker="cc"
+                    ro=False
+                    status="blocked"
+                    last_step="OP_DENIED"
+                    tool_out={"error":str(exc)}
+                else:
+                    status="done"
+                    last_step="fs_tool"
+                    ack=bool(ack or tool_out.get("topology_ack"))
+                    worker="cc"
+                    ro=True
+            else:
+                status="queued"
+                last_step=None
+        if scope in {"h1","page"} and not ro:
+            raise HTTPException(403,"read_only scope cannot post non read_only op")
+    ca=cfg.policy.cloud_default if body.cloud_allowed is None else bool(body.cloud_allowed)
     tools=list(body.allowed_tools)
     paths=list(body.allowed_paths)
-    if body.worker=="cc" and ro:
+    if worker=="cc" and ro:
         tools=[t for t in (tools or ["Read","Grep","Glob"]) if t not in {"Bash","Write","Edit"}]
         if not tools:
             tools=["Read","Grep","Glob"]
         paths=[str(DEMO_ROOT)]
-    job=store.create_job(channel=body.channel,goal=body.goal,worker=body.worker,
+    job=store.create_job(channel=body.channel,goal=body.goal,worker=worker,
         allowed_tools=tools,allowed_paths=paths,
         cloud_allowed=ca,approval_mode=body.approval_mode,
-        read_only=ro,kind=body.kind)
-    reason=_gate_reason(body.worker,ca,body.approval_mode,read_only=ro)
+        read_only=ro,kind=body.kind,status=status,last_step=last_step,
+        origin=origin,context_hash=ctx,latency_budget_ms=latency,
+        steps=steps if steps else list(body.steps or []),topology_ack=ack)
+    if origin=="grid_compiled" or ctx:
+        try: record_grid_action(job)
+        except Exception: pass
+    if status=="blocked":
+        store.append_event(job["job_id"],"blocked",{"reason":last_step or "OP_DENIED"})
+        try:
+            ev=record_ack_receipt(job,status="DENIED",executed=False,error=last_step or "OP_DENIED")
+            line=provenance_line_raw(ev.get("event_id") or "")
+            store.put_job_receipt(event_id=ev.get("event_id") or job["job_id"],
+                                  job_id=job["job_id"],receipt_line=line or json.dumps(ev,ensure_ascii=False),
+                                  worker_output="")
+            store.update_job(job["job_id"],receipt_event_id=ev.get("event_id"))
+        except Exception:
+            pass
+        return store.get_job(job["job_id"])
+    if status=="done" and last_step=="topology_ack":
+        try:
+            ev=record_ack_receipt(job,status="EXECUTED",executed=True)
+            line=provenance_line_raw(ev.get("event_id") or "")
+            store.put_job_receipt(event_id=ev.get("event_id") or job["job_id"],
+                                  job_id=job["job_id"],receipt_line=line or json.dumps(ev,ensure_ascii=False),
+                                  worker_output="")
+            store.update_job(job["job_id"],receipt_event_id=ev.get("event_id"))
+            store.append_stream_event(session_id=None,job_id=job["job_id"],kind="receipt",
+                                      payload={"event_id":ev.get("event_id"),"job_id":job["job_id"],
+                                               "context_hash":ctx,"status":"EXECUTED","topology_ack":True})
+        except Exception:
+            pass
+        return store.get_job(job["job_id"])
+    if status=="done" and last_step=="fs_tool":
+        output=worker_output_json(tool_out or {})
+        store.append_event(job["job_id"],"job_result",tool_out or {})
+        try:
+            ev=record_tool_receipt(job,status="EXECUTED",executed=True)
+            line=provenance_line_raw(ev.get("event_id") or "")
+            store.put_job_receipt(event_id=ev.get("event_id") or job["job_id"],
+                                  job_id=job["job_id"],receipt_line=line or json.dumps(ev,ensure_ascii=False),
+                                  worker_output=output)
+            store.update_job(job["job_id"],receipt_event_id=ev.get("event_id"))
+            store.append_stream_event(session_id=None,job_id=job["job_id"],kind="receipt",
+                                      payload={"event_id":ev.get("event_id"),"job_id":job["job_id"],
+                                               "context_hash":ctx,"status":"EXECUTED",
+                                               "topology_ack":ack,"executor":"tool"})
+        except Exception:
+            pass
+        return store.get_job(job["job_id"])
+    reason=_gate_reason(worker,ca,body.approval_mode,read_only=ro)
     if reason:
         job=store.update_job(job["job_id"],status="blocked",last_step="awaiting_approval")
         store.append_event(job["job_id"],"blocked",{"reason":reason})
@@ -217,17 +338,37 @@ app=FastAPI(title="Grid Resident Harness",version="1.3",lifespan=lifespan)
 import os as _os
 _HARNESS_TOKEN=_os.getenv("GRID_HARNESS_TOKEN","").strip()
 _AUTH_EXEMPT_PREFIXES=("/mobile","/health")
-if not _HARNESS_TOKEN:
+if not _HARNESS_TOKEN and not _os.getenv("GRID_HARNESS_H1_TOKEN","").strip() and not _os.getenv("GRID_HARNESS_PAGE_TOKEN","").strip():
     print("[harness] WARNING: GRID_HARNESS_TOKEN 未设置——API 无鉴权裸奔,仅限单人可信主机")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[CORS_ORIGIN],
+    allow_methods=["GET"],
+    allow_headers=["Authorization","Content-Type"],
+)
+
+def _bearer(request)->str:
+    auth=request.headers.get("authorization") or ""
+    if auth.startswith("Bearer "):
+        return auth[7:].strip()
+    return ""
 
 @app.middleware("http")
 async def _auth_gate(request,call_next):
-    if _HARNESS_TOKEN:
-        p=request.url.path
-        if p!="/" and not any(p.startswith(x) for x in _AUTH_EXEMPT_PREFIXES):
-            if request.headers.get("authorization")!=f"Bearer {_HARNESS_TOKEN}":
-                from fastapi.responses import JSONResponse
-                return JSONResponse({"detail":"unauthorized"},status_code=401)
+    p=request.url.path
+    if p=="/" or request.method=="OPTIONS" or any(p.startswith(x) for x in _AUTH_EXEMPT_PREFIXES):
+        return await call_next(request)
+    scope=resolve_scope(_bearer(request))
+    if scope is None:
+        return JSONResponse({"detail":"unauthorized"},status_code=401)
+    request.state.scope=scope
+    if scope=="page" and request.method not in {"GET","HEAD","OPTIONS"}:
+        return JSONResponse({"detail":"page scope is GET only"},status_code=403)
+    if scope=="h1" and request.method not in {"GET","HEAD","OPTIONS","POST"}:
+        return JSONResponse({"detail":"h1 scope denied"},status_code=403)
+    if scope=="h1" and request.method=="POST" and not p.startswith("/api/jobs"):
+        return JSONResponse({"detail":"h1 scope POST only /api/jobs"},status_code=403)
     return await call_next(request)
 
 MOBILE_DIR=Path(__file__).resolve().parent.parent/"mobile"
@@ -312,22 +453,35 @@ async def rwa_onchain_connect(body:RwaConnectBody):
     except ValueError as exc:
         raise HTTPException(status_code=400,detail=str(exc)) from exc
 
+def _request_scope(request)->str:
+    return getattr(getattr(request,"state",None),"scope",None) or "full"
+
 @app.post("/api/jobs")
-async def api_create_job(body:ApiJobBody):
-    if body.worker not in KNOWN_WORKERS:
+async def api_create_job(body:ApiJobBody, request: Request):
+    scope=_request_scope(request)
+    if scope=="page":
+        raise HTTPException(403,"page scope cannot post jobs")
+    if body.worker not in KNOWN_WORKERS and (body.origin or "")!="grid_compiled" and not body.steps:
         job=store.create_job(channel="grid",goal=body.content,worker=body.worker,
             allowed_tools=[],allowed_paths=["."],cloud_allowed=False,
             approval_mode="write_ok_no_deploy",read_only=bool(body.read_only),
             kind=body.kind,status="blocked",last_step="UNKNOWN_WORKER")
         store.append_event(job["job_id"],"blocked",{"reason":"UNKNOWN_WORKER"})
         return {"job_id":job["job_id"],"status":job["status"],"last_step":job["last_step"]}
+    worker=body.worker if body.worker in KNOWN_WORKERS else "cc"
     job=create_job_internal(JobCreate(
-        channel="grid",goal=body.content,worker=body.worker,
-        cloud_allowed=True if body.worker=="local" else False,
+        channel="grid",goal=body.content,worker=worker,
+        cloud_allowed=True if worker=="local" else False,
         approval_mode="auto" if body.read_only else "write_ok_no_deploy",
         read_only=bool(body.read_only),kind=body.kind,
-    ))
-    return {"job_id":job["job_id"],"status":job["status"],"last_step":job.get("last_step")}
+        origin=body.origin,context_hash=body.context_hash,
+        latency_budget_ms=body.latency_budget_ms,steps=list(body.steps or []),
+    ),scope=scope)
+    return {"job_id":job["job_id"],"status":job["status"],"last_step":job.get("last_step"),
+            "origin":job.get("origin"),"context_hash":job.get("context_hash"),
+            "read_only":job.get("read_only"),"worker":job.get("worker"),
+            "topology_ack":job.get("topology_ack"),
+            "receipt_event_id":job.get("receipt_event_id")}
 
 @app.get("/api/jobs/{job_id}")
 async def api_get_job(job_id:str):
@@ -341,7 +495,52 @@ async def api_get_job(job_id:str):
         "read_only":job.get("read_only"),
         "last_step":job.get("last_step"),
         "receipt_event_id":job.get("receipt_event_id"),
+        "origin":job.get("origin"),
+        "context_hash":job.get("context_hash"),
+        "topology_ack":job.get("topology_ack"),
         "events":store.list_events(job_id),
+    }
+
+@app.get("/api/receipts/{event_id}")
+async def api_get_receipt(event_id:str):
+    row=store.get_job_receipt(event_id)
+    job=None
+    if row:
+        try: job=store.get_job(row["job_id"])
+        except KeyError: job=None
+    if not row:
+        try:
+            job=store.get_job(event_id)
+        except KeyError:
+            job=None
+        if job:
+            row=store.get_job_receipt_by_job(job["job_id"])
+            if not row and job.get("receipt_event_id"):
+                row=store.get_job_receipt(job["receipt_event_id"])
+    if not row and not job:
+        raise HTTPException(404,"receipt not found")
+    jid=(row or {}).get("job_id") or (job or {}).get("job_id")
+    if job is None and jid:
+        try: job=store.get_job(jid)
+        except KeyError: job=None
+    events=store.list_events(jid) if jid else []
+    output=(row or {}).get("worker_output") or worker_output_from_events(events)
+    eid=(row or {}).get("event_id") or (job or {}).get("receipt_event_id") or event_id
+    line=(row or {}).get("receipt_line") or provenance_line_raw(eid)
+    if job and output and eid:
+        store.put_job_receipt(event_id=eid,job_id=job["job_id"],receipt_line=line,worker_output=output)
+    dur=duration_ms_for(jid,eid) if jid else None
+    return {
+        "event_id":eid,
+        "job_id":jid,
+        "context_hash":(job or {}).get("context_hash") or "",
+        "status":(job or {}).get("status"),
+        "worker":(job or {}).get("worker"),
+        "topology_ack":bool((job or {}).get("topology_ack")),
+        "duration_ms":dur,
+        "receipt_line":line,
+        "worker_output":output,
+        "last_line":last_nonempty_line(output),
     }
 
 @app.post("/jobs")
@@ -448,13 +647,16 @@ async def events(after_seq:int=0,session_id:str|None=None,limit:int=1000):
     return store.list_stream_events(after_seq=after_seq,session_id=session_id,limit=limit)
 
 @app.websocket("/ws/events")
-async def ws_events(ws:WebSocket,after_seq:int=0,session_id:str|None=None):
-    # HTTP 中间件不覆盖 WS:token 走 query 参数或 Authorization 头,二选一命中即放行
-    if _HARNESS_TOKEN:
-        supplied=ws.query_params.get("token","") or ws.headers.get("authorization","").removeprefix("Bearer ").strip()
-        if supplied!=_HARNESS_TOKEN:
-            await ws.close(code=4401); return
-    await streamer.serve(ws,after_seq=after_seq,session_id=session_id)
+async def ws_events(ws:WebSocket,after_seq:int=0,since:int|None=None,session_id:str|None=None):
+    supplied=ws.query_params.get("token","") or ws.headers.get("authorization","").removeprefix("Bearer ").strip()
+    scope=resolve_scope(supplied)
+    if scope is None:
+        await ws.close(code=4401); return
+    origin=(ws.headers.get("origin") or "").rstrip("/")
+    if origin and origin!=CORS_ORIGIN and scope=="page":
+        await ws.close(code=4403); return
+    cursor=after_seq if since is None else int(since)
+    await streamer.serve(ws,after_seq=cursor,session_id=session_id)
 
 @app.post("/events/voice")
 async def voice_event(body:VoiceEvent):

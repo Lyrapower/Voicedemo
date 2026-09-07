@@ -73,7 +73,14 @@ class Store:
             CREATE INDEX IF NOT EXISTS idx_sessions_state ON sessions(state);
             CREATE INDEX IF NOT EXISTS idx_messages_session_created ON thread_messages(session_id,created_at);
             CREATE INDEX IF NOT EXISTS idx_stream_seq ON stream_events(seq);
-
+            CREATE TABLE IF NOT EXISTS job_receipts(
+              event_id TEXT PRIMARY KEY,
+              job_id TEXT,
+              receipt_line TEXT NOT NULL,
+              worker_output TEXT NOT NULL DEFAULT '',
+              created_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_job_receipts_job ON job_receipts(job_id);
             """)
             self._conn.commit()
             self._migrate_jobs()
@@ -86,20 +93,35 @@ class Store:
             self._conn.execute("ALTER TABLE jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat'")
         if "receipt_event_id" not in cols:
             self._conn.execute("ALTER TABLE jobs ADD COLUMN receipt_event_id TEXT")
+        if "origin" not in cols:
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN origin TEXT NOT NULL DEFAULT ''")
+        if "context_hash" not in cols:
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN context_hash TEXT NOT NULL DEFAULT ''")
+        if "latency_budget_ms" not in cols:
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN latency_budget_ms INTEGER")
+        if "steps" not in cols:
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN steps TEXT NOT NULL DEFAULT '[]'")
+        if "topology_ack" not in cols:
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN topology_ack INTEGER NOT NULL DEFAULT 0")
         self._conn.commit()
 
     def create_job(self, *, channel, goal, worker, allowed_tools, allowed_paths, cloud_allowed, approval_mode,
-                   read_only=True, kind="chat", status="queued", last_step=None):
+                   read_only=True, kind="chat", status="queued", last_step=None,
+                   origin="", context_hash="", latency_budget_ms=None, steps=None, topology_ack=False):
         now=time.time(); job_id=f"J-{uuid.uuid4().hex[:12]}"
         with self._lock:
             self._conn.execute("""INSERT INTO jobs(
               job_id,channel,goal,worker,allowed_tools,allowed_paths,cloud_allowed,
-              approval_mode,status,created_at,updated_at,read_only,kind,last_step
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+              approval_mode,status,created_at,updated_at,read_only,kind,last_step,
+              origin,context_hash,latency_budget_ms,steps,topology_ack
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (job_id,channel,goal,worker,json.dumps(allowed_tools),json.dumps(allowed_paths),
-             int(cloud_allowed),approval_mode,status,now,now,int(bool(read_only)),kind,last_step))
+             int(cloud_allowed),approval_mode,status,now,now,int(bool(read_only)),kind,last_step,
+             origin or "",context_hash or "",latency_budget_ms,
+             json.dumps(steps or [],ensure_ascii=False),int(bool(topology_ack))))
             self._conn.commit()
-        self.append_event(job_id,"job_created",{"goal":goal,"worker":worker,"kind":kind,"read_only":bool(read_only)})
+        self.append_event(job_id,"job_created",{"goal":goal,"worker":worker,"kind":kind,"read_only":bool(read_only),
+                                                "origin":origin or "","context_hash":context_hash or ""})
         return self.get_job(job_id)
 
     def get_job(self, job_id):
@@ -133,7 +155,8 @@ class Store:
 
     def update_job(self, job_id, **fields):
         fields["updated_at"]=time.time()
-        allowed={"worker","status","retry_count","last_step","last_artifact","pending_tool","cloud_allowed","updated_at","read_only","kind","receipt_event_id"}
+        allowed={"worker","status","retry_count","last_step","last_artifact","pending_tool","cloud_allowed","updated_at","read_only","kind","receipt_event_id",
+                 "origin","context_hash","latency_budget_ms","steps","topology_ack"}
         bad=set(fields)-allowed
         if bad: raise ValueError(f"unsupported fields: {sorted(bad)}")
         pairs=", ".join(f"{k}=?" for k in fields)
@@ -289,4 +312,41 @@ class Store:
           "read_only":bool(r["read_only"]) if "read_only" in keys else True,
           "kind":r["kind"] if "kind" in keys else "chat",
           "receipt_event_id":r["receipt_event_id"] if "receipt_event_id" in keys else None,
+          "origin":r["origin"] if "origin" in keys else "",
+          "context_hash":r["context_hash"] if "context_hash" in keys else "",
+          "latency_budget_ms":r["latency_budget_ms"] if "latency_budget_ms" in keys else None,
+          "steps":json.loads(r["steps"]) if "steps" in keys and r["steps"] else [],
+          "topology_ack":bool(r["topology_ack"]) if "topology_ack" in keys else False,
         }
+
+    def put_job_receipt(self, *, event_id: str, job_id: str, receipt_line: str, worker_output: str = ""):
+        now=time.time()
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO job_receipts(event_id,job_id,receipt_line,worker_output,created_at)
+                   VALUES(?,?,?,?,?)
+                   ON CONFLICT(event_id) DO UPDATE SET
+                     receipt_line=excluded.receipt_line,
+                     worker_output=excluded.worker_output""",
+                (event_id, job_id, receipt_line, worker_output or "", now))
+            self._conn.commit()
+
+    def get_job_receipt(self, event_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            r=self._conn.execute("SELECT * FROM job_receipts WHERE event_id=?",(event_id,)).fetchone()
+        if not r:
+            return None
+        return {"event_id":r["event_id"],"job_id":r["job_id"],
+                "receipt_line":r["receipt_line"],"worker_output":r["worker_output"],
+                "created_at":r["created_at"]}
+
+    def get_job_receipt_by_job(self, job_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            r=self._conn.execute(
+                "SELECT * FROM job_receipts WHERE job_id=? ORDER BY created_at DESC LIMIT 1",
+                (job_id,)).fetchone()
+        if not r:
+            return None
+        return {"event_id":r["event_id"],"job_id":r["job_id"],
+                "receipt_line":r["receipt_line"],"worker_output":r["worker_output"],
+                "created_at":r["created_at"]}
