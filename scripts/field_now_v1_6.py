@@ -128,9 +128,9 @@ def _parse_quiet(s):
     """'00:00-08:00' → ((0,0),(8,0));置空/非法 → None(关闭)。"""
     try:
         a, b = s.split("-")
-        h1, m1 = (int(x) for x in a.split(":"))
-        h2, m2 = (int(x) for x in b.split(":"))
-        return ((h1, m1), (h2, m2))
+        ha, ma = (int(x) for x in a.split(":"))
+        hb, mb = (int(x) for x in b.split(":"))
+        return ((ha, ma), (hb, mb))
     except Exception:
         return None
 
@@ -144,8 +144,8 @@ def in_quiet(now=None):
         return False
     now = now or datetime.now().astimezone()
     cur = now.hour * 60 + now.minute
-    (h1, m1), (h2, m2) = QUIET
-    a, b = h1 * 60 + m1, h2 * 60 + m2
+    (ha, ma), (hb, mb) = QUIET
+    a, b = ha * 60 + ma, hb * 60 + mb
     if a == b:
         return False
     if a < b:
@@ -400,6 +400,131 @@ def sense_mesh():
     return out or None
 
 
+# ---------------------------------------------------------------- harness_events
+
+_HARNESS_RING = []
+_HARNESS_LOCK = threading.Lock()
+_HARNESS_WS = os.environ.get("HARNESS_EVENTS_WS", "ws://127.0.0.1:8630/ws/events")
+
+
+def _harness_token():
+    for name in ("GRID_HARNESS_PAGE_TOKEN", "GRID_HARNESS_TOKEN"):
+        v = (os.environ.get(name) or "").strip()
+        if v:
+            return v
+    p = Path.home() / ".config" / "grid" / "harness_resident.env"
+    if not p.is_file():
+        return ""
+    for line in p.read_text(encoding="utf-8").splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        k, val = s.split("=", 1)
+        if k.strip() in ("GRID_HARNESS_PAGE_TOKEN", "GRID_HARNESS_TOKEN"):
+            t = val.strip().strip('"').strip("'")
+            if t:
+                return t
+    return ""
+
+
+def _harness_push(line, ctx=""):
+    line = str(line or "").strip()
+    if not line:
+        return
+    with _HARNESS_LOCK:
+        _HARNESS_RING.append({"context_hash": str(ctx or ""), "receipt_line": line})
+        del _HARNESS_RING[:-5]
+
+
+def _harness_block():
+    with _HARNESS_LOCK:
+        rows = list(_HARNESS_RING)
+    if not rows:
+        return ""
+    out = ["[harness 此刻]"]
+    for r in rows:
+        out.append(r["receipt_line"])
+    return "\n".join(out)
+
+
+def _ws_recv_loop():
+    import base64, struct, hashlib as _hl
+    tok = _harness_token()
+    if not tok:
+        return
+    url = urllib.parse.urlparse(_HARNESS_WS)
+    host, port = url.hostname or "127.0.0.1", url.port or 80
+    path = url.path or "/ws/events"
+    q = "since=0&token=" + urllib.parse.quote(tok)
+    key = base64.b64encode(os.urandom(16)).decode("ascii")
+    req = (
+        "GET %s?%s HTTP/1.1\r\nHost: %s:%s\r\nUpgrade: websocket\r\n"
+        "Connection: Upgrade\r\nSec-WebSocket-Key: %s\r\n"
+        "Sec-WebSocket-Version: 13\r\n\r\n"
+    ) % (path, q, host, port, key)
+    import socket
+    while True:
+        try:
+            s = socket.create_connection((host, port), timeout=8)
+            s.sendall(req.encode("ascii"))
+            hdr = b""
+            while b"\r\n\r\n" not in hdr:
+                chunk = s.recv(4096)
+                if not chunk:
+                    raise OSError("closed")
+                hdr += chunk
+            s.settimeout(30)
+            buf = hdr.split(b"\r\n\r\n", 1)[1]
+            while True:
+                while len(buf) < 2:
+                    more = s.recv(4096)
+                    if not more:
+                        raise OSError("closed")
+                    buf += more
+                b1, b2 = buf[0], buf[1]
+                ln = b2 & 0x7F
+                off = 2
+                if ln == 126:
+                    while len(buf) < 4:
+                        buf += s.recv(4096)
+                    ln = struct.unpack(">H", buf[2:4])[0]
+                    off = 4
+                elif ln == 127:
+                    while len(buf) < 10:
+                        buf += s.recv(4096)
+                    ln = struct.unpack(">Q", buf[2:10])[0]
+                    off = 10
+                while len(buf) < off + ln:
+                    more = s.recv(4096)
+                    if not more:
+                        raise OSError("closed")
+                    buf += more
+                payload = buf[off:off + ln]
+                buf = buf[off + ln:]
+                if (b1 & 0x0F) == 0x1:
+                    try:
+                        ev = json.loads(payload.decode("utf-8"))
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        continue
+                    line = ""
+                    ctx = ""
+                    if isinstance(ev, dict):
+                        pld = ev.get("payload") if isinstance(ev.get("payload"), dict) else ev
+                        line = str(pld.get("receipt_line") or "")
+                        ctx = str(pld.get("context_hash") or ev.get("context_hash") or "")
+                        if not line and ev.get("kind") in ("receipt", "job_done", "job_result"):
+                            line = json.dumps(ev, ensure_ascii=False)
+                    if line:
+                        _harness_push(line, ctx)
+        except Exception:
+            time.sleep(5)
+
+
+def _start_harness_events():
+    t = threading.Thread(target=_ws_recv_loop, name="harness_events", daemon=True)
+    t.start()
+
+
 # ---------------------------------------------------------------- 编译
 
 def compile_now():
@@ -465,6 +590,9 @@ def compile_now():
     text = "\n".join(lines)
     if len(text) > 600:
         text = text[:600]
+    extra = _harness_block()
+    if extra:
+        text = text + "\n" + extra
     return text, data
 
 
@@ -520,6 +648,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     warns = sentinel_harden()
+    _start_harness_events()
     srv = ThreadingHTTPServer((BIND, PORT), Handler)
     print("场域编译器 v1.6 %s:%d" % (BIND, PORT))
     print("  信标 %s / 路由 %s" % (FIELD_DIR, ROUTER_DIR))
