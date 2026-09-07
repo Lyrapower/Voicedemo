@@ -512,8 +512,6 @@ def _ws_recv_loop():
                         pld = ev.get("payload") if isinstance(ev.get("payload"), dict) else ev
                         line = str(pld.get("receipt_line") or "")
                         ctx = str(pld.get("context_hash") or ev.get("context_hash") or "")
-                        if not line and ev.get("kind") in ("receipt", "job_done", "job_result"):
-                            line = json.dumps(ev, ensure_ascii=False)
                     if line:
                         _harness_push(line, ctx)
         except Exception:

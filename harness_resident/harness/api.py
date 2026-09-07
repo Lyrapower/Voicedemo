@@ -208,7 +208,8 @@ def create_job_internal(body:JobCreate, *, scope:str="full"):
             store.update_job(job["job_id"],receipt_event_id=ev.get("event_id"))
             store.append_stream_event(session_id=None,job_id=job["job_id"],kind="receipt",
                                       payload={"event_id":ev.get("event_id"),"job_id":job["job_id"],
-                                               "context_hash":ctx,"status":"EXECUTED","topology_ack":True})
+                                               "context_hash":ctx,"status":"EXECUTED","topology_ack":True,
+                                               "receipt_line":line})
         except Exception:
             pass
         return store.get_job(job["job_id"])
@@ -225,7 +226,8 @@ def create_job_internal(body:JobCreate, *, scope:str="full"):
             store.append_stream_event(session_id=None,job_id=job["job_id"],kind="receipt",
                                       payload={"event_id":ev.get("event_id"),"job_id":job["job_id"],
                                                "context_hash":ctx,"status":"EXECUTED",
-                                               "topology_ack":ack,"executor":"tool"})
+                                               "topology_ack":ack,"executor":"tool",
+                                               "receipt_line":line})
         except Exception:
             pass
         return store.get_job(job["job_id"])

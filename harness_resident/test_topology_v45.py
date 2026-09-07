@@ -141,6 +141,12 @@ class DbAndCreateTests(unittest.TestCase):
         self.assertEqual(data["fs_data"]["max_file"]["name"], biggest.name)
         self.assertEqual(data["fs_data"]["max_file"]["size_bytes"], int(biggest.stat().st_size))
         self.assertEqual(data["fs_data"]["max_file"]["size_bytes"], os.stat(biggest).st_size)
+        stream = [e for e in self.store.list_stream_events(after_seq=0)
+                  if e.get("job_id") == job["job_id"] and e.get("kind") == "receipt"]
+        self.assertTrue(stream)
+        line = stream[-1]["payload"].get("receipt_line") or ""
+        self.assertTrue(line.strip())
+        self.assertIn(job.get("receipt_event_id") or "", line)
 
     def test_write_blocked_full(self):
         body = self.api.JobCreate(
