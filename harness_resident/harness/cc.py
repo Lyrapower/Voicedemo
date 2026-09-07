@@ -108,6 +108,8 @@ class CCExecutor:
         if declared:
             flags+=["--allowedTools",",".join(sorted(declared))]
             deny=sorted(CC_TOOL_UNIVERSE-declared)
+            if job.get("read_only"):
+                deny=[t for t in deny if t!="Bash"]
             if deny:
                 flags+=["--disallowedTools",",".join(deny)]
         host_add_dirs: list[Path] = []
