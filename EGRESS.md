@@ -2,12 +2,12 @@
 
 | domain | 用途 | 只读 | 鉴权 env | 速率/min | grade | 拍板 | lanes |
 |---|---|---|---|---|---|---|---|
-| efts.sec.gov | EDGAR 全文检索 | yes | none | 10 | attested | | research,rwa |
-| data.sec.gov | EDGAR 提交 JSON(需 User-Agent 含邮箱:SEC_UA) | yes | SEC_UA | 10 | attested | | research,rwa |
-| export.arxiv.org | arXiv API | yes | none | 20 | issuer_claim | | research |
-| www.grants.gov | grants.gov 检索 | yes | none | 20 | attested | | scout |
-| api.sam.gov | SAM.gov 机会 | yes | SAM_API_KEY | 10 | attested | | scout |
-| api.github.com | GitHub API | yes | GITHUB_TOKEN | 30 | issuer_claim | | maintainer,research |
+| efts.sec.gov | EDGAR 全文检索 | yes | none | 10 | attested | 2026-09-07 | research,rwa,deep,full |
+| data.sec.gov | EDGAR 提交 JSON(需 User-Agent 含邮箱:SEC_UA) | yes | SEC_UA | 10 | attested | 2026-09-07 | research,rwa,deep,full |
+| export.arxiv.org | arXiv API | yes | none | 20 | issuer_claim | 2026-09-07 | research,deep,full |
+| www.grants.gov | grants.gov 检索 | yes | none | 20 | attested | 2026-09-07 | scout |
+| api.sam.gov | SAM.gov 机会 | yes | SAM_API_KEY | 10 | attested | 2026-09-07 | scout |
+| api.github.com | GitHub API | yes | GITHUB_TOKEN | 30 | issuer_claim | 2026-09-07 | maintainer,research |
 | *.alchemy.com | ETH JSON-RPC (third_party; cap witnesses_agree) | yes | ETH_RPC_URL | 30 | witnesses_agree | 2026-08-26 | rwa |
 | *.quiknode.pro | ETH JSON-RPC 2 (third_party; cap witnesses_agree) | yes | ETH_RPC_URL_2 | 30 | witnesses_agree | 2026-08-26 | rwa |
 | *.ankr.com | BSC JSON-RPC (third_party; cap witnesses_agree; second optional) | yes | BSC_RPC_URL | 30 | witnesses_agree | 2026-08-26 | rwa |
