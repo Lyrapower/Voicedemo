@@ -156,7 +156,6 @@ class CCExecutor:
             ([docker,"info"],"docker unavailable"),
             ([docker,"image","inspect",image],f"image missing:{image}"),
             ([docker,"network","inspect",network],f"network missing:{network}"),
-            ([docker,"inspect",fwd],f"fwd missing:{fwd}"),
         )
         import subprocess
         for cmd, err in checks:
@@ -166,6 +165,12 @@ class CCExecutor:
                 return err
             if r.returncode!=0:
                 return err
+        try:
+            r=subprocess.run([docker,"inspect","-f","{{.State.Running}}",fwd],capture_output=True,timeout=8,text=True)
+        except Exception:
+            return f"fwd missing:{fwd}"
+        if r.returncode!=0 or r.stdout.strip().lower()!="true":
+            return f"fwd missing:{fwd}"
         return ""
 
     async def _run_docker(self,job,jd,flags,prompt,cc_model,cc_endpoint,host_add_dirs):
@@ -184,6 +189,7 @@ class CCExecutor:
             argv+=["-v",f"{rp}:/ws/p{i}:ro"]
             flags+=["--add-dir",f"/ws/p{i}"]
         argv+=["-e","ANTHROPIC_AUTH_TOKEN=ollama",
+               "-e","ANTHROPIC_API_KEY=ollama",
                "-e",f"ANTHROPIC_BASE_URL=http://{fwd}:11434",
                "-e","HOME=/work",
                "-e","PATH=/usr/local/bin:/usr/bin:/bin",
