@@ -71,6 +71,7 @@ class CCExecutor:
         if not self.cfg.cc.enabled:
             return {"ok":False,"error":"Claude Code disabled"}
         jd=self.root/job["job_id"]; jd.mkdir(parents=True,exist_ok=True)
+        jd=jd.resolve()
         (jd/"TASK.md").write_text(f"# Task\n\n{job['goal']}\n",encoding="utf-8")
         context_json={
           "job_id":job["job_id"],
