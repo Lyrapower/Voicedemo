@@ -1,5 +1,5 @@
 from __future__ import annotations
-import asyncio, json, os, sys, hashlib
+import asyncio, json, os, sys, hashlib, shutil
 from pathlib import Path
 from typing import Any
 from .config import Config
@@ -150,11 +150,12 @@ class CCExecutor:
         fwd=str(getattr(self.cfg.cc,"fwd","") or "")
         if not image or not network or not fwd:
             return "sandbox config incomplete"
+        docker=os.environ.get("DOCKER_BIN") or shutil.which("docker") or "/usr/local/bin/docker"
         checks=(
-            (["docker","info"],"docker unavailable"),
-            (["docker","image","inspect",image],f"image missing:{image}"),
-            (["docker","network","inspect",network],f"network missing:{network}"),
-            (["docker","inspect",fwd],f"fwd missing:{fwd}"),
+            ([docker,"info"],"docker unavailable"),
+            ([docker,"image","inspect",image],f"image missing:{image}"),
+            ([docker,"network","inspect",network],f"network missing:{network}"),
+            ([docker,"inspect",fwd],f"fwd missing:{fwd}"),
         )
         import subprocess
         for cmd, err in checks:
@@ -170,8 +171,9 @@ class CCExecutor:
         image=str(self.cfg.cc.image)
         network=str(self.cfg.cc.network)
         fwd=str(self.cfg.cc.fwd)
+        docker=os.environ.get("DOCKER_BIN") or shutil.which("docker") or "/usr/local/bin/docker"
         name=f"grid-cc-{job['job_id']}"
-        argv=["docker","run","--rm","--name",name,
+        argv=[docker,"run","--rm","--name",name,
               "--read-only","--network",network,
               "--cap-drop","ALL","--security-opt","no-new-privileges",
               "--pids-limit","256","--memory","2g","--cpus","2",
