@@ -1,6 +1,7 @@
-"""harness/gateway.py · GatewayClient v2.1(2026-09-02,砥)· 段一件 1
+"""harness/gateway.py · GatewayClient v2.2(2026-09-07)· model 名与 8501 /v1/models 同一套
 
-v2.1:route 分流——带斜杠 = model id(本地 qwen/qwen3.5-9b)走 /v1/chat/completions;不带 = substrate 走 /task/cloud_chat;demo/aster 任何路都拒;content 为空一律抛错(200 不算通)。
+带斜杠 → /v1/chat/completions model=值。不带斜杠 → /task/cloud_chat,payload.substrate 由 MODEL_TO_SUBSTRATE 反查
+(gateway 冻结件的键,不外泄)。_assert_model_match 比较 8501 回包 model 与 config 值。
 
 替换 grid-resident-harness/harness/gateway.py(原 51 行打 /v1/chat/completions,对 cloud substrate 吃 403 且无工具)。
 改四处:端点 /task/cloud_chat · payload {"substrate": route, ...} · extract_text 读 resp["content"] · 去流式。
@@ -15,6 +16,19 @@ chat_stream 保留签名但不再流式:一次拿完整 content 后按行 yield,
 from __future__ import annotations
 from typing import Any, AsyncIterator
 import json
+
+# gateway 冻结件的键,不外泄。config 只写 8501 model 名;这里反查 substrate。
+MODEL_TO_SUBSTRATE = {
+    "glm-5.2": "glm52",
+    "glm-5.3-flash": "glm53",
+    "glm-5.3": "glm53_full",
+    "deepseek-v4-pro": "deepseek_v4",
+}
+_ERR_BODY = 2000
+
+
+def substrate_for(model_name: str) -> str:
+    return MODEL_TO_SUBSTRATE.get(str(model_name or ""), str(model_name or ""))
 
 
 def _headers_from_config():
@@ -50,26 +64,26 @@ class GatewayClient:
     async def chat(self, route: str, messages: list[dict[str, Any]], *, max_tokens: int | None = None,
                    temperature: float = 0.3, timeout: float | None = None, memory_sealed: bool = True,
                    memory_read: bool | None = None, mission_id: str | None = None) -> dict:
-        """route = /task/cloud_chat 的 substrate id(glm52 / glm53 / qwen35 …),不是 model 名。"""
+        """route = 8501 model 名(config.toml [models]);带斜杠走本地,不带走 cloud_chat。"""
         if "/" in route:                       # model id(qwen/qwen3.5-9b …)→ 本地 openai 路;demo/aster 永远拒
             if route == "demo/aster":
                 raise GatewayError("demo/aster is not a lane")
             r = await self.client.post("/v1/chat/completions", json={"model": route, "messages": messages,
                                                                      "max_tokens": int(max_tokens or self.default_max_tokens), "temperature": temperature, "stream": False})
             if r.status_code >= 400:
-                raise GatewayError(f"/v1/chat/completions {r.status_code}: {r.text[:200]}")
+                raise GatewayError(f"/v1/chat/completions {r.status_code}: {r.text[:_ERR_BODY]}")
             d = r.json()
             try:
                 content = d["choices"][0]["message"]["content"] or ""
             except Exception as e:
-                raise GatewayError(f"unexpected openai response: {str(d)[:200]}") from e
+                raise GatewayError(f"unexpected openai response: {str(d)[:_ERR_BODY]}") from e
             if not content.strip():
                 raise GatewayError("empty content from local lane")
             out = {"ok": True, "content": content, "substrate": route, "model": d.get("model", route), "backend": "local",
                     "usage": d.get("usage") or {}, "route_id": d.get("id")}
             _assert_model_match(route, out)
             return out
-        payload: dict[str, Any] = {"substrate": route, "messages": messages,
+        payload: dict[str, Any] = {"substrate": substrate_for(route), "messages": messages,
                                    "max_tokens": int(max_tokens or self.default_max_tokens), "temperature": temperature,
                                    "memory_sealed": bool(memory_sealed)}
         if timeout is not None: payload["timeout"] = float(timeout)
@@ -77,10 +91,10 @@ class GatewayClient:
         if mission_id: payload["mission_id"] = mission_id
         r = await self.client.post("/task/cloud_chat", json=payload)
         if r.status_code >= 400:
-            raise GatewayError(f"/task/cloud_chat {r.status_code}: {r.text[:200]}")
+            raise GatewayError(f"/task/cloud_chat {r.status_code}: {r.text[:_ERR_BODY]}")
         data = r.json()
         if not data.get("ok", True) and not data.get("content"):
-            raise GatewayError(f"gateway ok=false: {str(data.get('error') or data.get('done_reason'))[:200]}")
+            raise GatewayError(f"gateway ok=false: {str(data.get('error') or data.get('done_reason'))[:_ERR_BODY]}")
         if not str(data.get("content") or "").strip():
             raise GatewayError(f"empty content (done_reason={data.get('done_reason')}):200 不算通")
         _assert_model_match(route, data)
@@ -99,7 +113,7 @@ class GatewayClient:
             c = resp["content"]
             return c if isinstance(c, str) else str(c)
         except Exception as e:
-            raise GatewayError(f"unexpected gateway response: {str(resp)[:200]}") from e
+            raise GatewayError(f"unexpected gateway response: {str(resp)[:_ERR_BODY]}") from e
 
     @staticmethod
     def usage(resp: dict) -> dict:
@@ -118,9 +132,18 @@ class ModelMismatch(GatewayError):
     """响应 model ≠ 请求 route。gateway T2 静默 fallback 的 harness 侧兜底(D3)。"""
 
 
+def _canon_model_name(name: str) -> str:
+    """8501 回包常带 :cloud 后缀;比较时剥掉,substrate id(glm52)仍不相等。"""
+    s = str(name or "").strip()
+    if s.endswith(":cloud"):
+        s = s[: -len(":cloud")]
+    return s
+
+
 def _assert_model_match(requested: str, resp: dict) -> None:
-    resolved = resp.get("model") or resp.get("substrate")
-    if requested and resolved and str(resolved) != str(requested):
+    """比较 8501 回包 model 名与 config 值(都是 model 名)。"""
+    resolved = resp.get("model")
+    if requested and resolved and _canon_model_name(resolved) != _canon_model_name(requested):
         raise ModelMismatch(f"requested {requested!r} resolved {resolved!r}")
 
 
@@ -142,7 +165,9 @@ def selftest() -> int:
             if body.get("substrate") == "__bogus__": return httpx.Response(400, json={"error": "unknown substrate"})
             if body.get("substrate") == "demo/aster": return httpx.Response(403, json={"error": "aster not a lane"})
             if body.get("substrate") == "glm53_full": return httpx.Response(200, json={"ok": True, "content": "", "done_reason": "length", "usage": {}})
-            return httpx.Response(200, json={"ok": True, "content": "pong\nline2", "substrate": body["substrate"], "model": "glm-5.3-flash",
+            sub = body["substrate"]
+            model_name = {v: k for k, v in MODEL_TO_SUBSTRATE.items()}.get(sub, sub)
+            return httpx.Response(200, json={"ok": True, "content": "pong\nline2", "substrate": sub, "model": model_name,
                                              "memory_write": not body.get("memory_sealed"), "backend": "ollama_cloud", "route_id": "r1",
                                              "usage": {"cost_usd": 0.001, "tool_rounds": 0, "memory_turns": 0 if body.get("memory_read") is False else 2}})
         return httpx.Response(404)
@@ -158,15 +183,18 @@ def selftest() -> int:
     async def go():
         gc = GatewayClient(Cfg(), client=httpx.AsyncClient(base_url="http://stub", transport=httpx.MockTransport(app)))
         must(await gc.ready(), "1 ready 应 True")
-        r = await gc.chat("glm53", [{"role": "user", "content": "pong"}])
+        r = await gc.chat("glm-5.3-flash", [{"role": "user", "content": "pong"}])
         must(seen[-1]["substrate"] == "glm53" and "model" not in seen[-1] and "stream" not in seen[-1], "2 payload 应 substrate,无 model/stream")
+        must(r.get("model") == "glm-5.3-flash", "2b resolved == config 值")
         must(seen[-1]["memory_sealed"] is True, "3 默认 memory_sealed=True")
         must(GatewayClient.extract_text(r) == "pong\nline2", "4 extract_text 读 content")
         must(GatewayClient.usage(r)["memory_write"] is False, "5 sealed → memory_write False")
-        r2 = await gc.chat("glm52", [{"role": "user", "content": "x"}], memory_read=False, mission_id="m-1")
+        r2 = await gc.chat("glm-5.2", [{"role": "user", "content": "x"}], memory_read=False, mission_id="m-1")
         must(seen[-1]["memory_read"] is False and seen[-1]["mission_id"] == "m-1", "6 memory_read/mission_id 透传")
+        must(seen[-1]["substrate"] == "glm52", "6c deep 反查 glm52")
+        must(r2.get("model") == "glm-5.2", "6d deep resolved == config")
         must(GatewayClient.usage(r2)["memory_turns"] == 0, "6b 封读 → memory_turns 0(以回包为准)")
-        chunks = [c async for c in gc.chat_stream("glm53", [{"role": "user", "content": "pong"}])]
+        chunks = [c async for c in gc.chat_stream("glm-5.3-flash", [{"role": "user", "content": "pong"}])]
         must("".join(chunks) == "pong\nline2" and len(chunks) == 2, "7 chat_stream 非流式按行 yield")
         try:
             await gc.chat("__bogus__", []); must(False, "8 400 未抛")
@@ -179,7 +207,7 @@ def selftest() -> int:
         r3 = await gc.chat("qwen/qwen3.5-9b", [{"role": "user", "content": "pong"}])
         must(seen[-1].get("model") == "qwen/qwen3.5-9b" and r3["backend"] == "local" and GatewayClient.extract_text(r3) == "local pong", "10 本地 model id 走 /v1/chat/completions")
         try:
-            await gc.chat("glm53_full", [{"role": "user", "content": "pong"}]); must(False, "11 空 content 未抛")
+            await gc.chat("glm-5.3", [{"role": "user", "content": "pong"}]); must(False, "11 空 content 未抛")
         except GatewayError as e:
             must("empty content" in str(e), "11 空 content 错误文案")
         await gc.close()

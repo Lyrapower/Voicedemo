@@ -7,11 +7,11 @@ max_retries = 2
 max_concurrency = 4
 
 [models]
-local_route = "qwen/qwen3.5-9b"          # 本地 9B 快线;带斜杠走 /v1/chat/completions,禁 demo/aster
-fast_route  = "glm53"           # GLM 5.3 flash:短对话、工具调用、哨兵解释
-deep_route  = "glm52"           # GLM 5.2(侯):开放世界、终审复核
-full_route  = "glm53_full"      # GLM 5.3 全量:长链、dossier
-research_route = "deepseek_v4"  # DeepSeek V4 Pro:可校验研究/短战术,执行声明每步 GLM 验(8-22)
+local_route    = "qwen/qwen3.5-9b"   # 零成本小活
+fast_route     = "glm-5.3-flash"     # 多模态(VL)+快活
+deep_route     = "glm-5.2"           # 深推理;2026-09-07 起接 Scout 决策官(替 deepseek)
+full_route     = "glm-5.3"           # 长链/完整
+research_route = "deepseek-v4-pro"   # research
 # multimodal 不设 route:5.2/5.3 lane 内 MiniMax M3 旁路自动走
 
 [cc]
@@ -21,6 +21,12 @@ work_root = "./agent_jobs"
 timeout_seconds = 1800
 model = "glm-5.3:cloud"
 ollama_endpoint = "http://127.0.0.1:11434"
+sandbox = "docker"
+image = "grid-cc:2.1.201"
+network = "grid-cc-net"
+fwd = "grid-cc-fwd"
+mounts = []
+sandbox_required = true
 
 [harness]
 host = "127.0.0.1"

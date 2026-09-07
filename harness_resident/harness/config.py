@@ -35,6 +35,12 @@ class CCConfig:
     timeout_seconds: int
     model: str = ""
     ollama_endpoint: str = ""
+    sandbox: str = "none"
+    image: str = ""
+    network: str = ""
+    fwd: str = ""
+    mounts: tuple = ()
+    sandbox_required: bool = False
 
 
 @dataclass(frozen=True)
@@ -212,6 +218,9 @@ def load_config(path: str = "config.toml") -> Config:
     if not harness_raw:
         raise ValueError("config.toml requires [harness] (or legacy [api])")
 
+    cc_data = dict(data["cc"])
+    cc_data["mounts"] = tuple(cc_data.get("mounts") or ())
+
     voice_raw = data.get("voice") or {}
     audio8_raw = voice_raw.get("audio8") or {}
     tts_port = int(audio8_raw.get("port", 8631))
@@ -236,7 +245,7 @@ def load_config(path: str = "config.toml") -> Config:
     return Config(
         core=CoreConfig(**data["core"]),
         models=ModelConfig(**data["models"]),
-        cc=CCConfig(**data["cc"]),
+        cc=CCConfig(**cc_data),
         harness=HarnessConfig(**harness_raw),
         voice=VoiceConfig(
             provider=str(voice_raw.get("provider", "audio8_onnx")),
