@@ -57,10 +57,9 @@ def _record_cc_provenance(job: dict[str, Any], model: str, endpoint: str,
     ).to_dict()
 
 
-# Claude Code 内建工具全集(v1.3.1 快照,deny-by-default 的分母;升级 CC 后核一次)
+# Claude Code 内建工具全集(deny-by-default 分母;MultiEdit/SlashCommand 已从 8-21 旧快照剔除)
 CC_TOOL_UNIVERSE={"Task","Bash","BashOutput","KillShell","Glob","Grep","Read","Edit",
-                  "MultiEdit","Write","NotebookEdit","WebFetch","WebSearch","TodoWrite",
-                  "SlashCommand","Skill"}
+                  "Write","NotebookEdit","WebFetch","WebSearch","TodoWrite","Skill"}
 
 class CCExecutor:
     def __init__(self,cfg:Config):
@@ -99,38 +98,102 @@ class CCExecutor:
         # 不再是 prompt 里的口头请求。路径栅栏 = cwd 锁 job 目录 + --add-dir 仅白名单;
         # 工具栅栏 = --allowedTools 逐项传。旗标名以本机 CC 版本为准(现场自证点):
         # 若 CC 报 unknown option,本任务按失败响亮返回,绝不静默摘栅栏重跑。
-        argv=[self.cfg.cc.binary,"-p",prompt]
+        flags: list[str] = ["-p", prompt]
         declared={str(t) for t in (job.get("allowed_tools") or [])}
         if job.get("read_only"):
             declared-={"Bash","Write","Edit"}
             if not declared:
                 declared={"Read","Grep","Glob"}
         if declared:
-            argv+=["--allowedTools",",".join(sorted(declared))]
-            # v1.3.1(SOL P0-1):allow 不等于"未列即禁"——CC 的 --allowedTools 只做放行,
-            # 未声明工具会回落到用户级 settings(若她全局有宽放行即穿透)。补显式 deny:
-            # deny = 已知内建工具全集 − 声明集,deny 在 CC 权限模型里压过一切 allow,
-            # 由此对已知全集成立真 deny-by-default。边界如实声明:未来 CC 新增的工具名
-            # 不在此常量内则不受禁,升级 CC 后此行要跟(一行事,现场自证点 S9 会暴露)。
+            flags+=["--allowedTools",",".join(sorted(declared))]
             deny=sorted(CC_TOOL_UNIVERSE-declared)
             if deny:
-                argv+=["--disallowedTools",",".join(deny)]
+                flags+=["--disallowedTools",",".join(deny)]
+        host_add_dirs: list[Path] = []
         for p in job["allowed_paths"]:
             rp=Path(p)
             if str(p) in {".",""}:
-                continue  # job 目录本身即 cwd,无需加白
-            argv+=["--add-dir",str(rp if rp.is_absolute() else (jd/rp).resolve())]
+                continue
+            host_add_dirs.append(rp if rp.is_absolute() else (jd/rp).resolve())
         cc_model=getattr(self.cfg.cc,"model","")
         cc_endpoint=getattr(self.cfg.cc,"ollama_endpoint","http://127.0.0.1:11434")
+        if cc_model:
+            flags+=["--model",cc_model]
+        if self._use_docker_sandbox():
+            missing=self._sandbox_missing()
+            if missing:
+                return {"ok":False,"error":"BLOCKED_SANDBOX_MISSING","blocked":"sandbox_missing",
+                        "detail":missing,"job_dir":str(jd),"sandbox":"docker"}
+            return await self._run_docker(job,jd,flags,prompt,cc_model,cc_endpoint,host_add_dirs)
+        if bool(getattr(self.cfg.cc,"sandbox_required",False)):
+            return {"ok":False,"error":"BLOCKED_SANDBOX_MISSING","blocked":"sandbox_missing",
+                    "detail":"sandbox_required without docker","job_dir":str(jd)}
+        argv=[self.cfg.cc.binary,*flags]
+        for rp in host_add_dirs:
+            argv+=["--add-dir",str(rp)]
         sub_env=None
         if cc_model:
-            argv+=["--model",cc_model]
             sub_env=dict(os.environ)
             sub_env["ANTHROPIC_BASE_URL"]=cc_endpoint
             sub_env["ANTHROPIC_AUTH_TOKEN"]="ollama"
         proc=await asyncio.create_subprocess_exec(
             *argv,cwd=str(jd),env=sub_env,
             stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
+        return await self._finish_proc(proc,job,jd,prompt,cc_model,cc_endpoint,sandbox=None,container=None)
+
+    def _use_docker_sandbox(self) -> bool:
+        return str(getattr(self.cfg.cc,"sandbox","") or "") == "docker"
+
+    def _sandbox_missing(self) -> str:
+        image=str(getattr(self.cfg.cc,"image","") or "")
+        network=str(getattr(self.cfg.cc,"network","") or "")
+        fwd=str(getattr(self.cfg.cc,"fwd","") or "")
+        if not image or not network or not fwd:
+            return "sandbox config incomplete"
+        checks=(
+            (["docker","info"],"docker unavailable"),
+            (["docker","image","inspect",image],f"image missing:{image}"),
+            (["docker","network","inspect",network],f"network missing:{network}"),
+            (["docker","inspect",fwd],f"fwd missing:{fwd}"),
+        )
+        import subprocess
+        for cmd, err in checks:
+            try:
+                r=subprocess.run(cmd,capture_output=True,timeout=8)
+            except Exception:
+                return err
+            if r.returncode!=0:
+                return err
+        return ""
+
+    async def _run_docker(self,job,jd,flags,prompt,cc_model,cc_endpoint,host_add_dirs):
+        image=str(self.cfg.cc.image)
+        network=str(self.cfg.cc.network)
+        fwd=str(self.cfg.cc.fwd)
+        name=f"grid-cc-{job['job_id']}"
+        argv=["docker","run","--rm","--name",name,
+              "--read-only","--network",network,
+              "--cap-drop","ALL","--security-opt","no-new-privileges",
+              "--pids-limit","256","--memory","2g","--cpus","2",
+              "--tmpfs","/work:rw,size=512m,mode=1777",
+              "-v",f"{jd}:/ws/job:ro"]
+        for i, rp in enumerate(host_add_dirs):
+            argv+=["-v",f"{rp}:/ws/p{i}:ro"]
+            flags+=["--add-dir",f"/ws/p{i}"]
+        argv+=["-e","ANTHROPIC_AUTH_TOKEN=ollama",
+               "-e",f"ANTHROPIC_BASE_URL=http://{fwd}:11434",
+               "-e","HOME=/work",
+               "-e","PATH=/usr/local/bin:/usr/bin:/bin",
+               "-e",f"HTTPS_PROXY=http://{fwd}:3128",
+               "-e",f"HTTP_PROXY=http://{fwd}:3128",
+               "-e",f"NO_PROXY={fwd},localhost,127.0.0.1",
+               image,"claude",*flags]
+        proc=await asyncio.create_subprocess_exec(
+            *argv,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
+        return await self._finish_proc(proc,job,jd,prompt,cc_model,cc_endpoint,
+                                       sandbox="docker",container=name)
+
+    async def _finish_proc(self,proc,job,jd,prompt,cc_model,cc_endpoint,*,sandbox,container):
         try:
             out,err=await asyncio.wait_for(proc.communicate(),timeout=self.cfg.cc.timeout_seconds)
         except asyncio.TimeoutError:
@@ -138,7 +201,8 @@ class CCExecutor:
             if cc_model:
                 try: _record_cc_provenance(job, cc_model, cc_endpoint, prompt, "", False, "TIMEOUT", error="timeout")
                 except Exception: pass
-            return {"ok":False,"error":"Claude Code timeout","job_dir":str(jd)}
+            return {"ok":False,"error":"Claude Code timeout","job_dir":str(jd),
+                    "sandbox":sandbox,"container":container}
         except asyncio.CancelledError:
             proc.kill(); await proc.communicate()
             raise
@@ -146,7 +210,7 @@ class CCExecutor:
         if proc.returncode!=0 and ("unknown option" in stderr_txt.lower() or "unrecognized" in stderr_txt.lower()):
             return {"ok":False,"returncode":proc.returncode,
                     "error":"CC 版本不识别权限旗标(--allowedTools/--add-dir)——栅栏无法实体化,任务未放行",
-                    "stderr":stderr_txt,"job_dir":str(jd)}
+                    "stderr":stderr_txt,"job_dir":str(jd),"sandbox":sandbox,"container":container}
         rp=jd/"RESULT.md"
         result=rp.read_text(encoding="utf-8") if rp.exists() else out.decode("utf-8","replace")
         ok=proc.returncode==0
@@ -160,4 +224,4 @@ class CCExecutor:
                                   error=stderr_txt if not ok else "")
         return {"ok":ok,"returncode":proc.returncode,
                 "stdout":out.decode("utf-8","replace"),"stderr":err.decode("utf-8","replace"),
-                "result":result,"job_dir":str(jd)}
+                "result":result,"job_dir":str(jd),"sandbox":sandbox,"container":container}
