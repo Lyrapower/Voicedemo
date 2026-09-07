@@ -423,15 +423,20 @@ async def health():
 @app.get("/api/capabilities")
 async def api_capabilities():
     from app.harness.resource_gate import export_capability_surface
-    from .web_fetch_v1 import load_egress
+    from .web_fetch_v1 import approved_rows
     surface=export_capability_surface()
-    eg=load_egress(str(DEMO_ROOT/"EGRESS.md"))
+    eg=approved_rows(str(DEMO_ROOT/"EGRESS.md"))
     visible=sorted({ln for row in eg.values() for ln in (row.get("lanes") or [])})
     surface["web.fetch"]={
         "permission":"read_only",
         "lanes":["fast","deep","full","research","cc"],
         "egress_visible_lanes":visible,
         "approved_domains":sorted(eg),
+    }
+    surface["web.search"]={
+        "permission":"read_only",
+        "lanes":["fast","deep","full","research","cc","scout"],
+        "egress_visible_lanes":visible,
     }
     return surface
 
