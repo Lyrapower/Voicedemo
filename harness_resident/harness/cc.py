@@ -314,15 +314,22 @@ class CCExecutor:
             logs=self._d(["logs",names["cc"]], timeout=30, check=False)
             stdout=(logs.stdout or "")
             stderr=(logs.stderr or "")
-            collected=True
+            export_info=self._export_work(names, jd/"export")
+            if export_info.get("ok"):
+                rp=jd/"export"/"RESULT.md"
+                if rp.is_file():
+                    (jd/"RESULT.md").write_text(rp.read_text(encoding="utf-8"),encoding="utf-8")
+            collected=bool(export_info.get("ok"))
             class _P:
                 returncode=rc
                 async def communicate(self):
                     return stdout.encode(), stderr.encode()
                 def kill(self):
                     pass
-            return await self._finish_proc(_P(),job,jd,prompt,cc_model,cc_endpoint,
+            fin=await self._finish_proc(_P(),job,jd,prompt,cc_model,cc_endpoint,
                                            sandbox="docker",container=names["cc"])
+            fin["export"]=export_info
+            return fin
         except Exception as e:
             return {"ok":False,"error":"BLOCKED_SANDBOX_MISSING","blocked":"sandbox_missing",
                     "detail":str(e)[:400],"job_dir":str(jd),"sandbox":"docker",
@@ -332,6 +339,27 @@ class CCExecutor:
                 self._cleanup_job(names, remove_volumes=collected)
             except Exception:
                 pass
+
+    def _export_work(self, names: dict[str,str], dest: Path) -> dict:
+        dest=Path(dest)
+        if dest.exists() and dest.is_symlink():
+            return {"ok":False,"error":"dest symlink"}
+        dest.mkdir(parents=True, exist_ok=True)
+        broker_image=str(getattr(self.cfg.cc,"broker_image","") or "python:3.13-slim")
+        sd=self._sandbox_dir()
+        r=self._d(["run","--rm","--user","0",
+                   "--network","none",
+                   "--read-only","--tmpfs","/tmp:rw,mode=1777",
+                   "--cap-drop","ALL","--security-opt","no-new-privileges",
+                   "-v",f"{names['work']}:/src:ro",
+                   "-v",f"{str(dest.resolve())}:/dst",
+                   "-v",f"{sd/'safe_export.py'}:/opt/grid/safe_export.py:ro",
+                   "--entrypoint","python3",broker_image,
+                   "/opt/grid/safe_export.py","/src","/dst"],
+                  timeout=60, check=False)
+        ok=r.returncode==0
+        return {"ok":ok,"returncode":r.returncode,
+                "stdout":(r.stdout or "")[:400],"stderr":(r.stderr or "")[:400]}
 
     def run_isolation_diag(self, targets: list[str], tag: str = "iso") -> dict:
         """Supervisor-owned probe: --network none, no cc tools, no Write/Edit."""
