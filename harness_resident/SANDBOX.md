@@ -14,7 +14,7 @@ Narrow bridge is `grid-cc-fwd` only: Ollama :11434 + EGRESS.md approved https :4
 | fwd | `grid-cc-fwd` on grid-cc-net and default bridge; **no host port bind** |
 | job files | `-v <job>:/ws/job:ro` copied into tmpfs `/work` |
 | add-dir | `-v <path>:/ws/pN:ro` |
-| writable | `--tmpfs /work` only |
+| writable | `--tmpfs /work`; rootfs **not** `--read-only`（v7 二分：`--read-only` 下 claude 静默 exit 0；去掉后出字） |
 | env | `ANTHROPIC_AUTH_TOKEN=ollama` `ANTHROPIC_BASE_URL=http://grid-cc-fwd:11434` `HOME=/work` `PATH=…` + HTTPS_PROXY to fwd:3128 |
 
 ## Rollback

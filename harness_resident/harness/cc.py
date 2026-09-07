@@ -180,7 +180,7 @@ class CCExecutor:
         docker=os.environ.get("DOCKER_BIN") or shutil.which("docker") or "/usr/local/bin/docker"
         name=f"grid-cc-{job['job_id']}"
         argv=[docker,"run","--rm","--name",name,
-              "--read-only","--network",network,
+              "--network",network,
               "--cap-drop","ALL","--security-opt","no-new-privileges",
               "--pids-limit","256","--memory","2g","--cpus","2",
               "--tmpfs","/work:rw,size=512m,mode=1777",
