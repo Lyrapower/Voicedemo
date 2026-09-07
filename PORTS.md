@@ -10,7 +10,8 @@ Port is registered here **before** bind or launchd. Duplicate bind = refuse.
 | 8515 | 127.0.0.1 | b11 workbench UI | — | API is 8501, not this port |
 | 8520 | 127.0.0.1 | Aether watcher | — | |
 | 8600 | 127.0.0.1 | Alpha platform | — | |
-| 8630 | 127.0.0.1 | Grid Harness api (`harness_resident`) `/health` `/api/jobs` `/api/capabilities` | `com.grid.harness-api` | owner=`harness_resident`; local; token from `.env` not plist |
+| 8630 | 127.0.0.1 | Grid Harness api (`harness_resident`) `/health` `/api/jobs` `/api/capabilities` `/api/receipts` `WS /ws/events` | `com.grid.harness-api` | owner=`harness_resident`; local; token from env not plist |
+| — | — | H1 carrier (no bind; reads 8501 store `field-particle` ro, POSTs 8630) | `com.grid.h1-carrier` | not a port; KeepAlive; plist only |
 | 8631 | 127.0.0.1 | kokoro-tts (PersonaPlex / Kokoro) | `com.grid.kokoro-tts-8631` | in register; voice package later; harness stays on 8630 |
 | 8787 | 127.0.0.1 | Entry B / Aster particles | `com.demo.garden.aster8787` | Not harness; do not confuse with 8788 |
 | 8788 | — | closed | — | telemetry stub; default off (D8) |
