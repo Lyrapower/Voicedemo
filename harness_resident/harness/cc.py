@@ -101,14 +101,17 @@ class CCExecutor:
         # 若 CC 报 unknown option,本任务按失败响亮返回,绝不静默摘栅栏重跑。
         flags: list[str] = ["-p", prompt]
         declared={str(t) for t in (job.get("allowed_tools") or [])}
-        if job.get("read_only"):
+        if self._use_docker_sandbox():
+            # read_only = do not write host/prod. /work may use Bash/Write/Edit.
+            declared |= {"Bash","Write","Edit","Read","Grep","Glob"}
+        elif job.get("read_only"):
             declared-={"Bash","Write","Edit"}
             if not declared:
                 declared={"Read","Grep","Glob"}
         if declared:
             flags+=["--allowedTools",",".join(sorted(declared))]
             deny=sorted(CC_TOOL_UNIVERSE-declared)
-            if job.get("read_only"):
+            if (not self._use_docker_sandbox()) and job.get("read_only"):
                 deny=[t for t in deny if t!="Bash"]
             if deny:
                 flags+=["--disallowedTools",",".join(deny)]
