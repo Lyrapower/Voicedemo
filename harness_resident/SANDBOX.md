@@ -1,29 +1,18 @@
-# CC sandbox (docker) · 2026-09-07
+# CC sandbox v3.2 phase 1 · 2026-09-07
 
-cc worker runs in `grid-cc:2.1.201` on internal net `grid-cc-net`.
-Host 8501 / 8630 / store are unreachable from the container.
-Narrow bridge is `grid-cc-fwd` only: Ollama :11434 + EGRESS.md approved https :443.
-
-## Image / net / mounts
+`--network none`. Model path is per-job Linux volume Unix socket, not socat and not host ports.
 
 | 项 | 值 |
 |---|---|
-| image | `grid-cc:2.1.201` (`node:22-slim` + `@anthropic-ai/claude-code@2.1.201`) |
-| fwd image | `grid-cc-fwd:local` (alpine + socat + stdlib CONNECT proxy) |
-| network | `grid-cc-net` (`--internal`) |
-| fwd | `grid-cc-fwd` on grid-cc-net and default bridge; **no host port bind** |
-| job files | `-v <job>:/ws/job:ro` copied into tmpfs `/work` |
-| add-dir | `-v <path>:/ws/pN:ro` |
-| writable | `--tmpfs /work`; rootfs **not** `--read-only`（v7 二分：`--read-only` 下 claude 静默 exit 0；去掉后出字） |
-| env | `ANTHROPIC_AUTH_TOKEN=ollama` `ANTHROPIC_BASE_URL=http://grid-cc-fwd:11434` `HOME=/work` `PATH=…` + HTTPS_PROXY to fwd:3128 |
+| cc image | `grid-cc:2.1.201` (`72575045ec3c`) — not upgraded |
+| broker image | `python:3.13-slim` (already local) |
+| cc network | `none` |
+| broker net | `grid-cc-broker-net` (no publish; host-gateway to Ollama only) |
+| /bridge | per-job volume `grid-cc-bridge-<job>` · broker rw · cc ro |
+| /work | per-job volume `grid-cc-work-<job>` |
+| model | `127.0.0.1:11434` (cc netns relay) → `/bridge/model.sock` → broker → host Ollama |
+| tools (phase 1) | existing Write/Edit deny kept; Bash policy unchanged |
+| old fwd | `grid-cc-fwd` left running, unused; not deleted |
 
-## Rollback
-
-```
-docker rm -f grid-cc-fwd
-docker network rm grid-cc-net
-docker rmi grid-cc:2.1.201 grid-cc-fwd:local
-```
-
-Missing sandbox → cc job `BLOCKED_SANDBOX_MISSING`. No host claude fallback.
-`sandbox_required=false` is not a legal rollback.
+Missing broker/image → `BLOCKED_SANDBOX_MISSING`. No host claude fallback.
+Phase 2+ (export, Write/Edit, egress.sock, dev.sock) not enabled.

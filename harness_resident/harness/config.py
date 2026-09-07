@@ -41,6 +41,8 @@ class CCConfig:
     fwd: str = ""
     mounts: tuple = ()
     sandbox_required: bool = False
+    broker_image: str = "python:3.13-slim"
+    broker_net: str = "grid-cc-broker-net"
 
 
 @dataclass(frozen=True)
