@@ -16,6 +16,7 @@ OUTBOX = STATE / "h1_outbox.jsonl"
 STORE_NODE = "field-particle"
 STORE_URL = os.environ.get("H1_STORE_URL", "http://127.0.0.1:8501/store/conversations/field-particle")
 JOBS_URL = os.environ.get("H1_JOBS_URL", "http://127.0.0.1:8630/api/jobs")
+MISSIONS_URL = os.environ.get("H1_MISSIONS_URL", "http://127.0.0.1:8630/api/missions")
 INTERVAL = float(os.environ.get("H1_INTERVAL_SEC", "5"))
 JOB_RE = re.compile(r"```job\s*\n(.*?)```", re.S)
 
@@ -145,6 +146,64 @@ def post_job(parsed: dict) -> tuple[bool, str]:
         return False, "unreachable"
 
 
+def _mission_budget_from_block(block: str) -> dict:
+    """Parse a ```job block of type MISSION into a /api/missions payload.
+    Budget defaults to 1/10 of config upper (Grid 9-08 G rule). The block may
+    override goal/lane/worker/budget_hops/budget_usd/stop_conditions."""
+    typ = ""
+    goal = ""
+    lane = "scout"
+    worker = "deep"
+    budget_hops = 30
+    budget_usd = 1.0
+    stop = []
+    for line in block.splitlines():
+        s = line.strip()
+        if s.startswith("type:"):
+            typ = s.split(":", 1)[1].strip().strip('"').strip("'")
+        elif s.startswith("goal:") or s.startswith("mission:"):
+            goal = s.split(":", 1)[1].strip().strip('"').strip("'")
+        elif s.startswith("lane:"):
+            lane = s.split(":", 1)[1].strip().strip('"').strip("'")
+        elif s.startswith("worker:"):
+            worker = s.split(":", 1)[1].strip().strip('"').strip("'")
+        elif s.startswith("budget_hops:"):
+            try: budget_hops = int(s.split(":", 1)[1].strip())
+            except ValueError: pass
+        elif s.startswith("budget_usd:"):
+            try: budget_usd = float(s.split(":", 1)[1].strip())
+            except ValueError: pass
+        elif s.startswith("stop:"):
+            stop.append(s.split(":", 1)[1].strip().strip('"').strip("'"))
+    return {
+        "goal": goal or "(no goal in block)",
+        "lane": lane, "worker": worker,
+        "budget_hops": max(1, budget_hops // 10),
+        "budget_usd": round(budget_usd / 10, 4),
+        "stop_conditions": stop,
+        "created_by": "grid_compiled",
+        "status": "proposed",
+    }
+
+
+def post_mission(parsed: dict) -> tuple[bool, str]:
+    """H1 分路 ③: type MISSION -> POST /api/missions (proposed, no job runs until Lyra 放行)."""
+    token = (os.environ.get("GRID_HARNESS_TOKEN") or "").strip()
+    body = _mission_budget_from_block(parsed.get("body") or "")
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(MISSIONS_URL, data=data, method="POST")
+    req.add_header("Content-Type", "application/json")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return True, resp.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        return False, f"http_{exc.code}"
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return False, "unreachable"
+
+
 def handle(parsed: dict, seen: set[str]) -> str:
     ctx = parsed.get("context_hash") or ""
     key = idem_key(ctx, parsed["raw"])
@@ -152,6 +211,13 @@ def handle(parsed: dict, seen: set[str]) -> str:
         return "idem"
     typ = str(parsed.get("type") or "").upper()
     row = {"ts": time.time(), "key": key, "type": typ, "context_hash": ctx, "node": STORE_NODE}
+    if typ == "MISSION":
+        ok, body = post_mission(parsed)
+        append_jsonl(OUTBOX, {**row, "kind": "mission_seed" if ok else "mission_seed_fail",
+                              "ok": ok, "resp": body[:400]})
+        seen.add(key)
+        save_seen(seen)
+        return "mission_seed" if ok else "mission_seed_fail"
     if typ in {"QUERY", "STATE"}:
         append_jsonl(OUTBOX, {**row, "kind": "outbox", "raw": parsed["raw"]})
         seen.add(key)

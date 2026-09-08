@@ -358,7 +358,7 @@ app=FastAPI(title="Grid Resident Harness",version="1.3",lifespan=lifespan)
 # 未设 = 维持 v1.2 行为并在启动日志响亮警告)。relay 信道由 relay 自己的 token 把门。
 import os as _os
 _HARNESS_TOKEN=_os.getenv("GRID_HARNESS_TOKEN","").strip()
-_AUTH_EXEMPT_PREFIXES=("/mobile","/health")
+_AUTH_EXEMPT_PREFIXES=("/mobile","/health","/app")
 if not _HARNESS_TOKEN and not _os.getenv("GRID_HARNESS_H1_TOKEN","").strip() and not _os.getenv("GRID_HARNESS_PAGE_TOKEN","").strip():
     print("[harness] WARNING: GRID_HARNESS_TOKEN 未设置——API 无鉴权裸奔,仅限单人可信主机")
 
@@ -401,6 +401,11 @@ async def root():
     if (MOBILE_DIR/"index.html").exists():
         return FileResponse(MOBILE_DIR/"index.html")
     return {"name":"Grid Resident Harness","version":"1.2"}
+
+@app.get("/app/missions.html")
+async def missions_page():
+    p = Path(__file__).resolve().parent.parent / "static" / "missions.html"
+    return FileResponse(str(p), headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 @app.get("/health")
 async def health():

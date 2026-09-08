@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Missions · 8630</title>
+<style>
+body{font:14px/1.5 -apple-system,system-ui,sans-serif;margin:16px;color:#1a1a1a}
+h1{font-size:16px;margin:0 0 8px}
+.bar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+input{font:inherit;padding:4px 6px;border:1px solid #ccc;border-radius:4px}
+button{font:inherit;padding:4px 10px;border:1px solid #888;border-radius:4px;background:#fff;cursor:pointer}
+button.go{background:#2a7;margin-color:#2a7;color:#fff;border-color:#2a7}
+button.no{background:#c33;color:#fff;border-color:#c33}
+button:disabled{opacity:.5;cursor:default}
+.m{border:1px solid #ddd;border-radius:6px;padding:10px;margin:8px 0}
+.m.proposed{border-color:#d80;background:#fffbe6}
+.m.running{border-color:#08c;background:#eef9ff}
+.m.done{border-color:#2a7;background:#f0fff5}
+.m.failed,.m.rejected,.m.stopped{border-color:#c33;background:#fff0f0}
+.st{font-weight:700;font-size:12px;text-transform:uppercase}
+pre{white-space:pre-wrap;background:#f6f6f6;padding:8px;border-radius:4px;max-height:240px;overflow:auto}
+small{color:#666}
+</style>
+</head>
+<body>
+<h1>Missions · harness 8630</h1>
+<div class="bar">
+ <input id="tok" type="password" placeholder="GRID_HARNESS_TOKEN (放行/否决 用)" size="40">
+ <button onclick="load()">刷新</button>
+ <label><input type="checkbox" id="auto" onchange="toggleAuto()"> 自动 5s</label>
+ <span id="info" small></span>
+</div>
+<div id="list"></div>
+<script>
+const API=location.origin+"/api/missions";
+function tok(){return document.getElementById("tok").value.trim();}
+async function load(){
+ const r=await fetch(API);
+ if(!r.ok){document.getElementById("list").innerHTML="<p>GET 失败 "+r.status+"</p>";return;}
+ const ms=await r.json();
+ document.getElementById("info").textContent=ms.length+" 条";
+ const list=document.getElementById("list");list.innerHTML="";
+ for(const m of ms){
+  const d=document.createElement("div");d.className="m "+m.status;
+  const close=m.close_reason?(" · "+m.close_reason):"";
+  d.innerHTML=`<div><span class="st">${m.status}</span> · ${m.mission_id} · lane=${m.lane} · worker=${m.worker}${close}</div>
+   <div><b>goal:</b> ${m.goal}</div>
+   <div><small>budget hops ${m.hops_used}/${m.budget_hops} · usd ${m.usd_used.toFixed(4)}/${m.budget_usd} · denied_streak ${m.denied_streak} · out_of_bounds ${m.out_of_bounds}</small></div>
+   <div><small>stop: ${(m.stop_conditions||[]).join(", ")||"-"}</small></div>`;
+  if(m.status==="proposed"){
+   const b=document.createElement("div");b.style.marginTop="6px";
+   const go=document.createElement("button");go.className="go";go.textContent="放行";
+   go.onclick=()=>act(m.mission_id,"approve");
+   const no=document.createElement("button");no.className="no";no.textContent="否决";no.style.marginLeft="6px";
+   no.onclick=()=>act(m.mission_id,"reject");
+   b.append(go,no);d.append(b);
+  }
+  if(m.dossier_path){
+   const a=document.createElement("a");a.href=location.origin+"/api/missions/"+m.mission_id;a.textContent="dossier →";a.style.marginLeft="8px";
+   d.append(a);
+  }
+  list.append(d);
+ }
+}
+async function act(id,kind){
+ const t=tok();if(!t){alert("先填 GRID_HARNESS_TOKEN");return;}
+ const r=await fetch(`${API}/${id}/${kind}`,{method:"POST",headers:{"Authorization":"Bearer "+t}});
+ alert(kind+": "+r.status+(r.ok?"":" (需 admin token)"));
+ load();
+}
+let timer=null;
+function toggleAuto(){if(document.getElementById("auto").checked){timer=setInterval(load,5000);}else{clearInterval(timer);timer=null;}}
+load();
+</script>
+</body>
+</html>
