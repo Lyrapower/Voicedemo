@@ -241,11 +241,12 @@ async def _tick_mission(mission: dict, supervisor, store) -> None:
 async def _complete_hop(mission: dict, job: dict, store) -> None:
     mid = mission["mission_id"]
     jid = job["job_id"]
-    # worker_output: prefer job_receipt, then last_artifact, then events
-    wo = ""
-    receipt = store.get_job_receipt_by_job(jid)
-    if receipt:
-        wo = receipt.get("worker_output") or ""
+    # worker_output: prefer job_result event (source of truth), then receipt, then last_artifact
+    wo = store.get_job_result_text(jid)
+    if not wo:
+        receipt = store.get_job_receipt_by_job(jid)
+        if receipt:
+            wo = receipt.get("worker_output") or ""
     if not wo and job.get("last_artifact"):
         try:
             p = Path(job["last_artifact"])
@@ -318,15 +319,16 @@ async def _close_mission(mission: dict, hops: list[dict], reason: str, store, su
         if j["status"] in _TERMINAL:
             break
     # collect dossier text
-    dossier_text = ""
-    try:
-        j = store.get_job(djob["job_id"])
-        r = store.get_job_receipt_by_job(djob["job_id"])
-        dossier_text = (r.get("worker_output") or "") if r else ""
-        if not dossier_text and j.get("last_artifact"):
-            dossier_text = Path(j["last_artifact"]).read_text(encoding="utf-8", errors="replace")[:3000]
-    except Exception:
-        pass
+    dossier_text = store.get_job_result_text(djob["job_id"])
+    if not dossier_text:
+        try:
+            j = store.get_job(djob["job_id"])
+            r = store.get_job_receipt_by_job(djob["job_id"])
+            dossier_text = (r.get("worker_output") or "") if r else ""
+            if not dossier_text and j.get("last_artifact"):
+                dossier_text = Path(j["last_artifact"]).read_text(encoding="utf-8", errors="replace")[:3000]
+        except Exception:
+            pass
     if not dossier_text:
         dossier_text = f"(dossier hop {djob['job_id']} produced no text; close_reason={reason})"
 

@@ -409,6 +409,24 @@ class Store:
                 "receipt_line":r["receipt_line"],"worker_output":r["worker_output"],
                 "created_at":r["created_at"]}
 
+    def get_job_result_text(self, job_id: str) -> str:
+        """Read the worker output from the job_result event (payload.text).
+        job_receipts is not always populated; the events table is the source of truth."""
+        with self._lock:
+            rows=self._conn.execute(
+                "SELECT payload FROM events WHERE job_id=? AND kind='job_result' "
+                "ORDER BY created_at DESC LIMIT 1", (job_id,)).fetchall()
+        if not rows:
+            return ""
+        try:
+            p=json.loads(rows[0]["payload"])
+        except Exception:
+            return ""
+        t=p.get("text") or p.get("result") or ""
+        if not isinstance(t, str):
+            t=json.dumps(t, ensure_ascii=False)
+        return str(t)
+
     # ── missions ──────────────────────────────────────────────────────────
     _MISSION_FIELDS = {
         "goal","lane","worker","budget_hops","budget_tokens","budget_wall_s","budget_usd",
