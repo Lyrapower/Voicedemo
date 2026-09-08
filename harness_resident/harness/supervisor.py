@@ -128,6 +128,29 @@ class Supervisor:
         except Exception:
             pass
 
+    async def _run_with_cancel_watch(self,jid:str,coro):
+        """Run coro; if another process (API) flips job status to interrupted,
+        cancel the task so _run_docker's finally cleans up containers.
+        Closes the orphan-container race when cancel lands during dispatch."""
+        main=asyncio.ensure_future(coro)
+        async def _watch():
+            while not main.done():
+                try:
+                    st=self.store.get_job(jid).get("status")
+                except KeyError:
+                    st="interrupted"
+                if st=="interrupted":
+                    main.cancel()
+                    return
+                await asyncio.sleep(2.0)
+        watcher=asyncio.ensure_future(_watch())
+        try:
+            return await main
+        finally:
+            watcher.cancel()
+            try: await watcher
+            except asyncio.CancelledError: pass
+
     async def pause_session(self,session_id:str):
         s=self.store.get_session(session_id)
         jid=s.get("active_job_id")
@@ -267,7 +290,7 @@ class Supervisor:
                     job=job,
                 )
                 self._emit_context_receipt(sess,job,context_pack)
-                result=await self.cc.run(job,context_pack=context_pack)
+                result=await self._run_with_cancel_watch(jid,self.cc.run(job,context_pack=context_pack))
                 try:
                     curst=self.store.get_job(jid).get("status")
                 except KeyError:
