@@ -58,6 +58,18 @@ class ApiJobBody(BaseModel):
     worker:str="local"
     kind:str="chat"
     content:str=Field(min_length=1)
+
+class MissionCreate(BaseModel):
+    goal:str=Field(min_length=1)
+    lane:str="scout"
+    worker:str="deep"
+    budget_hops:int=0
+    budget_tokens:int=0
+    budget_wall_s:float=0.0
+    budget_usd:float=0.0
+    stop_conditions:list[str]=Field(default_factory=list)
+    created_by:str="manual"
+    status:str="proposed"
     read_only:bool=True
     origin:str=""
     context_hash:str=""
@@ -618,6 +630,56 @@ async def cancel_job(job_id:str):
     except KeyError: raise HTTPException(404,"job not found")
     await supervisor.cancel_job(job_id)
     return store.get_job(job_id)
+
+@app.post("/api/missions")
+async def create_mission(body:MissionCreate):
+    if body.status not in {"proposed","running"}:
+        raise HTTPException(400,"status must be proposed or running")
+    m=store.create_mission(goal=body.goal,lane=body.lane,worker=body.worker,
+                           budget_hops=body.budget_hops,budget_tokens=body.budget_tokens,
+                           budget_wall_s=body.budget_wall_s,budget_usd=body.budget_usd,
+                           stop_conditions=body.stop_conditions,created_by=body.created_by)
+    if body.status=="running":
+        store.update_mission(m["mission_id"],status="running")
+    return store.get_mission(m["mission_id"])
+
+@app.get("/api/missions")
+async def list_missions(limit:int=100,status:str|None=None):
+    return store.list_missions(limit=limit,status=status)
+
+@app.get("/api/missions/{mission_id}")
+async def get_mission(mission_id:str):
+    try: return store.get_mission(mission_id)
+    except KeyError: raise HTTPException(404,"mission not found")
+
+@app.post("/api/missions/{mission_id}/stop")
+async def stop_mission(mission_id:str):
+    try: m=store.get_mission(mission_id)
+    except KeyError: raise HTTPException(404,"mission not found")
+    if m["status"] in {"done","failed","rejected","stopped"}:
+        return m
+    store.update_mission(mission_id,status="stopped",close_reason="lyra_stop",active_job_id=None)
+    return store.get_mission(mission_id)
+
+@app.post("/api/missions/{mission_id}/approve")
+async def approve_mission(mission_id:str):
+    """放行: proposed → running (Lyra 页面卡)."""
+    try: m=store.get_mission(mission_id)
+    except KeyError: raise HTTPException(404,"mission not found")
+    if m["status"]!="proposed":
+        raise HTTPException(409,f"mission not proposed (status={m['status']})")
+    store.update_mission(mission_id,status="running")
+    return store.get_mission(mission_id)
+
+@app.post("/api/missions/{mission_id}/reject")
+async def reject_mission(mission_id:str):
+    """否决: proposed → rejected, no job runs (Lyra 页面卡)."""
+    try: m=store.get_mission(mission_id)
+    except KeyError: raise HTTPException(404,"mission not found")
+    if m["status"]!="proposed":
+        raise HTTPException(409,f"mission not proposed (status={m['status']})")
+    store.update_mission(mission_id,status="rejected",close_reason="lyra_reject")
+    return store.get_mission(mission_id)
 
 @app.post("/jobs")
 async def create_job(body:JobCreate): return create_job_internal(body)

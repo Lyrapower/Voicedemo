@@ -81,6 +81,31 @@ class Store:
               created_at REAL NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_job_receipts_job ON job_receipts(job_id);
+            CREATE TABLE IF NOT EXISTS missions(
+              mission_id TEXT PRIMARY KEY,
+              goal TEXT NOT NULL,
+              lane TEXT NOT NULL,
+              worker TEXT NOT NULL,
+              budget_hops INTEGER NOT NULL DEFAULT 0,
+              budget_tokens INTEGER NOT NULL DEFAULT 0,
+              budget_wall_s REAL NOT NULL DEFAULT 0,
+              budget_usd REAL NOT NULL DEFAULT 0,
+              stop_conditions TEXT NOT NULL DEFAULT '[]',
+              status TEXT NOT NULL DEFAULT 'proposed',
+              created_by TEXT NOT NULL DEFAULT '',
+              lineage_root_event_id TEXT,
+              hops_used INTEGER NOT NULL DEFAULT 0,
+              usd_used REAL NOT NULL DEFAULT 0,
+              tokens_used INTEGER NOT NULL DEFAULT 0,
+              denied_streak INTEGER NOT NULL DEFAULT 0,
+              out_of_bounds INTEGER NOT NULL DEFAULT 0,
+              active_job_id TEXT,
+              dossier_path TEXT,
+              close_reason TEXT,
+              created_at REAL NOT NULL,
+              updated_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_missions_status ON missions(status);
             """)
             self._conn.commit()
             self._migrate_jobs()
@@ -383,3 +408,73 @@ class Store:
         return {"event_id":r["event_id"],"job_id":r["job_id"],
                 "receipt_line":r["receipt_line"],"worker_output":r["worker_output"],
                 "created_at":r["created_at"]}
+
+    # ── missions ──────────────────────────────────────────────────────────
+    _MISSION_FIELDS = {
+        "goal","lane","worker","budget_hops","budget_tokens","budget_wall_s","budget_usd",
+        "stop_conditions","status","created_by","lineage_root_event_id","hops_used","usd_used",
+        "tokens_used","denied_streak","out_of_bounds","active_job_id","dossier_path",
+        "close_reason","updated_at",
+    }
+
+    def create_mission(self, *, goal, lane, worker, budget_hops=0, budget_tokens=0,
+                       budget_wall_s=0.0, budget_usd=0.0, stop_conditions=None, created_by=""):
+        now=time.time()
+        mid=f"M-{uuid.uuid4().hex[:12]}"
+        with self._lock:
+            self._conn.execute("""INSERT INTO missions(
+              mission_id,goal,lane,worker,budget_hops,budget_tokens,budget_wall_s,budget_usd,
+              stop_conditions,status,created_by,created_at,updated_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (mid,goal,lane,worker,int(budget_hops),int(budget_tokens),float(budget_wall_s),float(budget_usd),
+             json.dumps(stop_conditions or [],ensure_ascii=False),"proposed",created_by or "",now,now))
+            self._conn.commit()
+        return self.get_mission(mid)
+
+    def get_mission(self, mission_id):
+        with self._lock:
+            r=self._conn.execute("SELECT * FROM missions WHERE mission_id=?",(mission_id,)).fetchone()
+        if not r: raise KeyError(mission_id)
+        return self._decode_mission(r)
+
+    def list_missions(self, limit=100, status=None):
+        sql="SELECT * FROM missions"
+        args=[]
+        if status:
+            sql+=" WHERE status=?"; args.append(status)
+        sql+=" ORDER BY updated_at DESC LIMIT ?"; args.append(limit)
+        with self._lock:
+            rows=self._conn.execute(sql,args).fetchall()
+        return [self._decode_mission(r) for r in rows]
+
+    def update_mission(self, mission_id, **fields):
+        fields["updated_at"]=time.time()
+        bad=set(fields)-self._MISSION_FIELDS
+        if bad: raise ValueError(f"unsupported mission fields: {sorted(bad)}")
+        pairs=", ".join(f"{k}=?" for k in fields)
+        with self._lock:
+            self._conn.execute(f"UPDATE missions SET {pairs} WHERE mission_id=?",
+                               list(fields.values())+[mission_id])
+            self._conn.commit()
+        return self.get_mission(mission_id)
+
+    @staticmethod
+    def _decode_mission(r):
+        keys=r.keys()
+        return {
+            "mission_id":r["mission_id"],"goal":r["goal"],"lane":r["lane"],"worker":r["worker"],
+            "budget_hops":r["budget_hops"],"budget_tokens":r["budget_tokens"],
+            "budget_wall_s":r["budget_wall_s"],"budget_usd":r["budget_usd"],
+            "stop_conditions":json.loads(r["stop_conditions"]) if "stop_conditions" in keys and r["stop_conditions"] else [],
+            "status":r["status"],"created_by":r["created_by"] if "created_by" in keys else "",
+            "lineage_root_event_id":r["lineage_root_event_id"] if "lineage_root_event_id" in keys else None,
+            "hops_used":r["hops_used"] if "hops_used" in keys else 0,
+            "usd_used":r["usd_used"] if "usd_used" in keys else 0.0,
+            "tokens_used":r["tokens_used"] if "tokens_used" in keys else 0,
+            "denied_streak":r["denied_streak"] if "denied_streak" in keys else 0,
+            "out_of_bounds":r["out_of_bounds"] if "out_of_bounds" in keys else 0,
+            "active_job_id":r["active_job_id"] if "active_job_id" in keys else None,
+            "dossier_path":r["dossier_path"] if "dossier_path" in keys else None,
+            "close_reason":r["close_reason"] if "close_reason" in keys else None,
+            "created_at":r["created_at"],"updated_at":r["updated_at"],
+        }
