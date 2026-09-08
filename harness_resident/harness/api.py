@@ -69,6 +69,7 @@ class MissionCreate(BaseModel):
     budget_wall_s:float=0.0
     budget_usd:float=0.0
     stop_conditions:list[str]=Field(default_factory=list)
+    tools:list[str]=Field(default_factory=list)
     created_by:str="manual"
     status:str="proposed"
     read_only:bool=True
@@ -658,7 +659,8 @@ async def create_mission(body:MissionCreate):
     m=store.create_mission(goal=body.goal,lane=body.lane,worker=body.worker,
                            budget_hops=body.budget_hops,budget_tokens=body.budget_tokens,
                            budget_wall_s=body.budget_wall_s,budget_usd=body.budget_usd,
-                           stop_conditions=body.stop_conditions,created_by=body.created_by)
+                           stop_conditions=body.stop_conditions,created_by=body.created_by,
+                           tools=body.tools)
     if body.status=="running":
         store.update_mission(m["mission_id"],status="running")
     return store.get_mission(m["mission_id"])

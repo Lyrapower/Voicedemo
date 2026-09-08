@@ -99,6 +99,9 @@ class Store:
               tokens_used INTEGER NOT NULL DEFAULT 0,
               denied_streak INTEGER NOT NULL DEFAULT 0,
               out_of_bounds INTEGER NOT NULL DEFAULT 0,
+              no_evidence_hops INTEGER NOT NULL DEFAULT 0,
+              no_evidence_streak INTEGER NOT NULL DEFAULT 0,
+              tools TEXT NOT NULL DEFAULT '[]',
               active_job_id TEXT,
               dossier_path TEXT,
               close_reason TEXT,
@@ -107,6 +110,15 @@ class Store:
             );
             CREATE INDEX IF NOT EXISTS idx_missions_status ON missions(status);
             """)
+            self._conn.commit()
+            # migrate: add columns to pre-existing missions tables (idempotent)
+            for _col, _typ in (("no_evidence_hops","INTEGER DEFAULT 0"),
+                              ("no_evidence_streak","INTEGER DEFAULT 0"),
+                              ("tools","TEXT DEFAULT '[]'")):
+                try:
+                    self._conn.execute(f"ALTER TABLE missions ADD COLUMN {_col} {_typ}")
+                except Exception:
+                    pass
             self._conn.commit()
             self._migrate_jobs()
 
@@ -431,21 +443,23 @@ class Store:
     _MISSION_FIELDS = {
         "goal","lane","worker","budget_hops","budget_tokens","budget_wall_s","budget_usd",
         "stop_conditions","status","created_by","lineage_root_event_id","hops_used","usd_used",
-        "tokens_used","denied_streak","out_of_bounds","active_job_id","dossier_path",
-        "close_reason","updated_at",
+        "tokens_used","denied_streak","out_of_bounds","no_evidence_hops","no_evidence_streak",
+        "tools","active_job_id","dossier_path","close_reason","updated_at",
     }
 
     def create_mission(self, *, goal, lane, worker, budget_hops=0, budget_tokens=0,
-                       budget_wall_s=0.0, budget_usd=0.0, stop_conditions=None, created_by=""):
+                       budget_wall_s=0.0, budget_usd=0.0, stop_conditions=None, created_by="",
+                       tools=None):
         now=time.time()
         mid=f"M-{uuid.uuid4().hex[:12]}"
         with self._lock:
             self._conn.execute("""INSERT INTO missions(
               mission_id,goal,lane,worker,budget_hops,budget_tokens,budget_wall_s,budget_usd,
-              stop_conditions,status,created_by,created_at,updated_at
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+              stop_conditions,status,created_by,tools,created_at,updated_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (mid,goal,lane,worker,int(budget_hops),int(budget_tokens),float(budget_wall_s),float(budget_usd),
-             json.dumps(stop_conditions or [],ensure_ascii=False),"proposed",created_by or "",now,now))
+             json.dumps(stop_conditions or [],ensure_ascii=False),"proposed",created_by or "",
+             json.dumps(tools or [],ensure_ascii=False),now,now))
             self._conn.commit()
         return self.get_mission(mid)
 
@@ -487,6 +501,19 @@ class Store:
                 return 0.0
         return float(r[0]) if r and r[0] is not None else 0.0
 
+    def job_tool_call_count(self, job_id: str) -> int:
+        """Count tool_log rows for a job (tool_log.mission_id = job_id).
+
+        Zero means the hop made no tool calls (no_evidence). Absent table means zero.
+        """
+        with self._lock:
+            try:
+                r = self._conn.execute(
+                    "SELECT COUNT(*) FROM tool_log WHERE mission_id=?", (job_id,)).fetchone()
+            except Exception:
+                return 0
+        return int(r[0]) if r and r[0] is not None else 0
+
     def update_mission(self, mission_id, **fields):
         fields["updated_at"]=time.time()
         bad=set(fields)-self._MISSION_FIELDS
@@ -513,6 +540,9 @@ class Store:
             "tokens_used":r["tokens_used"] if "tokens_used" in keys else 0,
             "denied_streak":r["denied_streak"] if "denied_streak" in keys else 0,
             "out_of_bounds":r["out_of_bounds"] if "out_of_bounds" in keys else 0,
+            "no_evidence_hops":r["no_evidence_hops"] if "no_evidence_hops" in keys else 0,
+            "no_evidence_streak":r["no_evidence_streak"] if "no_evidence_streak" in keys else 0,
+            "tools":json.loads(r["tools"]) if "tools" in keys and r["tools"] else [],
             "active_job_id":r["active_job_id"] if "active_job_id" in keys else None,
             "dossier_path":r["dossier_path"] if "dossier_path" in keys else None,
             "close_reason":r["close_reason"] if "close_reason" in keys else None,

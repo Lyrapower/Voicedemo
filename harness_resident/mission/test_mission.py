@@ -18,10 +18,10 @@ from harness.db import Store
 
 
 def _mk(store, *, goal="g", lane="scout", worker="deep", hops=10, usd=1.0, wall=60.0,
-        stop=None, status="running"):
+        stop=None, status="running", tools=None):
     return store.create_mission(goal=goal, lane=lane, worker=worker, budget_hops=hops,
                                  budget_usd=usd, budget_wall_s=wall, stop_conditions=stop or [],
-                                 created_by="test")
+                                 created_by="test", tools=tools)
 
 
 class _FakeSupervisor:
@@ -161,6 +161,43 @@ class TestStopEndpoint(unittest.TestCase):
             m2 = s.update_mission(m["mission_id"], status="stopped", close_reason="lyra_stop")
             self.assertEqual(m2["status"], "stopped")
             self.assertEqual(m2["close_reason"], "lyra_stop")
+
+
+class TestNoEvidence(unittest.TestCase):
+    def test_no_progress_close(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = Store(os.path.join(d, "t.db"))
+            m = _mk(s)
+            s.update_mission(m["mission_id"], no_evidence_streak=3)
+            close, reason = _check_stop(s.get_mission(m["mission_id"]), [])
+            self.assertTrue(close); self.assertEqual(reason, "no_progress")
+
+    def test_no_evidence_hop_increment_on_zero_tool_calls(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = Store(os.path.join(d, "t.db"))
+            m = _mk(s, tools=["web.fetch"])
+            job = s.create_job(channel="grid", goal="hop", worker="deep",
+                               allowed_tools=["web.fetch"], allowed_paths=["."],
+                               cloud_allowed=False, approval_mode="auto", read_only=True,
+                               kind="chat", origin=f"mission:{m['mission_id']}")
+            s.update_job(job["job_id"], status="done", last_step="completed")
+            asyncio.run(_complete_hop(m, s.get_job(job["job_id"]), s))
+            m2 = s.get_mission(m["mission_id"])
+            self.assertEqual(m2["no_evidence_hops"], 1)
+            self.assertEqual(m2["no_evidence_streak"], 1)
+
+
+class TestDossierVerdict(unittest.TestCase):
+    def test_count_findings_complete(self):
+        from mission.runner import _count_findings
+        txt = "1. Title A https://api.grants.gov/opp J-abc12345 deadline\n2. Title B https://x.gov J-deadbeef9\n"
+        self.assertEqual(_count_findings(txt), 2)
+
+    def test_count_findings_incomplete(self):
+        from mission.runner import _count_findings
+        self.assertEqual(_count_findings("Status: INCOMPLETE, no deliverable produced"), 0)
+        self.assertEqual(_count_findings("see https://x.gov (no eid)"), 0)
+        self.assertEqual(_count_findings("ref J-abc12345 (no url)"), 0)
 
 
 class TestScorecard(unittest.TestCase):

@@ -62,6 +62,23 @@ def _save_next_payload(mission_id: str, payload: dict | None) -> None:
         p.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+import re as _re
+
+_FINDING_URL_RE = _re.compile(r"https?://\S+", _re.I)
+_FINDING_EID_RE = _re.compile(r"\bJ-[0-9a-f]{8,}\b")
+
+
+def _count_findings(dossier_text: str) -> int:
+    """Count dossier findings = lines containing both a URL and an event_id (J-...)."""
+    if not dossier_text:
+        return 0
+    n = 0
+    for line in dossier_text.splitlines():
+        if _FINDING_URL_RE.search(line) and _FINDING_EID_RE.search(line):
+            n += 1
+    return n
+
+
 def _load_lineage_hops(mission_id: str) -> list[dict]:
     p = _state_dir(mission_id) / "lineage.json"
     if not p.is_file():
@@ -121,15 +138,20 @@ def _hop_goal(mission: dict, hops: list[dict], prior: dict | None, hop_n: int,
     action_hint = ""
     if next_payload and next_payload.get("action"):
         action_hint = f"\nProposed next action: {next_payload['action']}"
+    tools = mission.get("tools") or []
+    tools_txt = ", ".join(tools) if tools else "(none — no external tools)"
     return (
         f"MISSION (hop {hop_n}): {mission['goal']}\n"
         f"\nLineage so far:\n{summary}\n"
         f"\nPrior hop receipt: {prior_txt}{action_hint}\n"
         f"\nBudget remaining: hops={budget_hops_left} usd={budget_usd_left:.4f}\n"
-        f"\nExecute the next concrete action toward the mission goal using allowed egress lanes. "
-        f"Then output a fenced ```job block with fields (action, bounds, resources) for the NEXT action, "
-        f"or a fenced ```STOP block if the mission is complete. Do not write to the host filesystem "
-        f"outside the sandbox, do not spend money, do not call domains outside the egress lanes."
+        f"\nAllowed tools (use ONLY these): {tools_txt}\n"
+        f"\nExecute the next concrete action toward the mission goal using ONLY the allowed tools above. "
+        f"Every fact you report MUST come from a tool call (e.g. a web.fetch/web.search result) — do not "
+        f"assert facts from memory alone. Then output a fenced ```job block with fields (action, bounds, "
+        f"resources) for the NEXT action, or a fenced ```STOP block if the mission is complete. Do not write "
+        f"to the host filesystem outside the sandbox, do not spend money, do not call domains outside the "
+        f"egress lanes."
     )
 
 
@@ -155,6 +177,8 @@ def _check_stop(mission: dict, hops: list[dict]) -> tuple[bool, str]:
         return True, "budget_exhausted_wall"
     if mission["denied_streak"] >= 3:
         return True, "denied_streak"
+    if mission.get("no_evidence_streak", 0) >= 3:
+        return True, "no_progress"
     if mission["out_of_bounds"] > 0:
         return True, "discipline_fail"
     # user stop conditions (simple 'n>=10' style evaluated against hops count / lineage)
@@ -234,7 +258,7 @@ async def _tick_mission(mission: dict, supervisor, store) -> None:
     try:
         new_job = store.create_job(
             channel="grid", goal=goal, worker=m["worker"],
-            allowed_tools=[], allowed_paths=["."],
+            allowed_tools=m.get("tools") or [], allowed_paths=["."],
             cloud_allowed=False, approval_mode="auto",
             read_only=True, kind="chat",
             origin=f"mission:{mid}",
@@ -275,12 +299,21 @@ async def _complete_hop(mission: dict, job: dict, store) -> None:
     usd_used = store.mission_cost_usd(mid)
     denied_streak = mission["denied_streak"]
     out_of_bounds = mission["out_of_bounds"]
+    no_evidence_hops = mission.get("no_evidence_hops", 0)
+    no_evidence_streak = mission.get("no_evidence_streak", 0)
     if status == "DENIED":
         denied_streak += 1
         if job.get("last_step") in _BOUNDS_VIOLATION_STEPS:
             out_of_bounds += 1
     else:
         denied_streak = 0
+    # no_evidence: a hop that ran but made zero tool calls (no web.fetch/search/etc.)
+    tool_calls = store.job_tool_call_count(jid)
+    if status == "EXECUTED" and tool_calls == 0:
+        no_evidence_hops += 1
+        no_evidence_streak += 1
+    else:
+        no_evidence_streak = 0
 
     # parse next ```job block from worker output
     next_payload = None
@@ -296,10 +329,13 @@ async def _complete_hop(mission: dict, job: dict, store) -> None:
         "hop": hops_used, "job_id": jid, "event_id": jid,
         "status": status, "conclusion": conclusion,
         "worker_output": wo[-2000:], "last_step": job.get("last_step"),
+        "tool_calls": tool_calls,
     })
 
     store.update_mission(mid, hops_used=hops_used, usd_used=usd_used,
                          denied_streak=denied_streak, out_of_bounds=out_of_bounds,
+                         no_evidence_hops=no_evidence_hops,
+                         no_evidence_streak=no_evidence_streak,
                          active_job_id=None)
 
 
@@ -339,17 +375,28 @@ async def _close_mission(mission: dict, hops: list[dict], reason: str, store, su
     if not dossier_text:
         dossier_text = f"(dossier hop {djob['job_id']} produced no text; close_reason={reason})"
 
+    # dossier收口判: count findings = lines with both a URL and an event_id (J-...)
+    findings = _count_findings(dossier_text)
+    dossier_complete = findings >= 1
+
     dp = _state_dir(mid) / "DOSSIER.md"
     dp.write_text(dossier_text[:3000], encoding="utf-8")
 
     # scorecard
     from .scorecard import build_scorecard
     sc = build_scorecard(mission, hops, reason)
+    sc["dossier_findings"] = findings
+    sc["dossier_complete"] = dossier_complete
     (_state_dir(mid) / "SCORECARD.json").write_text(
         json.dumps(sc, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    final_status = "done" if reason in {"", "stop_condition"} or mission["hops_used"] >= 0 and reason.startswith("stop_condition") else "failed"
-    if reason.startswith("budget_exhausted") or reason.startswith("stop_condition"):
+    # final status: done only if dossier has findings AND close was a normal stop/budget;
+    # no_progress / discipline_fail / denied_streak / incomplete dossier => failed
+    if reason.startswith("no_progress") or reason == "discipline_fail" or reason == "denied_streak":
+        final_status = "failed"
+    elif not dossier_complete:
+        final_status = "failed"  # INCOMPLETE dossier
+    else:
         final_status = "done"
     store.update_mission(mid, status=final_status, close_reason=reason,
                          dossier_path=str(dp), active_job_id=None)

@@ -19,6 +19,7 @@ def build_scorecard(mission: dict, hops: list[dict], close_reason: str) -> dict[
     receipts_complete = sum(1 for h in hops if h.get("event_id"))
     receipt_rate = (receipts_complete / n) if n else 0.0
     out_of_bounds = mission.get("out_of_bounds", 0)
+    no_evidence_hops = mission.get("no_evidence_hops", 0)
     discipline_ok = (out_of_bounds == 0)
     budget = {
         "hops": {"used": mission["hops_used"], "budget": mission["budget_hops"]},
@@ -42,6 +43,7 @@ def build_scorecard(mission: dict, hops: list[dict], close_reason: str) -> dict[
         "verified_facts": verified,
         "receipt_completeness": round(receipt_rate, 4),
         "out_of_bounds": out_of_bounds,
+        "no_evidence_hops": no_evidence_hops,
         "discipline_ok": discipline_ok,
         "discipline_verdict": "PASS" if discipline_ok else "FAIL",
     }
