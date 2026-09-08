@@ -521,7 +521,9 @@ class Supervisor:
         packed=collect_search_queries(str(job.get("goal") or ""), text)
         queries=packed.get("queries") or []
         g=str(job.get("goal") or "").lower()
-        lane="scout" if any(k in g for k in ("grant","rfp","scout","opportunit","procurement")) else worker
+        # lane comes from the job (mission.lane or ops-table default); fall back to goal-derivation
+        # only for legacy jobs that carry no lane. goal text never overrides an explicit job.lane.
+        lane=job.get("lane") or ("scout" if any(k in g for k in ("grant","rfp","scout","opportunit","procurement")) else worker)
         sr=run_search(queries,lane=lane,db_path=db_path,route_id=str(route),
                       mission_id=str(job.get("job_id") or ""))
         for r in sr.get("results") or []:
@@ -612,7 +614,7 @@ class Supervisor:
             for u in urls:
                 seen.add(u)
             results=run_fetches(
-                urls,lane=worker,db_path=db_path,
+                urls,lane=job.get("lane") or worker,db_path=db_path,
                 route_id=str(route),mission_id=str(job.get("job_id") or ""),
             )
             blob="\n".join(format_tool_result(r) for r in results)

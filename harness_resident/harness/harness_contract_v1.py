@@ -100,24 +100,41 @@ def providers_from_registry(capabilities: list[dict], egress_rows: list[dict] | 
 TOOL_LOG_SCHEMA = """CREATE TABLE IF NOT EXISTS tool_log(
   id INTEGER PRIMARY KEY, route_id TEXT, mission_id TEXT, ts REAL NOT NULL, substrate TEXT, tool TEXT NOT NULL,
   args_json TEXT, hits INTEGER, result_chars INTEGER, truncated INTEGER NOT NULL DEFAULT 0,
-  evidence_grade TEXT, cost_usd REAL, status TEXT NOT NULL DEFAULT 'ok');
+  evidence_grade TEXT, cost_usd REAL, status TEXT NOT NULL DEFAULT 'ok', lane TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS ix_tool_log_route ON tool_log(route_id);
 CREATE INDEX IF NOT EXISTS ix_tool_log_mission ON tool_log(mission_id);"""
 
 
 def ensure_tool_log(db_path: str) -> None:
-    con = sqlite3.connect(db_path); con.executescript(TOOL_LOG_SCHEMA); con.commit(); con.close()
+    con = sqlite3.connect(db_path); con.executescript(TOOL_LOG_SCHEMA)
+    try:
+        cols={r[1] for r in con.execute("PRAGMA table_info(tool_log)")}
+        if "lane" not in cols:
+            con.execute("ALTER TABLE tool_log ADD COLUMN lane TEXT NOT NULL DEFAULT ''")
+    except Exception:
+        pass
+    con.commit(); con.close()
 
 
 def log_tool_call(db_path: str, route_id: str, substrate: str, tool: str, args: dict | None, hits: int | None,
                   result_chars: int, truncated: bool, *, mission_id: str | None = None, evidence_grade: str | None = None,
-                  cost_usd: float | None = None, status: str = "ok") -> int:
+                  cost_usd: float | None = None, status: str = "ok", lane: str = "") -> int:
     if evidence_grade is not None: grade_rank(evidence_grade)
     a = json.dumps(args or {}, ensure_ascii=False)[:300]
     con = sqlite3.connect(db_path); con.executescript(TOOL_LOG_SCHEMA)
-    cur = con.execute("INSERT INTO tool_log(route_id,mission_id,ts,substrate,tool,args_json,hits,result_chars,truncated,evidence_grade,cost_usd,status)"
-                      " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                      (route_id, mission_id, time.time(), substrate, tool, a, hits, int(result_chars), 1 if truncated else 0, evidence_grade, cost_usd, status))
+    try:
+        cols={r[1] for r in con.execute("PRAGMA table_info(tool_log)")}
+        has_lane = "lane" in cols
+    except Exception:
+        has_lane = False
+    if has_lane:
+        cur = con.execute("INSERT INTO tool_log(route_id,mission_id,ts,substrate,tool,args_json,hits,result_chars,truncated,evidence_grade,cost_usd,status,lane)"
+                          " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                          (route_id, mission_id, time.time(), substrate, tool, a, hits, int(result_chars), 1 if truncated else 0, evidence_grade, cost_usd, status, lane or substrate or ""))
+    else:
+        cur = con.execute("INSERT INTO tool_log(route_id,mission_id,ts,substrate,tool,args_json,hits,result_chars,truncated,evidence_grade,cost_usd,status)"
+                          " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                          (route_id, mission_id, time.time(), substrate, tool, a, hits, int(result_chars), 1 if truncated else 0, evidence_grade, cost_usd, status))
     con.commit(); rid = cur.lastrowid; con.close(); return int(rid)
 
 

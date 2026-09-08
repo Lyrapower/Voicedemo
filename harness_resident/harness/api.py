@@ -52,6 +52,7 @@ class JobCreate(BaseModel):
     kind:str="chat"
     origin:str=""
     context_hash:str=""
+    lane:str|None=None
     latency_budget_ms:int|None=None
     steps:list=Field(default_factory=list)
 
@@ -59,6 +60,12 @@ class ApiJobBody(BaseModel):
     worker:str="local"
     kind:str="chat"
     content:str=Field(min_length=1)
+    read_only:bool=False
+    origin:str=""
+    context_hash:str=""
+    lane:str|None=None
+    latency_budget_ms:int|None=None
+    steps:list=Field(default_factory=list)
 
 class MissionCreate(BaseModel):
     goal:str=Field(min_length=1)
@@ -195,12 +202,23 @@ def create_job_internal(body:JobCreate, *, scope:str="full"):
         if not tools:
             tools=["Read","Grep","Glob"]
         paths=[str(DEMO_ROOT)]
+    # lane resolution (衔拍2): mission.lane flows in via runner; H1/ACTION (grid_compiled/
+    # grid_c_confirm) gets the ops-table default "deep"; manual /api/jobs submit MUST
+    # carry lane explicitly or 400. goal text never overrides an explicit lane.
+    if body.lane:
+        lane=body.lane
+    elif origin in ("grid_compiled","grid_c_confirm"):
+        lane="deep"          # H1/ACTION ops-table default lane
+    elif origin:
+        lane=""               # other origin-bearing (telegram/scheduled) legacy default
+    else:
+        raise HTTPException(400,"lane is required for manual /api/jobs submit (got no origin, no lane)")
     job=store.create_job(channel=body.channel,goal=body.goal,worker=worker,
         allowed_tools=tools,allowed_paths=paths,
         cloud_allowed=ca,approval_mode=body.approval_mode,
         read_only=ro,kind=body.kind,status=status,last_step=last_step,
         origin=origin,context_hash=ctx,latency_budget_ms=latency,
-        steps=steps if steps else list(body.steps or []),topology_ack=ack)
+        steps=steps if steps else list(body.steps or []),topology_ack=ack,lane=lane)
     if origin=="grid_compiled" or ctx:
         try: record_grid_action(job)
         except Exception: pass

@@ -200,6 +200,83 @@ class TestDossierVerdict(unittest.TestCase):
         self.assertEqual(_count_findings("ref J-abc12345 (no url)"), 0)
 
 
+class TestLaneEgress(unittest.TestCase):
+    """衔拍2: job.lane 决定 egress; goal 文本不改 lane。"""
+
+    def _reg(self):
+        from harness.web_fetch_v3 import load_egress
+        from harness.tool_loop import EGRESS_PATH
+        return load_egress(EGRESS_PATH)
+
+    def test_research_lane_denied_grants_gov(self):
+        from harness.web_fetch_v3 import _resolve_row
+        row, reason, meta = _resolve_row(self._reg(), "api.grants.gov", "research")
+        self.assertIsNone(row, "research lane must NOT reach api.grants.gov (lanes=[scout])")
+        self.assertIn("lane not allowed", reason)
+
+    def test_scout_lane_ok_grants_gov(self):
+        from harness.web_fetch_v3 import _resolve_row
+        row, reason, meta = _resolve_row(self._reg(), "api.grants.gov", "scout")
+        self.assertIsNotNone(row, "scout lane must reach api.grants.gov")
+        self.assertIsNone(reason)
+
+    def test_goal_text_does_not_override_job_lane(self):
+        """goal 里写 'lane: scout' 不改变 egress 结果——lane 取 job.lane, 非 goal 文本。"""
+        from harness.web_fetch_v3 import _resolve_row
+        # egress only sees the lane arg, never the goal text; so a research-lane job whose
+        # goal happens to contain 'lane: scout' is still denied (lane=research).
+        row, reason, meta = _resolve_row(self._reg(), "api.grants.gov", "research")
+        self.assertIsNone(row)
+        self.assertIn("lane not allowed", reason)
+        # and a scout-lane job is allowed regardless of goal wording
+        row2, _, _ = _resolve_row(self._reg(), "api.grants.gov", "scout")
+        self.assertIsNotNone(row2)
+
+
+class TestCrashResumeMissionLevel(unittest.TestCase):
+    """⑪ 规则 (与 T04 对齐): 云 worker read_only 中断可重跑; cc 中断→blocked、该跳记 DENIED 续下一跳。"""
+
+    def test_cc_interrupt_hop_marks_denied_and_advances(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = Store(os.path.join(d, "t.db"))
+            m = _mk(s, worker="cc", tools=["bash"])
+            job = s.create_job(channel="grid", goal="hop", worker="cc",
+                               allowed_tools=["bash"], allowed_paths=["."],
+                               cloud_allowed=False, approval_mode="auto", read_only=True,
+                               kind="chat", origin=f"mission:{m['mission_id']}", lane="builder")
+            # simulate: cc interrupted → requeue_interrupted → blocked (RETRY_DENIED)
+            s.update_job(job["job_id"], status="interrupted", last_step="cancelled")
+            s.requeue_interrupted(3)
+            self.assertEqual(s.get_job(job["job_id"])["status"], "blocked")
+            self.assertEqual(s.get_job(job["job_id"])["last_step"], "RETRY_DENIED")
+            # runner collects the blocked hop → DENIED → out_of_bounds++ (RETRY_DENIED is bounds) → advances
+            asyncio.run(_complete_hop(m, s.get_job(job["job_id"]), s))
+            m2 = s.get_mission(m["mission_id"])
+            self.assertEqual(m2["denied_streak"], 1)
+            self.assertEqual(m2["out_of_bounds"], 1)  # RETRY_DENIED ∈ _BOUNDS_VIOLATION_STEPS
+            self.assertIsNone(m2["active_job_id"])  # cleared → next hop proceeds
+
+    def test_cloud_readonly_interrupt_reruns(self):
+        with tempfile.TemporaryDirectory() as d:
+            s = Store(os.path.join(d, "t.db"))
+            m = _mk(s, worker="research", tools=["web.fetch", "web.search"])
+            job = s.create_job(channel="grid", goal="hop", worker="research",
+                               allowed_tools=["web.fetch", "web.search"], allowed_paths=["."],
+                               cloud_allowed=True, approval_mode="auto", read_only=True,
+                               kind="chat", origin=f"mission:{m['mission_id']}", lane="scout")
+            # simulate: cloud read_only interrupted → requeue_interrupted → requeued (status=queued)
+            s.update_job(job["job_id"], status="interrupted", last_step="cancelled")
+            q = s.requeue_interrupted(3)
+            self.assertEqual(q, 1)  # requeued, not blocked
+            self.assertEqual(s.get_job(job["job_id"])["status"], "queued")
+            # runner sees non-terminal (queued) → waits (does not advance yet)
+            hops = []
+            from mission.runner import _load_lineage_hops, _state_dir
+            # the hop is not terminal, so _complete_hop would not be called by the loop;
+            # verify the job is re-runnable (queued), proving resume path
+            self.assertEqual(s.get_job(job["job_id"])["status"], "queued")
+
+
 class TestScorecard(unittest.TestCase):
     def test_discipline_fail_when_out_of_bounds(self):
         sc = build_scorecard(

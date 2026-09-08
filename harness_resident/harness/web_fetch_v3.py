@@ -229,14 +229,14 @@ def _rate(path,row,host):
                 if _rates[k] and now-_rates[k][-1]>=60:del _rates[k]
     return True
 
-def _log(db_path,route_id,mission_id,substrate,tool,url,chars,truncated,grade,status):
+def _log(db_path,route_id,mission_id,substrate,tool,url,chars,truncated,grade,status,lane=None):
     if not db_path:return None
     try:
         try:
             from . import harness_contract_v1 as HC
         except ImportError:
             import harness_contract_v1 as HC
-        HC.log_tool_call(db_path,route_id or '',substrate or '',tool,{'url_host':urllib.parse.urlsplit(url).hostname},None,chars,truncated,mission_id=mission_id,evidence_grade=grade,status=status)
+        HC.log_tool_call(db_path,route_id or '',substrate or '',tool,{'url_host':urllib.parse.urlsplit(url).hostname},None,chars,truncated,mission_id=mission_id,evidence_grade=grade,status=status,lane=lane or substrate or '')
         return None
     except Exception:return 'tool_log_failed'
 

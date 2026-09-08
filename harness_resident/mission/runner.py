@@ -272,7 +272,7 @@ async def _tick_mission(mission: dict, supervisor, store) -> None:
             allowed_tools=m.get("tools") or [], allowed_paths=["."],
             cloud_allowed=is_cloud, approval_mode="auto",
             read_only=True, kind="chat",
-            origin=f"mission:{mid}",
+            origin=f"mission:{mid}", lane=m.get("lane") or "",
         )
         store.update_mission(mid, active_job_id=new_job["job_id"])
     except Exception as e:
