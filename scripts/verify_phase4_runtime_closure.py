@@ -128,11 +128,12 @@ def production_smoke() -> int:
         egress_path=str(ROOT / "EGRESS.md"),
     )
     print("catalog_live", cat.get("status"), cat.get("reason"), cat.get("matched_rule"), cat.get("match_kind"))
-    if cat.get("ok"):
-        print("FAIL catalog must not succeed via * while exact row pending")
+    # api.grants.gov 拍板 2026-09-08 (Lyra 可否决): exact row approved → catalog succeeds via exact, not via *
+    if not cat.get("ok"):
+        print("FAIL catalog should succeed via approved api.grants.gov exact, got", cat.get("status"), cat.get("reason"))
         return 1
-    if cat.get("matched_rule") != "api.grants.gov":
-        print("FAIL expected matched_rule api.grants.gov")
+    if cat.get("matched_rule") != "api.grants.gov" or cat.get("match_kind") != "exact":
+        print("FAIL expected exact match on api.grants.gov, got", cat.get("matched_rule"), cat.get("match_kind"))
         return 1
     return 0
 
