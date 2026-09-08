@@ -8,6 +8,7 @@
 | www.grants.gov | grants.gov 检索 | yes | none | 20 | attested | 2026-09-07 | scout |
 | api.sam.gov | SAM.gov 机会 | yes | SAM_API_KEY | 10 | attested | 2026-09-07 | scout |
 | api.github.com | GitHub API | yes | GITHUB_TOKEN | 30 | issuer_claim | 2026-09-07 | maintainer,research |
+| api.grants.gov | grants.gov Search2 + fetchOpportunity JSON POST | yes | none | 20 | attested | 2026-09-08 | scout |
 | * | 开放网研究读取 | yes | none | 30 | unverified | 2026-09-07 | research,deep,full,cc,scout |
 | html.duckduckgo.com | 搜索 HTML | yes | none | 20 | unverified | 2026-09-07 | research,deep,full,cc,scout |
 | lite.duckduckgo.com | 搜索备用 Lite | yes | none | 20 | unverified | 2026-09-07 | research,deep,full,cc,scout |
