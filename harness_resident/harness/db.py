@@ -455,14 +455,18 @@ class Store:
         return [self._decode(r) for r in rows]
 
     def mission_cost_usd(self, mission_id: str) -> float:
-        """Sum tool_log.cost_usd for all jobs whose origin = mission:<id>."""
+        """Sum tool_log.cost_usd for all jobs whose origin = mission:<id>.
+        tool_log is owned by harness_contract_v1; if absent (fresh/test DB) return 0."""
         origin = f"mission:{mission_id}"
         with self._lock:
-            r = self._conn.execute(
-                "SELECT COALESCE(SUM(t.cost_usd),0.0) FROM tool_log t "
-                "JOIN jobs j ON t.mission_id=j.job_id "
-                "WHERE j.origin=?",
-                (origin,)).fetchone()
+            try:
+                r = self._conn.execute(
+                    "SELECT COALESCE(SUM(t.cost_usd),0.0) FROM tool_log t "
+                    "JOIN jobs j ON t.mission_id=j.job_id "
+                    "WHERE j.origin=?",
+                    (origin,)).fetchone()
+            except Exception:
+                return 0.0
         return float(r[0]) if r and r[0] is not None else 0.0
 
     def update_mission(self, mission_id, **fields):
