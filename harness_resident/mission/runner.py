@@ -65,16 +65,22 @@ def _save_next_payload(mission_id: str, payload: dict | None) -> None:
 import re as _re
 
 _FINDING_URL_RE = _re.compile(r"https?://\S+", _re.I)
-_FINDING_EID_RE = _re.compile(r"\bJ-[0-9a-f]{8,}\b")
+_FINDING_EID_RE = _re.compile(r"\b(J-[0-9a-f]{8,}|hop\s+\d+)\b", _re.I)
 
 
-def _count_findings(dossier_text: str) -> int:
-    """Count dossier findings = lines containing both a URL and an event_id (J-...)."""
+def _count_findings(dossier_text: str, domain: str = "") -> int:
+    """Count dossier findings = lines containing both a URL and an event_id
+    (J-... or 'hop N'). If domain given, the URL must contain it (e.g. grants.gov)."""
     if not dossier_text:
         return 0
     n = 0
     for line in dossier_text.splitlines():
-        if _FINDING_URL_RE.search(line) and _FINDING_EID_RE.search(line):
+        has_url = False
+        for m in _FINDING_URL_RE.finditer(line):
+            if (not domain) or domain in m.group(0).lower():
+                has_url = True
+                break
+        if has_url and _FINDING_EID_RE.search(line):
             n += 1
     return n
 
@@ -159,10 +165,12 @@ def _dossier_goal(mission: dict, hops: list[dict]) -> str:
     summary = lineage_summary(hops, limit=30)
     return (
         f"MISSION DOSSIER (close): {mission['goal']}\n\n"
-        f"Lineage (each hop has an event_id = job_id):\n{summary}\n\n"
+        f"Lineage (each hop has an event_id = job_id, format J-xxxxxxxxxx):\n{summary}\n\n"
         f"Write a dossier in markdown, <=3000 chars, summarizing what the mission found/did. "
-        f"Cite only facts that appear in the lineage above; for each fact give its event_id (job_id) "
-        f"and the evidence grade. If the mission is incomplete (budget exhausted / blocked), say so. "
+        f"For each finding, give: the grants.gov (or source) URL, the deadline date, and the "
+        f"event_id (the hop's job_id, format J-xxxxxxxxxx) it came from. Cite only facts that "
+        f"appear in the lineage above; for each fact give its event_id (J-...) and evidence "
+        f"grade. If the mission is incomplete (budget exhausted / blocked), say so. "
         f"Do not invent facts. Output only the markdown dossier."
     )
 
@@ -378,8 +386,10 @@ async def _close_mission(mission: dict, hops: list[dict], reason: str, store, su
     if not dossier_text:
         dossier_text = f"(dossier hop {djob['job_id']} produced no text; close_reason={reason})"
 
-    # dossier收口判: count findings = lines with both a URL and an event_id (J-...)
-    findings = _count_findings(dossier_text)
+    # dossier收口判: count findings = lines with both a URL and an event_id (J-... or hop N)
+    # for scout lane, require grants.gov URLs specifically
+    domain = "grants.gov" if mission.get("lane") == "scout" else ""
+    findings = _count_findings(dossier_text, domain=domain)
     dossier_complete = findings >= 1
 
     dp = _state_dir(mid) / "DOSSIER.md"
