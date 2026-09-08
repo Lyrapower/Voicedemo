@@ -81,13 +81,21 @@ def _append_lineage_hop(mission_id: str, hop: dict) -> None:
 
 def _record_provenance(mission_id: str, action_id: str, status: str, executed: bool,
                        conclusion: str = "", grade: str = "secondhand") -> str:
-    """Append an action + receipt to the provenance JSONL. Returns the event_id (=action_id)."""
+    """Append an action + receipt to the provenance JSONL + a per-mission receipts.jsonl.
+    Returns the event_id (=action_id). Best-effort: never blocks the loop."""
+    # per-mission receipts.jsonl (always written — the mission's own receipt tree)
+    try:
+        rec = {"ts": time.time(), "kind": "receipt", "mission_id": mission_id,
+               "event_id": action_id, "status": status, "executed": executed,
+               "evidence_grade": grade, "conclusion": conclusion[:500]}
+        with open(_state_dir(mission_id) / "receipts.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    # global provenance JSONL (best-effort; may fail if app.harness not importable in process)
     try:
         from app.harness.action_envelope import ActionEnvelope, FactualReceipt
         from app.harness import provenance
-    except Exception:
-        return ""
-    try:
         ActionEnvelope(
             mission_id=mission_id, action_id=action_id, decision_origin="GRID_DELEGATED_GLM",
             selected_resource=f"job:{action_id}", operation="mission_hop",
@@ -99,7 +107,6 @@ def _record_provenance(mission_id: str, action_id: str, status: str, executed: b
             metadata={"evidence_grade": grade, "hop": action_id},
         ).to_dict()
     except Exception:
-        # provenance is append-only; never let it block the loop
         pass
     return action_id
 
