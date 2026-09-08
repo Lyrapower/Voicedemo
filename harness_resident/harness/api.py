@@ -462,6 +462,18 @@ async def api_capabilities():
         "lanes":["fast","deep","full","research","cc","scout"],
         "egress_visible_lanes":visible,
     }
+    surface["mail.read"]={
+        "permission":"read_only",
+        "available":False,
+        "lanes":["scout","research","deep"],
+        "note":"IMAP read-only; not wired — Lyra supplies IMAP host + env key name",
+    }
+    surface["mail.send"]={
+        "permission":"blocked",
+        "available":False,
+        "lanes":["deep"],
+        "note":"born BLOCKED; per-message Lyra 放行; not wired",
+    }
     return surface
 
 class RwaConnectBody(BaseModel):

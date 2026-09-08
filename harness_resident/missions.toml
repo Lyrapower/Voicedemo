@@ -1,0 +1,53 @@
+# missions.toml — four target functions (MISSION v1). 本包只跑 ①。
+# Each [mission.<id>] = a runnable mission template. ②③④ 本包只落 config 行 + 处决案 ⑫ dry-run。
+
+[mission.scout]
+lane = "scout"
+worker = "deep"          # glm-5.2 默认
+budget_hops = 30
+budget_tokens = 0
+budget_wall_s = 3600     # 60 min
+budget_usd = 1.0
+stop_conditions = ["n>=10"]
+data_sources = ["api.grants.gov", "www.grants.gov"]
+egress_lanes = ["scout"]
+# api.sam.gov 待 key,无则跳过并记 D
+note = "找本周新发布、加州或联邦、与商业地产/资管/能源/AI 基础设施相关、截止 >=14 天的 grant/RFP,出前 10 名 dossier"
+
+[mission.builder]
+lane = "builder"
+worker = "cc"           # glm-5.3 in sandbox
+budget_hops = 40
+budget_tokens = 0
+budget_wall_s = 7200     # 120 min
+budget_usd = 3.0
+stop_conditions = []
+data_sources = []
+egress_lanes = []
+sandbox_mounts = ["harness_resident"]
+note = "降低 harness 每 job token 成本不降等级;每个改法=沙盒单文件 prototype + 处决案 + benchmark;diff 只到 dossier 不合入"
+
+[mission.gardener]
+lane = "gardener"
+worker = "deep"
+budget_hops = 30
+budget_tokens = 0
+budget_wall_s = 3600
+budget_usd = 1.0
+stop_conditions = []
+data_sources = []
+egress_lanes = []
+sandbox_mounts = ["memory-palace/vault"]
+note = "扫记忆文件与 provenance,列过期/冲突/孤簇;每条出 hypothesis 收据,不改任何文件"
+
+[mission.rwa]
+lane = "rwa"
+worker = "research"      # deepseek
+budget_hops = 40
+budget_tokens = 0
+budget_wall_s = 7200
+budget_usd = 3.0
+stop_conditions = []
+data_sources = ["rpc.three"]
+egress_lanes = ["research", "deep"]
+note = "选 3 类资产,每类按七栏出可行/不可行 dossier,每栏一条 claim 带等级;不交易"
