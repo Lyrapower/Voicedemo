@@ -24,11 +24,13 @@ daemon 侧回传 (aigc_daemon 等, 6行):
         except Exception:
             pass  # 回传失败不阻塞主流程
 
-鉴权: 环境变量 GRID_STORE_TOKEN 设置后, 所有请求需带
-      X-Grid-Token 头。不设则LAN裸信任 (Tailscale内网可接受)。
+鉴权: 仅当进程环境变量 GRID_STORE_TOKEN 已设置时才要求
+      X-Grid-Token（或 loopback cookie）。不设则 LAN 裸信任。
+      磁盘上的 config/grid_store.token 是备选项，存在不等于开门。
 """
 
 import json
+import hmac
 import os
 import sqlite3
 import sys
@@ -122,14 +124,48 @@ ARCHIVE_ON_PURGE_NODES = frozenset({
     "field-compile",
 })
 _TOKEN_FILE = Path(__file__).resolve().parents[1] / "config" / "grid_store.token"
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+_PAIR_ORIGINS = frozenset({
+    "http://127.0.0.1:8501",
+    "http://localhost:8501",
+    "http://127.0.0.1:8515",
+    "http://localhost:8515",
+})
+_STORE_COOKIE = "grid_store"
+
+
+def live_store_token() -> str:
+    """Env only. A token file must not turn store auth on."""
+    return (os.environ.get("GRID_STORE_TOKEN") or "").strip()
+
+
+def loopback_host(host_header: str) -> bool:
+    host = (host_header or "").split("@")[-1]
+    host = host.split(":")[0].strip().strip("[]").lower()
+    return host in _LOOPBACK_HOSTS
+
+
+def local_pair_allowed(host_header: str, origin: str, sec_fetch_site: str) -> bool:
+    if not loopback_host(host_header):
+        return False
+    if (sec_fetch_site or "").lower() == "cross-site":
+        return False
+    origin = (origin or "").strip().rstrip("/")
+    if origin and origin not in _PAIR_ORIGINS:
+        return False
+    return True
+
+
+def request_store_secret(req) -> str:
+    hdr = (req.headers.get("X-Grid-Token") or "").strip()
+    if hdr:
+        return hdr
+    return (req.cookies.get(_STORE_COOKIE) or "").strip()
 
 
 def store_auth_status() -> str:
     """Return store_auth mode for health — on when GRID_STORE_TOKEN loaded."""
-    tok = (os.environ.get("GRID_STORE_TOKEN") or "").strip()
-    if not tok and _TOKEN_FILE.is_file():
-        tok = _TOKEN_FILE.read_text(encoding="utf-8").strip()
-    return "on" if tok else "off"
+    return "on" if live_store_token() else "off"
 
 
 def log_store_auth_banner() -> None:
@@ -466,19 +502,52 @@ def build_router(db_path: str = "grid_store.db"):
     from fastapi import APIRouter, Request, HTTPException
 
     store = GridStore(db_path)
-    token = os.environ.get("GRID_STORE_TOKEN", "")
     bridge_token = os.environ.get("BRIDGE_STORE_TOKEN", "")
     r = APIRouter(prefix="/store", tags=["store"])
 
     def gate(req: Request):
-        if token and req.headers.get("X-Grid-Token") != token:
+        expected = live_store_token()
+        if not expected:
+            return
+        got = request_store_secret(req)
+        if not got or not hmac.compare_digest(got, expected):
             raise HTTPException(401, "bad or missing X-Grid-Token")
 
     def gate_emit(req: Request):
-        hdr = req.headers.get("X-Grid-Token")
-        if token and hdr != token:
-            if not (bridge_token and hdr == bridge_token):
-                raise HTTPException(401, "bad or missing X-Grid-Token")
+        expected = live_store_token()
+        if not expected:
+            return
+        got = request_store_secret(req)
+        if got and hmac.compare_digest(got, expected):
+            return
+        hdr = (req.headers.get("X-Grid-Token") or "").strip()
+        if bridge_token and hdr and hmac.compare_digest(hdr, bridge_token):
+            return
+        raise HTTPException(401, "bad or missing X-Grid-Token")
+
+    @r.get("/local_pair")
+    async def local_pair(req: Request):
+        from fastapi.responses import Response
+        if not local_pair_allowed(
+            req.headers.get("host") or "",
+            req.headers.get("origin") or "",
+            req.headers.get("sec-fetch-site") or "",
+        ):
+            raise HTTPException(404, "not found")
+        expected = live_store_token()
+        if not expected:
+            raise HTTPException(503, "store token unconfigured")
+        resp = Response(status_code=204)
+        resp.set_cookie(
+            key=_STORE_COOKIE,
+            value=expected,
+            httponly=True,
+            samesite="lax",
+            path="/",
+            max_age=7 * 24 * 3600,
+            secure=False,
+        )
+        return resp
 
     @r.get("/conversations")
     async def nodes(req: Request):

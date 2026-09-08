@@ -23,9 +23,10 @@ else
 fi
 
 cd "$GS"
-if [[ -f "$GS/config/grid_store.token" ]]; then
-  export GRID_STORE_TOKEN="$(tr -d '\n' < "$GS/config/grid_store.token")"
-fi
+set +x
+# GRID_STORE_TOKEN is optional. Do not load it from config/grid_store.token.
+# File presence must not enable store auth; unset inherited env from prior runs.
+unset GRID_STORE_TOKEN || true
 if [[ -f "$GS/config/bridge_store.token" ]]; then
   export BRIDGE_STORE_TOKEN="$(tr -d '\n' < "$GS/config/bridge_store.token")"
 fi
@@ -37,4 +38,4 @@ python3 scripts/cleanroom.py selftest >/dev/null
 python3 "$ROOT/scripts/grid_infrastructure_guard.py" verify-runtime
 
 echo "Grid gateway → http://127.0.0.1:${PORT} · chat LM Studio :1234 · compile/task Ollama coder :11434"
-exec python3 gateway/local_gateway.py
+exec python3 gateway/gateway_serve.py

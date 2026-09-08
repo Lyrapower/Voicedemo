@@ -253,9 +253,10 @@ body.lane-grid.compile-backend #codeBackendRow{display:flex}
       <div class="hint">读图模型 (各 lane 独立, 仅带图时切换)</div>
       <input id="vlg" spellcheck="false" autocapitalize="off" placeholder="grid vision · qwen/qwen3.5-9b">
       <input id="vlq" spellcheck="false" autocapitalize="off" placeholder="qwen vision · qwen/qwen3.5-9b">
-      <div class="hint">store token (可选, 对应 GRID_STORE_TOKEN)</div>
+      <div class="hint">store token（可选 · 仅当 8501 进程设置了 GRID_STORE_TOKEN 才需要）</div>
       <input id="storetok" type="password" spellcheck="false" autocapitalize="off"
         placeholder="X-Grid-Token" autocomplete="off">
+      <button type="button" id="storetokClear">清除本机 token</button>
       <div id="storest" class="hint">store: —</div>
       <div class="hint">GridKeyholder (可选 · demo/aster 已由 8515 服务端验签)</div>
       <div id="kh">
@@ -300,7 +301,7 @@ body.lane-grid.compile-backend #codeBackendRow{display:flex}
 <script src="/app/grid_verification_client.js?v=2026-07-27-kh-ascii"></script>
 <script>
 "use strict";
-const PAGE_VER="2026-09-06-topo";
+const PAGE_VER="2026-09-08-store-pair";
 const VOICE_JS_VER="2026-07-23f";
 const $=s=>document.querySelector(s);
 const $$=s=>document.querySelectorAll(s);
@@ -321,7 +322,7 @@ const LANES={
 function defaultGw(){
   const o=location.origin;
   if(o&&o!=="null"&&!o.startsWith("file:")) return o+"/v1";
-  return "http://127.0.0.1:8501/v1";
+  return "";
 }
 function isLocalHost(h){
   return !h||h==="127.0.0.1"||h==="localhost"||h==="::1";
@@ -454,9 +455,18 @@ function storeHdrs(){
   if(storeToken) h["X-Grid-Token"]=storeToken;
   return h;
 }
+function storeFetch(url, init={}){
+  const headers=Object.assign({}, storeHdrs(), init.headers||{});
+  return fetch(url, Object.assign({credentials:"include", cache:"no-store"}, init, {headers}));
+}
+async function pairStoreSession(){
+  try{
+    await fetch(`${storeBase()}/store/local_pair`,{credentials:"include", cache:"no-store"});
+  }catch(_){}
+}
 async function purgeStoreNode(nodeId){
-  const r=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(nodeId)}/purge`,{
-    method:"POST",headers:storeHdrs(),body:JSON.stringify({before_ts:Date.now()/1000+86400}),
+  const r=await storeFetch(`${storeBase()}/store/conversations/${encodeURIComponent(nodeId)}/purge`,{
+    method:"POST",body:JSON.stringify({before_ts:Date.now()/1000+86400}),
   });
   if(!r.ok) throw new Error("purge "+nodeId+" HTTP "+r.status);
   return r.json();
@@ -482,14 +492,12 @@ async function clearGridContext(){
 async function pullStoreLane(nodeId,key){
   try{
     // 热库全量 + 冷库 archive 合并(不按 since_ts 丢旧正文——8501 才是记忆层)
-    const r=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(nodeId)}?limit=500`,
-      {headers:storeHdrs()});
+    const r=await storeFetch(`${storeBase()}/store/conversations/${encodeURIComponent(nodeId)}?limit=500`);
     if(!r.ok) throw 0;
     const hot=await r.json();
     let cold=[];
     try{
-      const ar=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(nodeId)}/archive?limit=500`,
-        {headers:storeHdrs()});
+      const ar=await storeFetch(`${storeBase()}/store/conversations/${encodeURIComponent(nodeId)}/archive?limit=500`);
       if(ar.ok){
         const j=await ar.json();
         cold=Array.isArray(j.messages)?j.messages:[];
@@ -509,13 +517,14 @@ async function pullStoreLane(nodeId,key){
   }catch(e){ storeOnline=false; }
 }
 async function pullGridStore(){
+  await pairStoreSession();
   await pullStoreLane(STORE_CHAT_NODE,"chat");
   await pullStoreLane(STORE_COMPILE_NODE,"compile");
 }
 function pushStoreMsgs(task,msgs){
   const tagged=(msgs||[]).map(m=>({...m,surface:m.surface||"grid-app"}));
-  fetch(`${storeBase()}/store/conversations/${encodeURIComponent(storeNodeId(task))}/messages`,
-    {method:"POST",headers:storeHdrs(),body:JSON.stringify(tagged)})
+  storeFetch(`${storeBase()}/store/conversations/${encodeURIComponent(storeNodeId(task))}/messages`,
+    {method:"POST",body:JSON.stringify(tagged)})
     .then(()=>{storeOnline=true}).catch(()=>{storeOnline=false});
 }
 function afterTurn(instruction,draft,task,{test=false}={}){
@@ -531,8 +540,8 @@ function afterTurn(instruction,draft,task,{test=false}={}){
     body.compile_semantics="parse_only";
   }
   if(test) body.test=true;
-  fetch(`${storeBase()}/store/field/after_turn`,{
-    method:"POST",headers:storeHdrs(),
+  storeFetch(`${storeBase()}/store/field/after_turn`,{
+    method:"POST",
     body:JSON.stringify(body),
   }).catch(()=>{});
 }
@@ -561,28 +570,86 @@ syncBackendUi();
 $("#backendLocal")&&($("#backendLocal").onclick=()=>{ pendingBackendId="ollama_coder"; syncBackendUi(); });
 $("#backendCc")&&($("#backendCc").onclick=()=>{ pendingBackendId="cc_cli"; syncBackendUi(); });
 let pendingCcTask=null;
+let lastCcCandidate=null;
+async function sha3Goal(s){
+  const bytes=new TextEncoder().encode(String(s||""));
+  if(crypto.subtle){
+    /* fallback: page already has sha3_256_hex */
+  }
+  return sha3_256_hex(String(s||""));
+}
 async function confirmPendingCc(taskHint,outEl,histLane,taskLane,userText){
   const task=(taskHint||pendingCcTask||userText||"").trim();
   if(!task){ outEl.textContent="无 cc_task，无法确认"; return; }
-  pendingCcTask=null;
-  outEl.textContent="CC 确认执行中…";
+  if(!harnessBase()){ outEl.textContent="无同源 Grid 入口，无法确认"; return; }
+  const btn=outEl.querySelector("button");
+  if(btn) btn.disabled=true;
+  pendingCcTask=task;
+  outEl.textContent="CC 登记候选…";
   try{
-    const r=await fetch(gw+"/chat/completions",{method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({model:textModel(),stream:false,max_tokens:4096,
-        cc_confirmed:true,cc_task:task,
-        messages:[{role:"user",content:"CONFIRM"}]})});
-    if(!r.ok) throw new Error(await readChatError(r)||("HTTP "+r.status));
-    const data=await r.json();
-    const ans=data.choices?.[0]?.message?.content||"";
-    const fr=data.choices?.[0]?.finish_reason||data.grid_meta?.route_outcome||"?";
+    let cand=lastCcCandidate && lastCcCandidate.goal===task ? lastCcCandidate : null;
+    if(!cand){
+      const reg=await fetch(harnessBase()+"/compile/register",{method:"POST",
+        credentials:"include",
+        headers:storeHdrs(),
+        body:JSON.stringify({goal:task,session_id:storeLaneKey(taskLane||lastGridTask||"compile")})});
+      if(!reg.ok){
+        const err=await reg.text();
+        throw new Error("register "+reg.status+" "+err.slice(0,180));
+      }
+      cand=await reg.json();
+      cand.goal=task;
+      lastCcCandidate=cand;
+    }
+    outEl.textContent="CC 确认提交中…";
+    const r=await fetch(harnessBase()+"/compile/confirm",{method:"POST",
+      credentials:"include",
+      headers:storeHdrs(),
+      body:JSON.stringify({candidate_id:cand.candidate_id,binding_hash:cand.binding_hash,session_id:cand.session_id||""})});
+    if(r.status===409){
+      const mapped=await fetch(harnessBase()+"/compile/map/"+encodeURIComponent(cand.candidate_id),{credentials:"include",headers:storeHdrs()});
+      if(mapped.ok){
+        const j=await mapped.json();
+        if(j.job_id && !String(j.job_id).startsWith("reserved:")){
+          outEl.className="g";
+          outEl.textContent="已提交 job "+j.job_id+" · "+(j.status||"retry");
+          if(cand.candidate_id) pollCompileJob(cand.candidate_id,outEl);
+          return;
+        }
+      }
+    }
+    if(!r.ok){
+      const err=await r.text();
+      throw new Error("confirm "+r.status+" "+err.slice(0,180));
+    }
+    const rec=await r.json();
+    const jid=rec.job_id||"";
+    if(!jid){ throw new Error("confirm missing job_id"); }
     outEl.className="g";
-    outEl.textContent=cleanText(ans)||("(空) finish "+fr);
+    outEl.textContent="已提交 job "+jid+" · "+(rec.status||"");
     histLane.push({role:"assistant",content:outEl.textContent});
-    if(lane==="grid") pushStoreMsgs(taskLane,[{role:"assistant",content:outEl.textContent}]);
+    if(lane==="grid" && !task.startsWith("ONESHOT_MARKER")){
+      pushStoreMsgs(taskLane,[{role:"assistant",content:outEl.textContent}]);
+    }
+    if(cand.candidate_id) pollCompileJob(cand.candidate_id,outEl);
   }catch(e){
     outEl.className="g err";
     outEl.textContent=String(e.message||e);
+    if(btn) btn.disabled=false;
+  }
+}
+async function pollCompileJob(candidateId,outEl){
+  for(let i=0;i<90;i++){
+    try{
+      const r=await fetch(harnessBase()+"/compile/map/"+encodeURIComponent(candidateId),{credentials:"include",headers:storeHdrs()});
+      if(r.ok){
+        const j=await r.json();
+        const st=j.status||"?";
+        outEl.textContent="job "+(j.job_id||"?")+" · "+st+(j.last_step?" · "+j.last_step:"");
+        if(["done","failed","blocked","interrupted"].includes(st)) return;
+      }
+    }catch(_e){}
+    await new Promise(res=>setTimeout(res,2000));
   }
 }
 function showCcCandidatePanel(outEl,meta,userText,histLane,taskLane){
@@ -590,7 +657,7 @@ function showCcCandidatePanel(outEl,meta,userText,histLane,taskLane){
   outEl.className="g cc-candidate";
   const btnId="ccConfirm"+Date.now();
   const reason=meta?.reason||"cc_candidate";
-  outEl.innerHTML=`<div class="cc-candidate-hint">Cloud CC 候选 (${reason}) — 只读分析;点确认后带 cc_confirmed+cc_task 重入</div><button type="button" id="${btnId}">确认 CC</button>`;
+  outEl.innerHTML=`<div class="cc-candidate-hint">CC 候选 (${reason}) — 点确认后由 8630 绑定 worker=cc 提交一次 job</div><button type="button" id="${btnId}">确认 CC</button>`;
   document.getElementById(btnId).onclick=()=>confirmPendingCc(pendingCcTask,outEl,histLane,taskLane,userText);
 }
 function activeHist(laneId){
@@ -702,6 +769,9 @@ $("#gw").onchange=e=>{gw=e.target.value.trim();st.set("gw",gw)};
 $("#vlg").onchange=e=>{vlModels.grid=e.target.value.trim();st.set("vlmodel:grid",vlModels.grid)};
 $("#vlq").onchange=e=>{vlModels.qwen=e.target.value.trim();st.set("vlmodel:qwen",vlModels.qwen)};
 $("#storetok").onchange=e=>{storeToken=e.target.value.trim();st.set("storeToken",storeToken);};
+$("#storetokClear")&&($("#storetokClear").onclick=()=>{
+  storeToken=""; st.del("storeToken"); $("#storetok").value="";
+});
 
 function laneCfg(){ return LANES[lane]; }
 function textModel(){ return laneCfg().model; }
@@ -1071,12 +1141,13 @@ async function envelopeHash(curText){
   const texts=[...hist,String(curText||"")].slice(-8);
   return sha3_256_hex(texts.join("\n"));
 }
-function harnessBase(){ return "http://127.0.0.1:8630"; }
+function harnessBase(){
+  const o=location.origin;
+  if(o&&o!=="null"&&!o.startsWith("file:")) return o+"/grid";
+  return "";
+}
 function harnessHdrs(){
-  const h={};
-  const tok=st.get("h8630")||"";
-  if(tok) h.Authorization="Bearer "+tok;
-  return h;
+  return storeHdrs();
 }
 function lastLineOf(s){
   const lines=String(s||"").split(/\n/).map(x=>x.trim()).filter(Boolean);
@@ -1099,7 +1170,7 @@ function elJobCard(rec){
 async function pullReceipt(eventId){
   if(!eventId) return;
   try{
-    const r=await fetch(harnessBase()+"/api/receipts/"+encodeURIComponent(eventId),{headers:harnessHdrs()});
+    const r=await fetch(harnessBase()+"/api/receipts/"+encodeURIComponent(eventId),{credentials:"include",headers:harnessHdrs()});
     if(!r.ok) return;
     const j=await r.json();
     elJobCard(j);
@@ -1159,7 +1230,8 @@ async function send(){
   const text=t||"";
   elUser(text, img?img.thumb:null);
   h.push({role:"user",content:text,img:img?img.thumb:undefined});
-  if(cur==="grid"){
+  const willCcDirect=cur==="grid"&&gridCompileMode&&pendingBackendId==="cc_cli"&&isCompileTask(task);
+  if(cur==="grid" && !willCcDirect && !text.startsWith("ONESHOT_MARKER")){
     if(img) pushStoreMsgs(task,[{role:"system",content:`[文件] ${img.name||"image"}`}]);
     pushStoreMsgs(task,[{role:"user",content:cleanText(text)||" "}]);
   }
@@ -1177,6 +1249,12 @@ async function send(){
   const doStream=!useNonStream();
   const maxTok=isCompileTask(task)?4096:8192;
   const backendId=cur==="grid"?consumeBackendId(task):undefined;
+  if(willCcDirect){
+    $("#s").disabled=false;
+    state.mode="idle";
+    showCcCandidatePanel(out,{reason:"compile_cc_direct"},text,h,task);
+    return;
+  }
   if(location.hostname.endsWith(".ts.net")){
     gw=defaultGw(); st.set("gw",gw); $("#gw").value=gw;
   }
@@ -1258,8 +1336,8 @@ async function send(){
     }
     const rawAcc=acc;
     acc=cleanText(acc);
-    if(finish==="cc_candidate"||(finishMeta&&finishMeta.route_outcome==="cc_candidate")){
-      showCcCandidatePanel(out,finishMeta,text,h,task);
+    if(finish==="cc_candidate"||(finishMeta&&finishMeta.route_outcome==="cc_candidate")||(cur==="grid"&&isCompileTask(task)&&acc.trim())){
+      showCcCandidatePanel(out,finishMeta||{reason:"compile_draft"},acc||text,h,task);
       tension=tensionTrack[cur].finish(tin,t||"[图]",{failed:false,blocked:false,finish});
       clearTimeout(timer); clearInterval(tick);
       state.mode="idle"; state.rate=0;

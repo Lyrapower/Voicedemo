@@ -367,7 +367,8 @@ STUDIO EXPANDED-GLM / EXPANDED-Kimi 与本舱独立(记忆 workbench-b11)。</di
     const chat=$("#chat");
     if(!chat) return;
     try{
-      const r=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(STORE_NODE)}`);
+      await fetch(`${storeBase()}/store/local_pair`,{credentials:"include",cache:"no-store"});
+      const r=await fetch(`${storeBase()}/store/conversations/${encodeURIComponent(STORE_NODE)}`,{credentials:"include",cache:"no-store"});
       if(!r.ok) throw new Error("HTTP "+r.status);
       const all=await r.json();
       const active=Array.isArray(all)?all.slice(-20):[];
