@@ -1,5 +1,5 @@
 from __future__ import annotations
-import asyncio, json, time
+import asyncio, json, os, time
 from pathlib import Path
 from typing import Any
 from .envutil import ensure_demo_on_path
@@ -38,6 +38,12 @@ class Supervisor:
         self.context=ContextAssembler(cfg,store,self.memories)
         self._stop=asyncio.Event()
         self._tasks:dict[str,asyncio.Task]={}
+        self._isolated=os.getenv("GRID_SCHED_ISOLATED","").strip().lower() in {"1","true","yes"}
+        if self._isolated:
+            db=Path(self.cfg.core.db_path).resolve()
+            prod=(Path(__file__).resolve().parents[1]/"state"/"harness.db").resolve()
+            if db==prod:
+                raise RuntimeError("GRID_SCHED_ISOLATED refuses production harness.db")
         self._assert_no_aster()
 
     def _assert_no_aster(self):
@@ -77,9 +83,22 @@ class Supervisor:
                     if sess:
                         self.store.update_session(sess["session_id"],last_heartbeat=time.time())
 
+            try:
+                from .task_schedule import enqueue_due
+                def _sched_create(**kw):
+                    keys=("channel","goal","worker","allowed_tools","allowed_paths",
+                          "cloud_allowed","approval_mode","read_only","kind","origin","context_hash")
+                    return self.store.create_job(**{k:kw[k] for k in keys if k in kw})
+                enqueue_due(
+                    create_job=_sched_create,
+                    origin="isolated_sched" if self._isolated else "",
+                )
+            except Exception:
+                pass
+
             # fill concurrency slots with atomically claimed jobs
             while len(self._tasks) < self.cfg.core.max_concurrency:
-                job=self.store.claim_next_queued()
+                job=self.store.claim_next_queued(isolated=self._isolated)
                 if not job: break
                 task=asyncio.create_task(self._run_job(job),name=f"job:{job['job_id']}")
                 self._tasks[job["job_id"]]=task
@@ -94,6 +113,20 @@ class Supervisor:
             await asyncio.gather(*self._tasks.values(),return_exceptions=True)
         await self.gateway.close()
         await self.memories.close()
+
+    async def cancel_job(self,job_id:str):
+        t=self._tasks.get(job_id)
+        if t:
+            t.cancel()
+        try:
+            self.store.update_job(job_id,status="interrupted",last_step="cancelled")
+        except KeyError:
+            pass
+        try:
+            names=self.cc._names(job_id)
+            self.cc._cleanup_job(names, remove_volumes=False)
+        except Exception:
+            pass
 
     async def pause_session(self,session_id:str):
         s=self.store.get_session(session_id)
@@ -235,6 +268,13 @@ class Supervisor:
                 )
                 self._emit_context_receipt(sess,job,context_pack)
                 result=await self.cc.run(job,context_pack=context_pack)
+                try:
+                    curst=self.store.get_job(jid).get("status")
+                except KeyError:
+                    curst=""
+                if curst in {"interrupted","cancelled"}:
+                    self.store.append_event(jid,"job_cancelled_runtime",{"after_cc":True,"ok":result.get("ok")})
+                    return
                 if result.get("blocked")=="sandbox_missing" or str(result.get("error") or "")=="BLOCKED_SANDBOX_MISSING":
                     self.store.update_job(jid,status="blocked",last_step="BLOCKED_SANDBOX_MISSING")
                     self.store.append_event(jid,"job_blocked",result)
@@ -318,8 +358,26 @@ class Supervisor:
                                                    kind="escalated",payload=esc)
                 result=await self._model_job(job,route,sess)
 
+            if self._research_needs_web(job):
+                sr=getattr(self,"_last_search",None) or {}
+                if not sr:
+                    self.store.update_job(jid,status="blocked",last_step="BLOCKED_NO_TOOL_EVIDENCE")
+                    self.store.append_event(jid,"job_blocked",{"reason":"research requires web.search"})
+                    return
+                if sr.get("discovery_class")=="catalog_or_listing":
+                    pass
+                elif sr.get("discovery_class")=="INSUFFICIENT_DISCOVERY":
+                    self.store.update_job(jid,status="blocked",last_step="INSUFFICIENT_DISCOVERY")
+                    self.store.append_event(jid,"job_blocked",{"reason":"encyclopedia_or_instant_only","search":{
+                        "status":sr.get("status"),"n":len(sr.get("results") or []),
+                        "catalog_fetches":sr.get("catalog_fetches") or []}})
+                    return
+                elif not sr.get("ok") and sr.get("status") in {"SEARCH_CHALLENGE","DENIED","SEARCH_ERROR"}:
+                    self.store.update_job(jid,status="blocked",last_step="BLOCKED_SEARCH")
+                    self.store.append_event(jid,"job_blocked",{"reason":sr.get("status"),"attempts":sr.get("queries")})
+                    return
             self.store.update_job(jid,status="done",last_step="completed")
-            self.store.append_event(jid,"job_result",{"text":result,"route":route})
+            self.store.append_event(jid,"job_result",{"text":result,"route":route,"search":getattr(self,"_last_search",None)})
             self._record_job_receipt(job,status="EXECUTED",executed=True,metadata={
                 "route_id":route,
                 "route_class":"local" if "/" in str(route) else "cloud",
@@ -383,7 +441,10 @@ class Supervisor:
         )
         self._emit_context_receipt(sess,job,pack)
         messages=pack.to_messages(SYSTEM)
+        messages=self._merge_telegram_store(job,messages)
+
         text=await self._chat_collect(job,route,sess,messages)
+        text=await self._web_research_loop(job,route,worker,sess,messages,text)
         text=await self._web_fetch_loop(job,route,worker,sess,messages,text)
         return text
 
@@ -414,6 +475,105 @@ class Supervisor:
         resp=await self.gateway.chat(route,messages)
         self._last_model_resolved=resp.get("model") or route
         return self.gateway.extract_text(resp)
+
+    def _research_needs_web(self,job)->bool:
+        if job.get("worker")!="research":
+            return False
+        g=str(job.get("goal") or "").lower()
+        return any(k in g for k in ("search","grant","rfp","scout","opportunit","dossier","rwa","knowledge","gardener","prototype"))
+
+    async def _web_research_loop(self,job,route,worker,sess,messages,text):
+        if worker!="research":
+            return text
+        os.environ.setdefault("WEB_FETCH_SEARCH_PROVIDERS","github,ddg_api,wikipedia,ddg_html,ddg_lite")
+        from .tool_loop import (
+            classify_discovery, collect_search_queries, format_search_result,
+            format_tool_result, qualify_fetch, run_fetches, run_search, PROVIDER_KIND,
+            SCOUT_CATALOG_URLS, catalog_hits_from_fetch, catalog_follow_urls,
+            run_grants_catalog,
+        )
+        db_path=str(self.cfg.core.db_path)
+        if not Path(db_path).is_absolute():
+            db_path=str((Path(__file__).resolve().parents[1]/db_path).resolve())
+        packed=collect_search_queries(str(job.get("goal") or ""), text)
+        queries=packed.get("queries") or []
+        g=str(job.get("goal") or "").lower()
+        lane="scout" if any(k in g for k in ("grant","rfp","scout","opportunit","procurement")) else worker
+        sr=run_search(queries,lane=lane,db_path=db_path,route_id=str(route),
+                      mission_id=str(job.get("job_id") or ""))
+        for r in sr.get("results") or []:
+            r.setdefault("provider_kind", PROVIDER_KIND.get(str(r.get("provider") or ""), "unknown"))
+        if lane=="scout":
+            cat_api=run_grants_catalog(
+                str(job.get("goal") or ""), lane=lane, db_path=db_path,
+                route_id=str(route), mission_id=str(job.get("job_id") or ""))
+            sr["catalog"]=cat_api
+            for row in cat_api.get("rows") or []:
+                sr.setdefault("results", []).append({
+                    "provider": "grants_gov_api",
+                    "provider_kind": "catalog_discovery",
+                    "title": row.get("title"),
+                    "url": row.get("human_url") or row.get("detail_locator"),
+                    "snippet": (
+                        f"opportunity number {row.get('opportunity_number')} "
+                        f"id {row.get('opportunity_id')} closing {row.get('deadline')} "
+                        f"eligibility: {row.get('eligibility')} status {row.get('status')} "
+                        f"qualification {row.get('qualification')}"
+                    ),
+                    "opportunity_number": row.get("opportunity_number"),
+                    "deadline": row.get("deadline"),
+                })
+            cat=[qualify_fetch(x) for x in run_fetches(
+                list(SCOUT_CATALOG_URLS),lane=lane,db_path=db_path,
+                route_id=str(route),mission_id=str(job.get("job_id") or ""))]
+            extra=[]
+            follow=[]
+            for fr in cat:
+                extra.extend(catalog_hits_from_fetch(fr))
+                follow.extend(catalog_follow_urls(str(fr.get("text") or "")))
+            more_urls=[u for u in follow if u not in SCOUT_CATALOG_URLS][:3]
+            if more_urls:
+                more=[qualify_fetch(x) for x in run_fetches(
+                    more_urls,lane=lane,db_path=db_path,
+                    route_id=str(route),mission_id=str(job.get("job_id") or ""))]
+                cat.extend(more)
+                for fr in more:
+                    extra.extend(catalog_hits_from_fetch(fr))
+            if extra:
+                sr.setdefault("results", []).extend(extra)
+                sr["catalog_fetches"]=[{"url":x.get("source_url"),"status":x.get("status"),
+                                       "ok":x.get("ok"),"chars":x.get("chars")} for x in cat]
+        sr["discovery_class"]=classify_discovery(sr.get("results") or [], lane=lane)
+        sr["rewrites"]=packed.get("rewrites") or []
+        self._last_search=sr
+        self.store.append_event(job["job_id"],"tool_search",{
+            "queries":queries,"rewrites":sr["rewrites"],"status":sr.get("status"),
+            "ok":sr.get("ok"),"retryable":sr.get("retryable"),
+            "n":len(sr.get("results") or []),"discovery_class":sr["discovery_class"],
+            "lane":lane,"attempts":sr.get("queries"),
+            "catalog_fetches":sr.get("catalog_fetches") or [],
+        })
+        blob=format_search_result(sr)
+        budget=int(job.get("fetch_budget") or 4)
+        urls=[r.get("url") for r in (sr.get("results") or []) if str(r.get("url") or "").startswith("https://")]
+        fetched=[]
+        if urls:
+            fetched=[qualify_fetch(x) for x in run_fetches(
+                urls[:budget],lane=lane,db_path=db_path,route_id=str(route),
+                mission_id=str(job.get("job_id") or ""))]
+            self.store.append_event(job["job_id"],"tool_fetch",{
+                "urls":urls[:budget],"n":len(fetched),
+                "statuses":[x.get("status") for x in fetched],
+            })
+            blob+="\n"+ "\n".join(format_tool_result(r) for r in fetched)
+        if sr.get("discovery_class")=="INSUFFICIENT_DISCOVERY":
+            blob+="\nDISCOVERY=INSUFFICIENT_DISCOVERY. Do not write no qualifying opportunities. Report insufficient discovery and unknown eligibility fields."
+        messages=list(messages)+[
+            {"role":"assistant","content":text},
+            {"role":"user","content":"工具回注(web.search/web.fetch):\n"+blob+
+             "\n用以上结果作答。具体条目才能 qualified/rejected/needs_verification。百科/即时答案不够。不要只说先搜 store。"},
+        ]
+        return await self._chat_collect(job,route,sess,messages)
 
     async def _web_fetch_loop(self,job,route,worker,sess,messages,text):
         from .tool_loop import MAX_FETCH_ROUNDS, collect_fetch_urls, format_tool_result, run_fetches
@@ -496,6 +656,28 @@ class Supervisor:
             current_turn=query,
             job=None,
         )
+
+    def _merge_telegram_store(self,job,messages):
+        """Telegram jobs: prepend 8501 store turns so lane memory is the source of truth."""
+        ch=str(job.get("channel") or "")
+        if not ch.startswith("telegram-"):
+            return messages
+        lane=ch.removeprefix("telegram-")
+        from .telegram_channels import LANES
+        spec=LANES.get(lane)
+        if not spec:
+            return messages
+        try:
+            from . import store_memory
+            rows=store_memory.get_messages(spec["store"], limit=40)
+            hist=store_memory.as_chat_messages(rows, drop_trailing_user=job.get("goal"))
+        except Exception:
+            return messages
+        if not hist:
+            return messages
+        sys0=[m for m in messages if m.get("role")=="system"][:1]
+        rest=[m for m in messages if m.get("role")!="system"]
+        return sys0+hist+rest
 
     def _worker_for_route(self,route):
         if route==self.cfg.models.local_route:

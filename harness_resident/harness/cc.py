@@ -1,5 +1,5 @@
 from __future__ import annotations
-import asyncio, json, os, sys, hashlib, shutil
+import asyncio, json, os, sys, hashlib, shutil, secrets
 from pathlib import Path
 from typing import Any
 from .config import Config
@@ -162,7 +162,7 @@ class CCExecutor:
         if not image:
             return "sandbox config incomplete"
         sd=self._sandbox_dir()
-        for rel in ("model_broker.py","model_relay.js","cc_boot.sh"):
+        for rel in ("model_broker.py","model_relay.js","cc_boot.sh","egress_broker.py","in_job_diag.py","broker_boot.sh","dev_broker.py"):
             if not (sd/rel).is_file():
                 return f"sandbox file missing:{rel}"
         docker=self._docker_bin()
@@ -223,10 +223,28 @@ class CCExecutor:
                  "-c","import os; os.chown('/bridge',1001,1001); os.chmod('/bridge',0o750)"],
                 timeout=30)
 
-    def _start_broker(self, names: dict[str,str], model: str) -> None:
+    def _start_broker(self, names: dict[str,str], model: str, job_id: str, *, dev: bool=False) -> str:
         sd=self._sandbox_dir()
         broker_image=str(getattr(self.cfg.cc,"broker_image","") or "python:3.13-slim")
         net=str(getattr(self.cfg.cc,"broker_net","") or "grid-cc-broker-net")
+        demo=Path(__file__).resolve().parents[2]
+        job_token=secrets.token_urlsafe(32)
+        ca=""
+        try:
+            import certifi
+            src=Path(certifi.where())
+            dst=sd/"grid-ca.pem"
+            if src.is_file():
+                tmp=dst.with_suffix(".pem.tmp")
+                shutil.copyfile(src, tmp)
+                tmp.replace(dst)
+                import ssl as _ssl
+                _ssl.create_default_context(cafile=str(dst))
+                ca=str(dst)
+        except Exception as e:
+            raise RuntimeError("BLOCKED_TRUST_STORE "+type(e).__name__) from e
+        if not ca:
+            raise RuntimeError("BLOCKED_TRUST_STORE empty")
         self._d(["rm","-f",names["broker"]], check=False)
         argv=["run","-d","--name",names["broker"],
               "--network",net,
@@ -234,24 +252,85 @@ class CCExecutor:
               "--user","1001:1001",
               "--read-only","--tmpfs","/tmp:rw,mode=1777",
               "--cap-drop","ALL","--security-opt","no-new-privileges",
-              "--pids-limit","64","--memory","256m","--cpus","0.5",
+              "--pids-limit","64","--memory","512m","--cpus","1",
               "-v",f"{names['bridge']}:/bridge",
               "-v",f"{sd/'model_broker.py'}:/opt/grid/model_broker.py:ro",
-              "--entrypoint","python3",
-              broker_image,
-              "/opt/grid/model_broker.py",
-              "--sock","/bridge/model.sock",
-              "--upstream","host.docker.internal:11434",
-              "--model",model or ""]
+              "-v",f"{sd/'egress_broker.py'}:/opt/grid/egress_broker.py:ro",
+              "-v",f"{sd/'broker_boot.sh'}:/opt/grid/broker_boot.sh:ro",
+              "-v",f"{sd.parent/'harness'/'web_fetch_v3.py'}:/opt/grid/web_fetch_v2.py:ro",
+              "-v",f"{demo/'EGRESS.md'}:/etc/egress/EGRESS.md:ro",
+              "-e",f"BOUND_MODEL={model or ''}",
+              "-e","BOUND_LANE=cc",
+              "-e",f"BOUND_JOB_ID={job_id}",
+              "-e",f"BROKER_JOB_TOKEN={job_token}",
+              "-e","EGRESS_PATH=/etc/egress/EGRESS.md",
+              "-e","EGRESS_SOCK=/bridge/egress.sock",
+              "-e","WEB_FETCH_SEARCH_PROVIDERS=ddg_api,wikipedia,ddg_html,ddg_lite"]
+        if dev:
+            argv+=["-v",f"{sd/'dev_broker.py'}:/opt/grid/dev_broker.py:ro",
+                   "-v",f"{demo/'DEV.md'}:/etc/egress/DEV.md:ro",
+                   "-e","DEV_ENABLED=1","-e","DEV_SOCK=/bridge/dev.sock",
+                   "-e","DEV_PATH=/etc/egress/DEV.md"]
+        if ca:
+            argv+=["-v",f"{ca}:/etc/ssl/grid-ca.pem:ro","-e","SSL_CERT_FILE=/etc/ssl/grid-ca.pem"]
+        argv+=["--entrypoint","/bin/sh",broker_image,"/opt/grid/broker_boot.sh"]
         self._d(argv, timeout=30)
-        for _ in range(40):
+        ready="os.path.exists('/bridge/ready') and os.path.exists('/bridge/egress.ready')"
+        if dev:
+            ready+=" and os.path.exists('/bridge/dev.ready')"
+        # image/volume first start can exceed 5s; isolated probe used 5s and still raced in supervisor.
+        for _ in range(80):
             r=self._d(["exec",names["broker"],"python3","-c",
-                       "import os,sys; sys.exit(0 if os.path.exists('/bridge/ready') else 1)"],
+                       f"import os,sys; sys.exit(0 if {ready} else 1)"],
                       check=False, timeout=8)
             if r.returncode==0:
-                return
-            import time as _t; _t.sleep(0.1)
-        raise RuntimeError("broker sock not ready")
+                return job_token
+            import time as _t; _t.sleep(0.25)
+        logs=self._d(["logs","--tail","40",names["broker"]], check=False, timeout=8)
+        tail=(logs.stderr or logs.stdout or "")[-400:]
+        raise RuntimeError("broker socks not ready "+tail.replace("\n"," / "))
+
+    def _listening_isolate_targets(self) -> list[str]:
+        """Only probe ports that are actually listening on the host."""
+        import socket
+        listen_ports=[]
+        for port in (8501, 8630, 11434):
+            ok=False
+            for host in ("127.0.0.1",):
+                try:
+                    s=socket.create_connection((host, port), 0.4)
+                    s.close()
+                    ok=True
+                    break
+                except Exception:
+                    pass
+            if ok:
+                listen_ports.append(port)
+        addrs=["127.0.0.1","::1"]
+        for extra in ("10.0.0.27","100.72.135.23","172.17.0.1","172.22.0.1","192.168.65.254"):
+            addrs.append(extra)
+        try:
+            import subprocess
+            r=subprocess.run(["ifconfig"], capture_output=True, text=True, timeout=3)
+            for line in (r.stdout or "").splitlines():
+                line=line.strip()
+                if line.startswith("inet ") and "127.0.0.1" not in line:
+                    ip=line.split()[1]
+                    if ip and ip not in addrs:
+                        addrs.append(ip)
+        except Exception:
+            pass
+        out=[]
+        for ip in addrs:
+            for port in listen_ports:
+                if port==11434 and ip in {"127.0.0.1","::1"}:
+                    continue
+                if ":" in ip and not ip.startswith("["):
+                    out.append(f"[{ip}]:{port}")
+                else:
+                    out.append(f"{ip}:{port}")
+        out.append("host.docker.internal:11434")
+        return out
 
     def _cleanup_job(self, names: dict[str,str], *, remove_volumes: bool) -> None:
         self._d(["rm","-f",names["cc"],names["broker"]], check=False)
@@ -274,8 +353,14 @@ class CCExecutor:
             self._d(["volume","create",names["bridge"]], check=False)
             self._chown_vol(names["work"])
             self._chown_vol(names["bridge"])
-            self._start_broker(names, cc_model)
+            wf=sd.parent/"harness"/"web_fetch_v2.py"
+            (jd/"WEB_FETCH_SHA256.txt").write_text(
+                hashlib.sha256(wf.read_bytes()).hexdigest()+"  web_fetch_v2.py\n",
+                encoding="utf-8")
+            shutil.copy(sd/"verify_report.py", jd/"verify_report.py")
+            job_token=self._start_broker(names, cc_model, job["job_id"], dev=str(job.get("kind") or "")=="dev")
             self._d(["rm","-f",names["cc"]], check=False)
+            iso_targets=self._listening_isolate_targets()
             argv=["create","--name",names["cc"],
                   "--network","none",
                   "--user","1001:1001",
@@ -288,12 +373,16 @@ class CCExecutor:
                   "-v",f"{jd}:/ws/job:ro",
                   "-v",f"{sd/'cc_boot.sh'}:/opt/grid/cc_boot.sh:ro",
                   "-v",f"{sd/'model_relay.js'}:/opt/grid/model_relay.js:ro",
-                  "-e","ANTHROPIC_AUTH_TOKEN=ollama",
-                  "-e","ANTHROPIC_API_KEY=ollama",
+                  "-v",f"{sd/'in_job_diag.py'}:/opt/grid/in_job_diag.py:ro",
+                  "-e",f"ANTHROPIC_AUTH_TOKEN={job_token}",
+                  "-e",f"ANTHROPIC_API_KEY={job_token}",
                   "-e","ANTHROPIC_BASE_URL=http://127.0.0.1:11434",
                   "-e","HOME=/work",
                   "-e","PATH=/usr/local/bin:/usr/bin:/bin",
-                  "-e","MODEL_SOCK=/bridge/model.sock"]
+                  "-e","MODEL_SOCK=/bridge/model.sock",
+                  "-e","HTTP_PROXY=","-e","HTTPS_PROXY=","-e","ALL_PROXY=",
+                  "-e","NO_PROXY=*",
+                  "-e",f"ISOLATE_TARGETS={','.join(iso_targets)}"]
             add_flags=list(flags)
             for i, rp in enumerate(host_add_dirs):
                 argv+=["-v",f"{rp}:/ws/p{i}:ro"]
@@ -304,6 +393,16 @@ class CCExecutor:
             if info["network"]!="none" or info["privileged"].lower()=="true" or info["ports"] not in {"map[]","{}"}:
                 raise RuntimeError(f"cc inspect rejected {info}")
             self._d(["start",names["cc"]], timeout=15)
+            def _mid_iso():
+                import time as _t
+                _t.sleep(2)
+                r=self._d(["exec",names["cc"],"python3","/opt/grid/in_job_diag.py"], check=False, timeout=20)
+                (jd/"supervisor_iso_invoke.json").write_text(
+                    json.dumps({"returncode":r.returncode,"stdout":(r.stdout or "")[:800],
+                                "stderr":(r.stderr or "")[:400]},ensure_ascii=False,indent=2),
+                    encoding="utf-8")
+            import threading
+            threading.Thread(target=_mid_iso, daemon=True).start()
             wait=await asyncio.to_thread(self._d, ["wait",names["cc"]], self.cfg.cc.timeout_seconds+5, False)
             raw_rc=(wait.stdout or "").strip()
             if wait.returncode!=0 or not raw_rc:
@@ -343,11 +442,32 @@ class CCExecutor:
             except Exception:
                 pass
 
+    def _writers_stopped(self, names: dict[str,str]) -> bool:
+        for key in ("cc", "broker"):
+            r=self._d(["inspect","-f","{{.State.Running}}",names[key]], check=False, timeout=8)
+            running=(r.stdout or "").strip().lower()
+            if r.returncode==0 and running=="true":
+                return False
+        return True
+
+    def _freeze_export(self, names: dict[str,str]) -> bool:
+        self._d(["stop","-t","5",names["cc"]], check=False, timeout=20)
+        self._d(["stop","-t","5",names["broker"]], check=False, timeout=20)
+        return self._writers_stopped(names)
+
     def _export_work(self, names: dict[str,str], dest: Path) -> dict:
         dest=Path(dest)
         if dest.exists() and dest.is_symlink():
             return {"ok":False,"error":"dest symlink"}
+        if not self._freeze_export(names):
+            return {"ok":False,"error":"freeze_failed","frozen":False}
         dest.mkdir(parents=True, exist_ok=True)
+        staging=dest.parent/"export.staging"
+        if staging.exists() and staging.is_symlink():
+            return {"ok":False,"error":"staging symlink"}
+        if staging.exists():
+            shutil.rmtree(staging)
+        staging.mkdir(parents=True, exist_ok=True)
         broker_image=str(getattr(self.cfg.cc,"broker_image","") or "python:3.13-slim")
         sd=self._sandbox_dir()
         r=self._d(["run","--rm","--user","0",
@@ -355,14 +475,26 @@ class CCExecutor:
                    "--read-only","--tmpfs","/tmp:rw,mode=1777",
                    "--cap-drop","ALL","--security-opt","no-new-privileges",
                    "-v",f"{names['work']}:/src:ro",
-                   "-v",f"{str(dest.resolve())}:/dst",
+                   "-v",f"{str(staging.resolve())}:/dst",
                    "-v",f"{sd/'safe_export.py'}:/opt/grid/safe_export.py:ro",
                    "--entrypoint","python3",broker_image,
                    "/opt/grid/safe_export.py","/src","/dst"],
                   timeout=60, check=False)
         ok=r.returncode==0
-        return {"ok":ok,"returncode":r.returncode,
-                "stdout":(r.stdout or "")[:400],"stderr":(r.stderr or "")[:400]}
+        host_receipt={
+            "ok":ok,"returncode":r.returncode,"frozen":True,
+            "exporter_image":broker_image,
+            "stdout":(r.stdout or "")[:400],"stderr":(r.stderr or "")[:400],
+        }
+        (dest.parent/"HOST_EXPORT.json").write_text(
+            json.dumps(host_receipt, ensure_ascii=False, indent=2), encoding="utf-8")
+        if ok:
+            if dest.exists():
+                shutil.rmtree(dest)
+            staging.replace(dest)
+        else:
+            shutil.rmtree(staging, ignore_errors=True)
+        return host_receipt
 
     def run_isolation_diag(self, targets: list[str], tag: str = "iso") -> dict:
         """Supervisor-owned probe: --network none, no cc tools, no Write/Edit."""

@@ -162,16 +162,11 @@ def handle(parsed: dict, seen: set[str]) -> str:
         seen.add(key)
         save_seen(seen)
         return "NO_CTX"
-    ok, detail = post_job(parsed)
-    if ok:
-        seen.add(key)
-        save_seen(seen)
-        return "posted"
-    if detail == "unreachable":
-        append_jsonl(PENDING, {**row, "kind": "unreachable", "raw": parsed["raw"]})
-        return "pending"
-    append_jsonl(PENDING, {**row, "kind": detail, "raw": parsed["raw"]})
-    return detail
+    # Generated fenced job text alone must not submit. Confirm path is 8630 /compile/confirm.
+    append_jsonl(OUTBOX, {**row, "kind": "ignored_fence"})
+    seen.add(key)
+    save_seen(seen)
+    return "ignored_fence"
 
 
 def scan_once() -> list[str]:

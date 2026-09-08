@@ -86,12 +86,12 @@ def main() -> int:
     host_fb = ("cfg.cc.binary" in src and "_run_docker" in src
                and "sandbox_required" in src
                and "BLOCKED_SANDBOX_MISSING" in src)
-    uses_proxy = "HTTP_PROXY" in src or "HTTPS_PROXY" in src
+    uses_proxy_url = bool(re.search(r"HTTPS_PROXY=https?://", src))
     uses_fwd_url = "grid-cc-fwd:11434" in src
-    ok = host_fb and not uses_proxy and not uses_fwd_url
+    ok = host_fb and not uses_proxy_url and not uses_fwd_url
     row("P1-C5", "grep cc.py fallback/proxy/fwd",
-        "sandbox_required 仍 BLOCKED；无 HTTP_PROXY；无 fwd URL",
-        0, f"proxy={uses_proxy} fwd_url={uses_fwd_url}", "PASS" if ok else "FAIL")
+        "sandbox_required 仍 BLOCKED；HTTPS_PROXY 不指向代理 URL；无 fwd URL",
+        0, f"proxy_url={uses_proxy_url} fwd_url={uses_fwd_url}", "PASS" if ok else "FAIL")
     fail += not ok
 
     job = {

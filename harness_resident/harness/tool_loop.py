@@ -8,8 +8,20 @@ from . import web_fetch_v1 as WF
 
 TOOL_FENCE = re.compile(r"```tool\s*\n(.*?)```", re.S | re.I)
 URL_RE = re.compile(r"https://[^\s)>\]]+")
-MAX_FETCH_ROUNDS = 2
-MAX_URLS = 4
+MAX_FETCH_ROUNDS = int(__import__("os").environ.get("WEB_FETCH_MAX_ROUNDS", "4"))
+MAX_SEARCH_ROUNDS = 1
+MAX_URLS = int(__import__("os").environ.get("WEB_FETCH_MAX_URLS", "6"))
+MAX_QUERIES = 3
+MIN_CONTENT_CHARS = 200
+
+PROVIDER_KIND = {
+    "wikipedia": "topic_lookup",
+    "ddg_api": "instant_answer",
+    "ddg_html": "web_search",
+    "ddg_lite": "web_search",
+    "github": "repo_search",
+    "searxng": "web_search",
+}
 
 EGRESS_PATH = str(Path(__file__).resolve().parents[2] / "EGRESS.md")
 
@@ -39,6 +51,73 @@ def urls_from_goal(goal: str) -> list[str]:
     return seen
 
 
+def collect_search_queries(goal: str, worker_text: str) -> dict:
+    qs: list[str] = []
+    rewrites: list[dict] = []
+    for block in parse_tool_blocks(worker_text):
+        name = (block.get("name") or block.get("tool") or "").lower()
+        if "search" in name:
+            q = block.get("query") or block.get("q") or ""
+            if q and q not in qs:
+                qs.append(q)
+                rewrites.append({"from": q, "to": q, "reason": "tool_block"})
+    orig = (goal or "").strip()
+    if orig:
+        kept = orig[:300]
+        if kept not in qs:
+            qs.append(kept)
+            rewrites.append({"from": orig[:80], "to": kept, "reason": "preserve_original"})
+        keys = re.findall(
+            r"grant[s]?|rfp|procurement|eligib\w*|open-?source|data-?value|legal|region|deadline|fy\s*\d{2}|opportunity",
+            orig, re.I,
+        )
+        if keys:
+            compact = " ".join(dict.fromkeys(k.lower() for k in keys)) + " listing source eligibility"
+            if compact not in qs:
+                qs.append(compact[:160])
+                rewrites.append({"from": orig[:80], "to": compact[:160], "reason": "keep_eligibility_domain"})
+    return {"queries": qs[:MAX_QUERIES], "rewrites": rewrites[:MAX_QUERIES]}
+
+
+def run_search(
+    queries: list[str],
+    *,
+    lane: str,
+    db_path: str,
+    route_id: str,
+    mission_id: str,
+    egress_path: str = EGRESS_PATH,
+) -> dict:
+    return WF.search_many(
+        queries,
+        lane,
+        n=8,
+        max_pages=2,
+        egress_path=egress_path,
+        db_path=db_path,
+        route_id=route_id,
+        mission_id=mission_id,
+        substrate=lane,
+    )
+
+
+def format_search_result(sr: dict) -> str:
+    lines = [
+        f"[web.search status={sr.get('status')} ok={sr.get('ok')} "
+        f"retryable={sr.get('retryable')} n={len(sr.get('results') or [])} "
+        f"discovery={sr.get('discovery_class','')}]"
+    ]
+    for r in (sr.get("results") or [])[:8]:
+        kind = r.get("provider_kind") or PROVIDER_KIND.get(str(r.get("provider") or ""), "unknown")
+        lines.append(
+            f"- [{kind}/{r.get('provider','')}] {r.get('title','')} | {r.get('url','')} | "
+            f"{r.get('snippet','')[:160]}"
+        )
+    for q in sr.get("queries") or []:
+        lines.append(f"query {q.get('query')} status={q.get('status')} attempts={q.get('attempts')}")
+    return "\n".join(lines)
+
+
 def collect_fetch_urls(goal: str, worker_text: str) -> list[str]:
     urls: list[str] = []
     for block in parse_tool_blocks(worker_text):
@@ -54,16 +133,151 @@ def collect_fetch_urls(goal: str, worker_text: str) -> list[str]:
 
 
 def format_tool_result(fr: dict[str, Any]) -> str:
-    if fr.get("ok"):
+    if fr.get("ok") and fr.get("status") != "INSUFFICIENT_CONTENT":
         body = str(fr.get("text") or "")[:4000]
         return (
             f"[web.fetch ok grade={fr.get('grade')} chars={fr.get('chars')} "
             f"url={fr.get('source_url')}]\n{body}"
         )
+    if fr.get("status") == "INSUFFICIENT_CONTENT":
+        return (
+            f"[web.fetch INSUFFICIENT_CONTENT chars={fr.get('chars')} "
+            f"http={fr.get('http_status')} url={fr.get('source_url')}]"
+        )
     return (
         f"[web.fetch {fr.get('status') or 'DENIED'} "
         f"reason={fr.get('reason') or ''} url={fr.get('source_url')}]"
     )
+
+
+def qualify_fetch(fr: dict[str, Any]) -> dict[str, Any]:
+    out = dict(fr)
+    chars = int(out.get("chars") or len(str(out.get("text") or "")))
+    status = str(out.get("status") or "")
+    http = out.get("http_status")
+    text = str(out.get("text") or "")
+    if out.get("ok") and (chars < MIN_CONTENT_CHARS or (http and int(http) == 202 and chars < MIN_CONTENT_CHARS)):
+        out["ok"] = False
+        out["status"] = "INSUFFICIENT_CONTENT"
+        out["chars"] = chars
+    if re.search(r"anomaly-modal|challenge-form|bots use DuckDuckGo|captcha", text, re.I):
+        out["ok"] = False
+        out["status"] = "SEARCH_CHALLENGE"
+    out.setdefault("http_status", http)
+    return out
+
+
+def classify_discovery(results: list[dict], *, lane: str) -> str:
+    concrete = []
+    for r in results or []:
+        kind = r.get("provider_kind") or PROVIDER_KIND.get(str(r.get("provider") or ""), "")
+        title = str(r.get("title") or "")
+        url = str(r.get("url") or "")
+        snip = str(r.get("snippet") or "")
+        blob = f"{title} {snip}"
+        has_date = bool(re.search(r"20\d{2}|deadline|due|posted|closing", blob, re.I))
+        has_opp = bool(re.search(r"grant|rfp|solicitation|opportunity|award|nofo", blob, re.I))
+        listing = bool(re.search(
+            r"opportunity number|nofo|foa-|solicitation no|closing date|posted date|eligibility:",
+            blob, re.I,
+        ))
+        if kind == "catalog_discovery" and listing and url.startswith("https://"):
+            concrete.append(r)
+        elif kind == "web_search" and url.startswith("https://") and has_opp and (has_date or listing):
+            concrete.append(r)
+        elif has_date and has_opp and listing and url.startswith("https://"):
+            concrete.append(r)
+    if concrete:
+        return "catalog_or_listing"
+    kinds = set()
+    for r in (results or []):
+        kinds.add(r.get("provider_kind") or PROVIDER_KIND.get(str(r.get("provider") or ""), ""))
+    if not results:
+        return "INSUFFICIENT_DISCOVERY"
+    if kinds <= {"topic_lookup", "instant_answer", "catalog_discovery", ""}:
+        return "INSUFFICIENT_DISCOVERY"
+    return "unverified_hits"
+
+
+# Official catalog pages, verified live against EGRESS exact rows. Do not invent APIs.
+SCOUT_CATALOG_URLS = [
+    "https://www.grants.gov/",
+]
+
+
+def catalog_follow_urls(text: str, *, base: str = "https://www.grants.gov") -> list[str]:
+    """Same-host listing/extract links discovered in an already-fetched official page."""
+    out: list[str] = []
+    for href in re.findall(r"""href=["']([^"']+)["']""", text or "", re.I):
+        href = html_unescape(href).split("#")[0].strip()
+        if not href or href.startswith("javascript:"):
+            continue
+        if href.startswith("/"):
+            href = base.rstrip("/") + href
+        if not href.startswith("https://www.grants.gov/"):
+            continue
+        if re.search(r"extract|\.xml|download|search-grants|opp", href, re.I):
+            if href not in out and href.rstrip("/") != base.rstrip("/"):
+                out.append(href)
+    return out[:4]
+
+
+def html_unescape(s: str) -> str:
+    return s.replace("&amp;", "&")
+
+
+def parse_catalog_rows(text: str, *, source_url: str) -> list[dict]:
+    rows = []
+    xml_titles = re.findall(
+        r"<OpportunityTitle>([^<]{8,200})</OpportunityTitle>", text or "", re.I)
+    xml_nums = re.findall(
+        r"<OpportunityNumber>([^<]{3,80})</OpportunityNumber>", text or "", re.I)
+    xml_dead = re.findall(
+        r"<CloseDate>([^<]{4,40})</CloseDate>|<CurrentClosingDate>([^<]{4,40})</CurrentClosingDate>",
+        text or "", re.I)
+    for i, title in enumerate(xml_titles[:8]):
+        num = xml_nums[i] if i < len(xml_nums) else ""
+        dead = ""
+        if i < len(xml_dead):
+            dead = xml_dead[i][0] or xml_dead[i][1]
+        rows.append({
+            "provider": "grants_gov",
+            "provider_kind": "catalog_discovery",
+            "title": re.sub(r"\s+", " ", title).strip(),
+            "url": source_url,
+            "snippet": f"opportunity number {num or 'unknown'} closing {dead or 'unknown'} eligibility: unknown",
+            "opportunity_number": num or "",
+            "deadline": dead or "",
+        })
+    return rows
+
+
+def catalog_hits_from_fetch(fr: dict[str, Any]) -> list[dict]:
+    """Turn a qualified catalog page into discovery rows. Not a search provider."""
+    if not fr.get("ok"):
+        return []
+    text = str(fr.get("text") or "")
+    url = str(fr.get("source_url") or "")
+    if not url.startswith("https://") :
+        return []
+    parsed = parse_catalog_rows(text, source_url=url)
+    if parsed:
+        return parsed
+    if len(text) < MIN_CONTENT_CHARS:
+        return []
+    title = "grants.gov catalog"
+    m = re.search(r"<title>([^<]{4,80})</title>", text, re.I)
+    if m:
+        title = re.sub(r"\s+", " ", m.group(1)).strip()
+    snippet = re.sub(r"<[^>]+>", " ", text)
+    snippet = re.sub(r"\s+", " ", snippet).strip()[:240]
+    return [{
+        "provider": "grants_gov",
+        "provider_kind": "catalog_discovery",
+        "title": title,
+        "url": url,
+        "snippet": snippet or "official grant catalog",
+    }]
 
 
 def run_fetches(
@@ -87,3 +301,122 @@ def run_fetches(
             substrate=lane,
         ))
     return results
+
+
+def catalog_keyword(goal: str) -> str:
+    g = (goal or "").strip()
+    if not g:
+        return "grant"
+    return g[:200]
+
+
+def derive_catalog_query(goal: str) -> dict:
+    original = (goal or "").strip()
+    derived = catalog_keyword(original)
+    return {
+        "original_query": original,
+        "derived_query": derived,
+        "derivation": "instance goal truncated to catalog API keyword max 200; not a template slice",
+    }
+
+
+def run_grants_catalog(
+    original_query: str,
+    *,
+    lane: str,
+    db_path: str,
+    route_id: str,
+    mission_id: str,
+    egress_path: str = EGRESS_PATH,
+    max_details: int = 5,
+) -> dict:
+    from . import web_fetch_v3 as W3
+    derived = derive_catalog_query(original_query)
+    kw = derived["derived_query"]
+    search = W3.catalog_json_post(
+        W3.CATALOG_SEARCH2,
+        {"rows": 10, "keyword": kw, "oppStatuses": "posted"},
+        lane,
+        egress_path=egress_path,
+        db_path=db_path,
+        route_id=route_id,
+        mission_id=mission_id,
+        substrate=lane,
+    )
+    out = {
+        "ok": bool(search.get("ok")),
+        "status": search.get("status"),
+        "reason": search.get("reason"),
+        "original_query": original_query,
+        "derived_query": kw,
+        "derivation": derived["derivation"],
+        "matched_rule": search.get("matched_rule"),
+        "match_kind": search.get("match_kind"),
+        "search": {"source_url": search.get("source_url"), "errorcode": search.get("errorcode"),
+                   "http": search.get("status")},
+        "rows": [],
+        "pagination_incomplete": True,
+    }
+    if not search.get("ok"):
+        return out
+    parsed = W3.normalize_opp_hits(
+        search.get("json") or {},
+        source_url=str(search.get("source_url") or W3.CATALOG_SEARCH2),
+        fetched_at=search.get("fetched_at") or 0,
+        original_query=original_query,
+        derived_query=kw,
+    )
+    out["pagination_incomplete"] = bool(parsed.get("pagination_incomplete"))
+    out["hit_count"] = parsed.get("hit_count")
+    rows = []
+    for row in (parsed.get("rows") or [])[:max_details]:
+        detail = W3.catalog_json_post(
+            W3.CATALOG_FETCH_OPP,
+            {"opportunityId": row["opportunity_id"]},
+            lane,
+            egress_path=egress_path,
+            db_path=db_path,
+            route_id=route_id,
+            mission_id=mission_id,
+            substrate=lane,
+        )
+        row = dict(row)
+        row["detail_ok"] = bool(detail.get("ok"))
+        row["detail_status"] = detail.get("status")
+        dj = detail.get("json") if isinstance(detail.get("json"), dict) else {}
+        data = dj.get("data") if isinstance(dj.get("data"), dict) else {}
+        if data:
+            row["title"] = str(data.get("opportunityTitle") or row.get("title") or "unknown")
+            row["publisher"] = str(data.get("owningAgencyName") or data.get("agencyName") or row.get("publisher") or "unknown")
+            row["published_at"] = str(data.get("postedDate") or row.get("published_at") or "unknown")
+            row["deadline"] = str(data.get("closeDate") or data.get("currentClosingDate") or row.get("deadline") or "unknown")
+            elig = data.get("eligibility") or data.get("eligibleApplicants") or row.get("eligibility") or "unknown"
+            if isinstance(elig, list):
+                elig = "; ".join(str(x) for x in elig[:8]) or "unknown"
+            row["eligibility"] = str(elig).strip() or "unknown"
+            st = str(data.get("opportunityStatus") or row.get("status") or "unknown")
+            row["status"] = st
+            if st.lower() in {"forecasted", "forecast"}:
+                row["qualification"] = "rejected"
+                row["qualification_reason"] = "forecasted is not an open application"
+            elif st.lower() not in {"posted", "posted - forecasted"}:
+                row["qualification"] = "needs_verification"
+                row["qualification_reason"] = f"status {st}; posted does not prove still accepting"
+            else:
+                row["qualification"] = "needs_verification"
+                row["qualification_reason"] = "posted list+detail; eligibility timezone unknown unless present"
+            syn = data.get("synopsis") or data.get("description") or ""
+            blob = str(syn)[:400]
+            row["summary"] = blob
+            row["evidence_hash"] = __import__("hashlib").sha256(blob.encode("utf-8", "replace")).hexdigest()[:16]
+        else:
+            row["qualification"] = "needs_verification"
+            row["qualification_reason"] = "detail missing or denied"
+        rows.append(row)
+    out["rows"] = rows
+    out["ok"] = bool(rows) or (parsed.get("hit_count") == 0)
+    if parsed.get("hit_count") == 0 and not rows:
+        out["status"] = "NO_MATCH"
+    elif rows:
+        out["status"] = "ok"
+    return out

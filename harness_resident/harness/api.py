@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from .ops import classify_steps, execute_steps, parse_action_plan, worker_output_json
 from .topology import (
     CORS_ORIGIN, clamp_latency_ms, duration_ms_for, last_nonempty_line,
@@ -117,6 +117,8 @@ def create_job_internal(body:JobCreate, *, scope:str="full"):
     ctx=(body.context_hash or "").strip()
     if origin=="grid_compiled" and not ctx:
         raise HTTPException(400,"grid_compiled requires context_hash")
+    if origin=="grid_c_confirm" and not ctx:
+        raise HTTPException(400,"grid_c_confirm requires context_hash")
     cap=_cc_timeout_ms()
     latency=clamp_latency_ms(body.latency_budget_ms,cap_ms=cap)
     classified=None
@@ -127,10 +129,12 @@ def create_job_internal(body:JobCreate, *, scope:str="full"):
     last_step=None
     tool_out=None
     steps=list(body.steps or [])
-    if not steps or not any(isinstance(s,dict) and s.get("target") for s in steps):
+    if origin!="grid_c_confirm" and (not steps or not any(isinstance(s,dict) and s.get("target") for s in steps)):
         parsed=parse_action_plan(body.goal)
         if parsed:
             steps=parsed
+    if origin=="grid_c_confirm":
+        steps=[]
     if origin=="grid_compiled" or steps:
         classified=classify_steps(steps)
         if classified["blocked"]:
@@ -345,8 +349,8 @@ if not _HARNESS_TOKEN and not _os.getenv("GRID_HARNESS_H1_TOKEN","").strip() and
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[CORS_ORIGIN],
-    allow_methods=["GET"],
+    allow_origins=[CORS_ORIGIN, "http://localhost:8501"],
+    allow_methods=["GET","POST","HEAD","OPTIONS"],
     allow_headers=["Authorization","Content-Type"],
 )
 
@@ -557,6 +561,63 @@ async def api_get_receipt(event_id:str):
         "worker_output":output,
         "last_line":last_nonempty_line(output),
     }
+
+class CompileRegister(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    goal:str=Field(min_length=1)
+    session_id:str="default"
+    owner:str=Field(min_length=4)
+
+class CompileConfirm(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    candidate_id:str=Field(min_length=4)
+    binding_hash:str=Field(min_length=8)
+    session_id:str="default"
+    owner:str=Field(min_length=4)
+
+@app.post("/compile/register")
+async def compile_register(body:CompileRegister, request:Request):
+    if getattr(request.state,"scope",None) not in {"full"}:
+        raise HTTPException(403,"compile adapter scope required")
+    from .compile_confirm import register
+    out=register(owner=body.owner, session_id=body.session_id, goal=body.goal)
+    if not out.get("ok"):
+        raise HTTPException(int(out.get("http") or 400), out.get("error") or "rejected")
+    return out
+
+@app.post("/compile/confirm")
+async def compile_confirm(body:CompileConfirm, request:Request):
+    if getattr(request.state,"scope",None) not in {"full"}:
+        raise HTTPException(403,"compile adapter scope required")
+    from .compile_confirm import submit
+    out=submit(body.model_dump(), create_job=lambda **kw: create_job_internal(JobCreate(**kw)), owner=body.owner)
+    if not out.get("ok"):
+        raise HTTPException(int(out.get("http") or 400), out.get("error") or "rejected")
+    return out
+
+@app.get("/compile/map/{candidate_id}")
+async def compile_map(candidate_id:str, request:Request, owner:str=""):
+    if getattr(request.state,"scope",None) not in {"full"}:
+        raise HTTPException(403,"compile adapter scope required")
+    from .compile_confirm import lookup
+    rec=lookup(candidate_id, owner=owner)
+    if not rec:
+        raise HTTPException(404,"not found")
+    jid=rec.get("job_id")
+    if jid:
+        try:
+            rec={**rec, **{k:store.get_job(jid).get(k) for k in ("status","last_step","last_artifact")}}
+        except KeyError:
+            pass
+    rec.pop("goal", None)
+    return rec
+
+@app.post("/jobs/{job_id}/cancel")
+async def cancel_job(job_id:str):
+    try: job=store.get_job(job_id)
+    except KeyError: raise HTTPException(404,"job not found")
+    await supervisor.cancel_job(job_id)
+    return store.get_job(job_id)
 
 @app.post("/jobs")
 async def create_job(body:JobCreate): return create_job_internal(body)

@@ -103,25 +103,50 @@ class Store:
             self._conn.execute("ALTER TABLE jobs ADD COLUMN steps TEXT NOT NULL DEFAULT '[]'")
         if "topology_ack" not in cols:
             self._conn.execute("ALTER TABLE jobs ADD COLUMN topology_ack INTEGER NOT NULL DEFAULT 0")
+        self._conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_confirm_hash "
+            "ON jobs(context_hash) WHERE origin='grid_c_confirm' AND IFNULL(context_hash,'')!=''"
+        )
         self._conn.commit()
 
     def create_job(self, *, channel, goal, worker, allowed_tools, allowed_paths, cloud_allowed, approval_mode,
                    read_only=True, kind="chat", status="queued", last_step=None,
                    origin="", context_hash="", latency_budget_ms=None, steps=None, topology_ack=False):
-        now=time.time(); job_id=f"J-{uuid.uuid4().hex[:12]}"
+        now=time.time()
+        origin=origin or ""
+        context_hash=context_hash or ""
         with self._lock:
-            self._conn.execute("""INSERT INTO jobs(
-              job_id,channel,goal,worker,allowed_tools,allowed_paths,cloud_allowed,
-              approval_mode,status,created_at,updated_at,read_only,kind,last_step,
-              origin,context_hash,latency_budget_ms,steps,topology_ack
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (job_id,channel,goal,worker,json.dumps(allowed_tools),json.dumps(allowed_paths),
-             int(cloud_allowed),approval_mode,status,now,now,int(bool(read_only)),kind,last_step,
-             origin or "",context_hash or "",latency_budget_ms,
-             json.dumps(steps or [],ensure_ascii=False),int(bool(topology_ack))))
-            self._conn.commit()
+            self._conn.execute("BEGIN IMMEDIATE")
+            if origin=="grid_c_confirm" and context_hash:
+                r=self._conn.execute(
+                    "SELECT job_id FROM jobs WHERE origin='grid_c_confirm' AND context_hash=?",
+                    (context_hash,)).fetchone()
+                if r:
+                    self._conn.commit()
+                    return self.get_job(r["job_id"])
+            job_id=f"J-{uuid.uuid4().hex[:12]}"
+            try:
+                self._conn.execute("""INSERT INTO jobs(
+                  job_id,channel,goal,worker,allowed_tools,allowed_paths,cloud_allowed,
+                  approval_mode,status,created_at,updated_at,read_only,kind,last_step,
+                  origin,context_hash,latency_budget_ms,steps,topology_ack
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (job_id,channel,goal,worker,json.dumps(allowed_tools),json.dumps(allowed_paths),
+                 int(cloud_allowed),approval_mode,status,now,now,int(bool(read_only)),kind,last_step,
+                 origin,context_hash,latency_budget_ms,
+                 json.dumps(steps or [],ensure_ascii=False),int(bool(topology_ack))))
+                self._conn.commit()
+            except sqlite3.IntegrityError:
+                self._conn.rollback()
+                if origin=="grid_c_confirm" and context_hash:
+                    r=self._conn.execute(
+                        "SELECT job_id FROM jobs WHERE origin='grid_c_confirm' AND context_hash=?",
+                        (context_hash,)).fetchone()
+                    if r:
+                        return self.get_job(r["job_id"])
+                raise
         self.append_event(job_id,"job_created",{"goal":goal,"worker":worker,"kind":kind,"read_only":bool(read_only),
-                                                "origin":origin or "","context_hash":context_hash or ""})
+                                                "origin":origin,"context_hash":context_hash})
         return self.get_job(job_id)
 
     def get_job(self, job_id):
@@ -135,10 +160,16 @@ class Store:
             rows=self._conn.execute("SELECT * FROM jobs ORDER BY updated_at DESC LIMIT ?",(limit,)).fetchall()
         return [self._decode(r) for r in rows]
 
-    def claim_next_queued(self):
+    def claim_next_queued(self, *, isolated: bool = False):
+        """Production skips isolated_* origins. Isolated supervisors claim only that prefix."""
         with self._lock:
             self._conn.execute("BEGIN IMMEDIATE")
-            r=self._conn.execute("SELECT * FROM jobs WHERE status='queued' ORDER BY created_at LIMIT 1").fetchone()
+            if isolated:
+                where = "status='queued' AND IFNULL(origin,'') LIKE 'isolated_%' "
+            else:
+                where = "status='queued' AND IFNULL(origin,'') NOT LIKE 'isolated_%' "
+            r=self._conn.execute(
+                f"SELECT * FROM jobs WHERE {where}ORDER BY created_at LIMIT 1").fetchone()
             if not r:
                 self._conn.commit()
                 return None
@@ -146,7 +177,9 @@ class Store:
             self._conn.execute("UPDATE jobs SET status='running',updated_at=? WHERE job_id=? AND status='queued'",
                                (now,r["job_id"]))
             self._conn.commit()
-        return self.get_job(r["job_id"])
+        job=self.get_job(r["job_id"])
+        self.append_event(job["job_id"],"job_claimed",{"status":"running"})
+        return job
 
     def next_queued(self):
         with self._lock:

@@ -4,7 +4,7 @@
 Stdlib only. No CONNECT, no /api/* management, no client-chosen upstream.
 """
 from __future__ import annotations
-import argparse, json, os, socket, sys, threading, time
+import argparse, hmac, json, os, socket, sys, threading, time
 
 ALLOWED_GET = frozenset({"/v1/models"})
 ALLOWED_POST = frozenset({"/v1/messages"})
@@ -98,7 +98,7 @@ def _read_body(sock: socket.socket, already: bytes, length: int | None) -> bytes
 
 
 def _reply(sock: socket.socket, code: int, msg: str, body: bytes = b""):
-    reason = {400: "Bad Request", 403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed",
+    reason = {400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed",
               411: "Length Required", 413: "Payload Too Large", 429: "Too Many Requests",
               431: "Headers Too Large", 503: "Service Unavailable",
               505: "HTTP Version Not Supported"}.get(code, "Error")
@@ -155,10 +155,29 @@ def _forward(upstream_host: str, upstream_port: int, method: str, path: str,
             pass
 
 
-def handle(conn: socket.socket, upstream: tuple[str, int], bound_model: str, log) -> None:
+def _client_token(headers) -> str:
+    for n, v in headers:
+        if n == "x-api-key":
+            return v
+        if n == "authorization" and v.lower().startswith("bearer "):
+            return v[7:].strip()
+    return ""
+
+
+def _token_ok(got: str, expected: str) -> bool:
+    if not expected:
+        return False
+    if not got:
+        return False
+    return hmac.compare_digest(got.encode("utf-8"), expected.encode("utf-8"))
+
+
+def handle(conn: socket.socket, upstream: tuple[str, int], bound_model: str, log, job_token: str = "") -> None:
     try:
         head, rest = _read_headers(conn)
         method, path, _proto, headers, clen = _parse_request(head)
+        if not _token_ok(_client_token(headers), job_token):
+            raise Reject(401, "job token required")
         if method == "GET":
             if path not in ALLOWED_GET:
                 raise Reject(404, "route")
@@ -193,9 +212,12 @@ def handle(conn: socket.socket, upstream: tuple[str, int], bound_model: str, log
             pass
 
 
-def serve(sock_path: str, upstream: str, bound_model: str) -> None:
+def serve(sock_path: str, upstream: str, bound_model: str, job_token: str = "") -> None:
     host, _, port_s = upstream.partition(":")
     port = int(port_s or "11434")
+    if not job_token:
+        print("BLOCKED_MODEL_BROKER missing job token", file=sys.stderr, flush=True)
+        raise SystemExit(78)
     if os.path.exists(sock_path):
         os.unlink(sock_path)
     os.makedirs(os.path.dirname(sock_path) or ".", exist_ok=True)
@@ -215,7 +237,7 @@ def serve(sock_path: str, upstream: str, bound_model: str) -> None:
     while True:
         conn, _ = srv.accept()
         threading.Thread(
-            target=handle, args=(conn, (host, port), bound_model, log), daemon=True
+            target=handle, args=(conn, (host, port), bound_model, log, job_token), daemon=True
         ).start()
 
 
@@ -224,8 +246,9 @@ def main(argv=None) -> int:
     p.add_argument("--sock", default=os.environ.get("MODEL_SOCK", "/bridge/model.sock"))
     p.add_argument("--upstream", default=os.environ.get("OLLAMA_UPSTREAM", "host.docker.internal:11434"))
     p.add_argument("--model", default=os.environ.get("BOUND_MODEL", ""))
+    p.add_argument("--token", default=os.environ.get("BROKER_JOB_TOKEN", ""))
     a = p.parse_args(argv)
-    serve(a.sock, a.upstream, a.model)
+    serve(a.sock, a.upstream, a.model, job_token=a.token)
     return 0
 
 
