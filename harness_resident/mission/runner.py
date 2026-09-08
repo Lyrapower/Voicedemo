@@ -256,10 +256,13 @@ async def _tick_mission(mission: dict, supervisor, store) -> None:
     goal = _hop_goal(m, hops, prior, hop_n, next_payload)
 
     try:
+        # research/deepseek is a cloud route; deep/glm-5.2 is not. Mission hops must be
+        # able to reach the worker's route, so cloud_allowed follows the worker.
+        is_cloud = m["worker"] in {"research", "full"}
         new_job = store.create_job(
             channel="grid", goal=goal, worker=m["worker"],
             allowed_tools=m.get("tools") or [], allowed_paths=["."],
-            cloud_allowed=False, approval_mode="auto",
+            cloud_allowed=is_cloud, approval_mode="auto",
             read_only=True, kind="chat",
             origin=f"mission:{mid}",
         )

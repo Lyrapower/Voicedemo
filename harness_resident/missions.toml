@@ -3,7 +3,7 @@
 
 [mission.scout]
 lane = "scout"
-worker = "deep"          # glm-5.2 默认
+worker = "research"     # deepseek — only research worker has web.search/web.fetch loop
 budget_hops = 30
 budget_tokens = 0
 budget_wall_s = 3600     # 60 min
