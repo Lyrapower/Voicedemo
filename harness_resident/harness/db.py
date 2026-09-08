@@ -447,6 +447,24 @@ class Store:
             rows=self._conn.execute(sql,args).fetchall()
         return [self._decode_mission(r) for r in rows]
 
+    def list_jobs_by_origin_prefix(self, prefix: str, limit: int = 500) -> list[dict]:
+        with self._lock:
+            rows=self._conn.execute(
+                "SELECT * FROM jobs WHERE origin LIKE ? ORDER BY created_at ASC LIMIT ?",
+                (prefix + "%", limit)).fetchall()
+        return [self._decode(r) for r in rows]
+
+    def mission_cost_usd(self, mission_id: str) -> float:
+        """Sum tool_log.cost_usd for all jobs whose origin = mission:<id>."""
+        origin = f"mission:{mission_id}"
+        with self._lock:
+            r = self._conn.execute(
+                "SELECT COALESCE(SUM(t.cost_usd),0.0) FROM tool_log t "
+                "JOIN jobs j ON t.mission_id=j.job_id "
+                "WHERE j.origin=?",
+                (origin,)).fetchone()
+        return float(r[0]) if r and r[0] is not None else 0.0
+
     def update_mission(self, mission_id, **fields):
         fields["updated_at"]=time.time()
         bad=set(fields)-self._MISSION_FIELDS

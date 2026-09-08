@@ -36,6 +36,7 @@ streamer=EventStreamer(store)
 supervisor_task=None
 relay_task=None
 stale_task=None
+mission_task=None
 
 KNOWN_WORKERS={"local","fast","deep","full","research","cc"}
 
@@ -335,17 +336,19 @@ async def stale_loop():
 
 @asynccontextmanager
 async def lifespan(app:FastAPI):
-    global supervisor_task,relay_task,stale_task
+    global supervisor_task,relay_task,stale_task,mission_task
     sessions.ensure_resident_sessions()
     role=os.getenv("HARNESS_ROLE","all")
     if role in {"all","supervisor"}:
         supervisor_task=asyncio.create_task(supervisor.run_forever())
+        from mission.runner import run_mission_loop
+        mission_task=asyncio.create_task(run_mission_loop(supervisor,store))
     stale_task=asyncio.create_task(stale_loop())
     if cfg.relay.enabled:
         relay=OutboundRelayClient(cfg,relay_handler,event_source=lambda after: store.list_stream_events(after_seq=after,limit=500))
         relay_task=asyncio.create_task(relay.run_forever())
     yield
-    for t in (supervisor_task,relay_task,stale_task):
+    for t in (supervisor_task,relay_task,stale_task,mission_task):
         if t: t.cancel()
     await supervisor.stop()
 
