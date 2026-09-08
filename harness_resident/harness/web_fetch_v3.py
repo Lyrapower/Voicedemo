@@ -10,9 +10,19 @@ MAX_CHARS=int(os.getenv('WEB_FETCH_MAX_CHARS','12000'))
 MAX_BYTES=int(os.getenv('WEB_FETCH_MAX_BYTES','2000000'))
 TIMEOUT=float(os.getenv('WEB_FETCH_TIMEOUT','15'))
 MAX_REDIRECTS=3
+CATALOG_SEARCH2='https://api.grants.gov/v1/api/search2'
+CATALOG_FETCH_OPP='https://api.grants.gov/v1/api/fetchOpportunity'
+CATALOG_POST_URLS=frozenset({CATALOG_SEARCH2, CATALOG_FETCH_OPP})
+GITHUB_SEARCH_PATH='/search/repositories'
 GRADES={'attested','witnesses_agree','witness_only','issuer_claim','secondhand','unverified'}
 SEARCH_HOST='html.duckduckgo.com'
-SEARCH_ENDPOINTS={'ddg_html':'https://html.duckduckgo.com/html/','ddg_lite':'https://lite.duckduckgo.com/lite/'}
+SEARCH_ENDPOINTS={
+    'ddg_html':'https://html.duckduckgo.com/html/',
+    'ddg_lite':'https://lite.duckduckgo.com/lite/',
+    'ddg_api':'https://api.duckduckgo.com/',
+    'wikipedia':'https://en.wikipedia.org/w/api.php',
+    'github':'https://api.github.com/search/repositories',
+}
 EGRESS_TEMPLATE='''# EGRESS.md: approval cells intentionally empty; edit your existing registry explicitly.
 | domain | 用途 | 只读 | 鉴权 env | 速率/min | grade | 拍板 | lanes |
 |---|---|---|---|---|---|---|---|
@@ -25,7 +35,11 @@ EGRESS_TEMPLATE='''# EGRESS.md: approval cells intentionally empty; edit your ex
 [deny]
 '''
 
-class Rejected(Exception): pass
+class Rejected(Exception):
+    def __init__(self, msg, matched_rule=None, match_kind=None):
+        super().__init__(msg)
+        self.matched_rule = matched_rule
+        self.match_kind = match_kind
 class FetchFailure(Exception): pass
 
 def _host(host):
@@ -60,43 +74,107 @@ def _safe_url(url,secrets=()):
         return result
     except Exception:return '[invalid URL]'
 
+def _normalize_domain_cell(raw):
+    domain=(raw or '').lower().rstrip('.')
+    if domain=='*':
+        return domain
+    if domain.startswith('*.'):
+        return '*.'+_host(domain[2:])
+    return _host(domain)
+
+def _row_active(ro, grade, approved, rate):
+    try:
+        rate_i=int(rate)
+    except (TypeError, ValueError):
+        return False, 0, True
+    if rate_i<1:
+        return False, rate_i, True
+    malformed = grade not in GRADES or str(ro).lower()!='yes'
+    active = bool(str(approved or '').strip()) and not malformed
+    return active, rate_i, malformed
+
 def load_egress(path='EGRESS.md'):
-    out={'rows':{},'star':None,'deny':[],'warnings':[]};deny=False
+    out={'rows':{},'star':None,'deny':[],'warnings':[],'errors':[],'config_error':None}
+    deny=False
     if not os.path.exists(path):return out
     with open(path,encoding='utf-8') as f:
         for line in f:
             s=line.strip()
             if s.lower()=='[deny]':deny=True;continue
             if deny:
-                if s and not s.startswith(('#','|')):out['deny'].append(_host(s.lstrip('.')))
+                if s and not s.startswith(('#','|')):
+                    try:out['deny'].append(_host(s.lstrip('.')))
+                    except (ValueError,UnicodeError):out['errors'].append('invalid deny host')
                 continue
             if not s.startswith('|'):continue
             cells=[x.strip() for x in s.strip('|').split('|')]
             if len(cells)<8 or cells[0] in ('domain','---'):continue
-            domain,purpose,ro,auth,rate,grade,approved,lanes=cells[:8]
-            if not approved or grade not in GRADES or ro.lower()!='yes':continue
+            domain_raw,purpose,ro,auth,rate,grade,approved,lanes=cells[:8]
             try:
-                rate=int(rate)
-                if rate<1:raise ValueError()
-                domain=domain.lower().rstrip('.')
-                domain=domain if domain=='*' else ('*.'+_host(domain[2:]) if domain.startswith('*.') else _host(domain))
-            except (ValueError,UnicodeError):out['warnings'].append('invalid approved registration');continue
-            row={'domain':domain,'purpose':purpose,'auth_env':None if auth.lower() in ('none','') else auth,'rate':rate,'grade':grade,'approved':approved,'lanes':[x.strip() for x in lanes.split(',') if x.strip()]}
-            if domain=='*':row.update(grade='unverified',auth_env=None);out['star']=row
-            else:out['rows'][domain]=row
+                domain=_normalize_domain_cell(domain_raw)
+            except (ValueError,UnicodeError):
+                out['errors'].append('unparseable registration domain')
+                continue
+            active, rate_i, malformed=_row_active(ro, grade, approved, rate)
+            row={
+                'domain':domain,'purpose':purpose,
+                'auth_env':None if auth.lower() in ('none','') else auth,
+                'rate':rate_i if rate_i>=1 else 0,
+                'grade':grade,'approved':approved,
+                'lanes':[x.strip() for x in lanes.split(',') if x.strip()],
+                'active':active,'malformed':malformed,
+            }
+            if domain=='*':
+                row.update(grade='unverified',auth_env=None)
+                if out['star'] is not None:
+                    prev=out['star']
+                    if (prev.get('active'), prev.get('lanes'), prev.get('approved')) != (row['active'], row['lanes'], row['approved']):
+                        out['config_error']='duplicate conflicting registration: *'
+                    out['warnings'].append('duplicate * row')
+                    if prev.get('active') and not row['active']:
+                        out['star']=row
+                    continue
+                out['star']=row
+                continue
+            if domain in out['rows']:
+                prev=out['rows'][domain]
+                if (prev.get('active'), prev.get('lanes'), prev.get('auth_env'), prev.get('approved')) != (
+                        row['active'], row['lanes'], row['auth_env'], row['approved']):
+                    out['config_error']=f'duplicate conflicting registration: {domain}'
+                out['warnings'].append(f'duplicate registration {domain}')
+                if prev.get('active') and not row['active']:
+                    out['rows'][domain]=row
+                continue
+            out['rows'][domain]=row
+    if out['errors'] and not out['config_error']:
+        out['config_error']=out['errors'][0]
     return out
 
+def _check_matched_row(row, lane, match_kind):
+    meta={'matched_rule':row.get('domain'),'match_kind':match_kind,'approved':row.get('approved') or ''}
+    if row.get('malformed'):
+        return None,'malformed registration',meta
+    if not row.get('active') or not str(row.get('approved') or '').strip():
+        return None,'registration pending/unapproved',meta
+    if row.get('lanes') and lane not in row['lanes']:
+        return None,'lane not allowed for this source',meta
+    return row,None,meta
+
 def _resolve_row(reg,host,lane):
+    if reg.get('config_error'):
+        return None,'egress config error: '+str(reg['config_error']),{'matched_rule':None,'match_kind':'config'}
     h=_host(host)
     for suffix in reg['deny']:
-        if h==suffix or h.endswith('.'+suffix):return None,'domain denied'
-    row=reg['rows'].get(h)
-    if row is None:
-        matches=[(len(k),v) for k,v in reg['rows'].items() if k.startswith('*.') and h.endswith(k[1:])]
-        row=max(matches,key=lambda x:x[0])[1] if matches else reg['star']
-    if not row:return None,'domain not approved (no active wildcard)'
-    if row['lanes'] and lane not in row['lanes']:return None,'lane not allowed for this source'
-    return row,None
+        if h==suffix or h.endswith('.'+suffix):
+            return None,'domain denied',{'matched_rule':suffix,'match_kind':'deny'}
+    if h in reg['rows']:
+        return _check_matched_row(reg['rows'][h], lane, 'exact')
+    matches=[(len(k),v) for k,v in reg['rows'].items() if k.startswith('*.') and h.endswith(k[1:])]
+    if matches:
+        return _check_matched_row(max(matches,key=lambda x:x[0])[1], lane, 'wildcard')
+    if reg.get('star'):
+        return _check_matched_row(reg['star'], lane, 'star')
+    return None,'domain not approved (no active wildcard)',{'matched_rule':None,'match_kind':None}
 
 def _public_ips(host):
     try:infos=socket.getaddrinfo(host,443,type=socket.SOCK_STREAM)
@@ -162,42 +240,113 @@ def _log(db_path,route_id,mission_id,substrate,tool,url,chars,truncated,grade,st
         return None
     except Exception:return 'tool_log_failed'
 
-def _request(url,lane,*,egress_path,opener=None,_private_check=None):
+def _github_loader_authorized():
+    try:
+        from github_research_secret import loader_authorized
+        return bool(loader_authorized())
+    except Exception:
+        try:
+            from .github_research_secret import loader_authorized
+            return bool(loader_authorized())
+        except Exception:
+            return False
+
+def _github_auth_allowed(host, path, method):
+    if not _github_loader_authorized():
+        return False, 'required auth environment missing'
+    if method != 'GET':
+        return False, 'github auth method not allowed'
+    if host != 'api.github.com':
+        return False, 'github auth host not allowed'
+    if path != GITHUB_SEARCH_PATH:
+        return False, 'github auth path not allowed'
+    return True, None
+
+
+def _auth_header(row, host, path, method):
+    if not row.get('auth_env'):
+        return {}, []
+    if row['auth_env'] == 'GITHUB_TOKEN':
+        ok, why = _github_auth_allowed(host, path, method)
+        if not ok:
+            raise Rejected(why)
+    val = os.getenv(row['auth_env'])
+    if not val:
+        raise Rejected('required auth environment missing')
+    if '\r' in val or '\n' in val:
+        raise Rejected('invalid auth header')
+    if row['auth_env'] == 'SEC_UA':
+        return {'User-Agent': val}, [val]
+    if row['auth_env'] == 'GITHUB_TOKEN':
+        return {'Authorization': 'Bearer ' + val}, [val]
+    return {'Authorization': 'Bearer ' + val}, [val]
+
+
+def _request(url,lane,*,egress_path,opener=None,_private_check=None,method='GET',data=None,max_redirects=None):
     reg=load_egress(egress_path);cur=url;trace=[];secrets=[];deadline=time.monotonic()+TIMEOUT
-    # Legacy injection seam is for tests only; it cannot disable production DNS checks.
+    method=(method or 'GET').upper()
+    if method not in {'GET','HEAD','POST'}:
+        raise Rejected('method not allowed')
+    if max_redirects is None:
+        max_redirects = 0 if method=='POST' else MAX_REDIRECTS
+    if method=='POST':
+        canon,_=_url(url)
+        if canon not in CATALOG_POST_URLS:
+            raise Rejected('POST not allowlisted')
+        if data is None:
+            raise Rejected('POST body required')
     if _private_check is not None and opener is None:raise Rejected('private-check override requires test opener')
-    for hop in range(MAX_REDIRECTS+1):
-        cur,host=_url(cur);row,why=_resolve_row(reg,host,lane)
-        if not row:raise Rejected(why)
+    body=None
+    if data is not None:
+        if isinstance(data, (dict, list)):
+            body=json.dumps(data, ensure_ascii=False, separators=(',',':')).encode('utf-8')
+        elif isinstance(data, bytes):
+            body=data
+        else:
+            body=str(data).encode('utf-8')
+        if len(body)>8192:
+            raise Rejected('POST body too large')
+    for hop in range(max_redirects+1):
+        cur,host=_url(cur);row,why,meta=_resolve_row(reg,host,lane)
+        if not row:raise Rejected(why, matched_rule=(meta or {}).get('matched_rule'), match_kind=(meta or {}).get('match_kind'))
+        row=dict(row);row['matched_rule']=(meta or {}).get('matched_rule');row['match_kind']=(meta or {}).get('match_kind')
         if opener is not None and _private_check is not None:
             if _private_check(host):raise Rejected('non-public address forbidden')
             ips=[]
         else:ips=_public_ips(host)
+        u=urllib.parse.urlsplit(cur)
+        path=u.path or '/'
         headers={'User-Agent':'grid-fetch/3','Accept':'text/html,application/json,application/xml,application/pdf,text/plain,*/*;q=0.5','Accept-Encoding':'gzip'}
-        if row['auth_env']:
-            val=os.getenv(row['auth_env'])
-            if not val:raise Rejected('required auth environment missing')
-            if '\r' in val or '\n' in val:raise Rejected('invalid auth header')
-            secrets.append(val);headers['User-Agent' if row['auth_env']=='SEC_UA' else 'Authorization']=val if row['auth_env']=='SEC_UA' else 'Bearer '+val
+        extra, used = _auth_header(row, host, path, method)
+        headers.update(extra); secrets.extend(used)
+        if method=='POST':
+            headers['Content-Type']='application/json'
+            headers['Accept']='application/json'
         if not _rate(egress_path,row,host):raise FetchFailure('RATE_LIMITED')
         remaining=deadline-time.monotonic()
         if remaining<=0:raise FetchFailure('TIMEOUT')
         conn=None;response=None
         try:
             if opener is not None:
-                try:response=opener(urllib.request.Request(cur,headers=headers,method='GET'),timeout=remaining)
+                req=urllib.request.Request(cur,headers=headers,method=method,data=body if method=='POST' else None)
+                try:response=opener(req,timeout=remaining)
                 except urllib.error.HTTPError as e:response=e
                 landed=getattr(response,'geturl',lambda:cur)() or cur
                 if _url(landed)[0]!=cur:raise Rejected('test opener silently followed redirect')
             else:
-                conn=_PinnedHTTPS(host,ips,remaining);u=urllib.parse.urlsplit(cur)
-                conn.request('GET',u.path+('?' + u.query if u.query else ''),headers=headers);response=conn.getresponse()
+                conn=_PinnedHTTPS(host,ips,remaining)
+                conn.request(method,path+('?' + u.query if u.query else ''),body=body if method=='POST' else None,headers=headers);response=conn.getresponse()
             status=getattr(response,'status',None) or getattr(response,'code',200)
             rh={k.lower():v for k,v in response.headers.items()}
             trace.append({'url':_safe_url(cur,secrets),'status':status,'grade':row['grade']})
             if status in (301,302,303,307,308):
-                if hop==MAX_REDIRECTS or not rh.get('location'):raise FetchFailure('REDIRECT_LIMIT')
-                cur=urllib.parse.urljoin(cur,rh['location']);continue
+                if hop==max_redirects or not rh.get('location'):raise FetchFailure('REDIRECT_LIMIT')
+                nxt=urllib.parse.urljoin(cur,rh['location'])
+                nxt_url,nxt_host=_url(nxt)
+                if nxt_host!=host:
+                    secrets.clear()
+                cur=nxt;body=None;method='GET' if status in (301,302,303) else method
+                continue
             if status<200 or status>=300:raise FetchFailure('HTTP '+str(status))
             chunks=[];total=0
             while True:
@@ -323,8 +472,11 @@ def _redact(value,secrets):
     if isinstance(value,dict):return {k:_redact(v,secrets) for k,v in value.items()}
     return value
 
+def _active_secrets(path):
+    return [os.getenv(r['auth_env'],'') for r in load_egress(path)['rows'].values() if r.get('auth_env') and r.get('active')]
+
 def fetch(url,lane,*,egress_path='EGRESS.md',db_path=None,route_id=None,mission_id=None,substrate=None,signal_filter=None,opener=None,max_chars=MAX_CHARS,_tool='web.fetch',_private_check=None):
-    secrets=[os.getenv(r['auth_env'],'') for r in load_egress(egress_path)['rows'].values() if r['auth_env']]
+    secrets=_active_secrets(egress_path)
     result={'ok':False,'source_url':_safe_url(url,secrets),'lane':lane};grade=None
     try:
         max_chars=int(max_chars)
@@ -338,10 +490,10 @@ def fetch(url,lane,*,egress_path='EGRESS.md',db_path=None,route_id=None,mission_
         text=text[:max_chars]+(' [截断]' if truncated else '')
         if not text.strip():raise FetchFailure('EMPTY_CONTENT')
         for link in meta['links']:link['url']=_safe_url(link['url'],secrets)
-        result.update(ok=True,status=status,grade=grade,text=text,chars=len(text),truncated=truncated,source_url=_safe_url(cur,secrets),requested_url=_safe_url(url,secrets),fetched_at=int(time.time()),redirects=trace,grade_basis='egress_registration',link_targets_verified=False,**meta)
+        result.update(ok=True,status=status,grade=grade,text=text,chars=len(text),truncated=truncated,source_url=_safe_url(cur,secrets),requested_url=_safe_url(url,secrets),fetched_at=int(time.time()),redirects=trace,grade_basis='egress_registration',link_targets_verified=False,matched_rule=row.get('matched_rule'),match_kind=row.get('match_kind'),**meta)
         if opener is not None:result['test_transport']=True
         result=_redact(result,secrets)
-    except Rejected as e:result.update(status='DENIED',reason=str(e))
+    except Rejected as e:result.update(status='DENIED',reason=str(e),matched_rule=getattr(e,'matched_rule',None),match_kind=getattr(e,'match_kind',None))
     except FetchFailure as e:result.update(status=str(e))
     except (TimeoutError,socket.timeout):result.update(status='TIMEOUT')
     except Exception:result.update(status='FETCH_ERROR')
@@ -379,14 +531,74 @@ def _result_url(href,base):
     else:href=urllib.parse.urlunsplit(u)
     return _url(href)[0]
 
+def _default_providers(searxng_url):
+    raw=os.getenv('WEB_FETCH_SEARCH_PROVIDERS','').strip()
+    if raw:
+        return tuple(x.strip() for x in raw.split(',') if x.strip())
+    out=[]
+    if searxng_url:out.append('searxng')
+    out.extend(('ddg_html','ddg_lite'))
+    return tuple(out)
+
+def _retry_meta(status):
+    # retryable=false + retry_after_s>0: do not retry this attempt; a later probe after cooldown is allowed.
+    # retryable=false + retry_after_s=0: do not retry this provider/query for this mission.
+    if status=='SEARCH_CHALLENGE':
+        return False, 3600
+    if status in {'SEARCH_ERROR','TIMEOUT','EMPTY_OR_LAYOUT_CHANGED'}:
+        return True, 30
+    return False, 0
+
+def _parse_search_payload(provider,text,landed):
+    parsed=_SearchPage()
+    if provider=='searxng':
+        doc=json.loads(text)
+        if not isinstance(doc,dict) or not isinstance(doc.get('results'),list):raise FetchFailure('INVALID_SEARCH_JSON')
+        parsed.results=[{'url':r.get('url',''),'title':str(r.get('title','')),'snippet':str(r.get('content',''))} for r in doc['results'] if isinstance(r,dict)]
+        return parsed
+    if provider=='github':
+        doc=json.loads(text)
+        items=doc.get('items') if isinstance(doc,dict) else None
+        if not isinstance(items,list):raise FetchFailure('INVALID_SEARCH_JSON')
+        parsed.results=[{'url':it.get('html_url',''),'title':str(it.get('full_name') or ''),'snippet':str(it.get('description') or '')} for it in items if isinstance(it,dict)]
+        return parsed
+    if provider=='wikipedia':
+        doc=json.loads(text)
+        if not (isinstance(doc,list) and len(doc)>=4):raise FetchFailure('INVALID_SEARCH_JSON')
+        titles,descs,urls=doc[1],doc[2],doc[3]
+        parsed.results=[{'url':u,'title':str(t),'snippet':str(d)} for t,d,u in zip(titles,descs,urls)]
+        return parsed
+    if provider=='ddg_api':
+        doc=json.loads(text)
+        if not isinstance(doc,dict):raise FetchFailure('INVALID_SEARCH_JSON')
+        rows=[]
+        if doc.get('AbstractURL'):
+            rows.append({'url':doc.get('AbstractURL'),'title':str(doc.get('Heading') or ''),'snippet':str(doc.get('AbstractText') or '')})
+        for rel in doc.get('RelatedTopics') or []:
+            if not isinstance(rel,dict):
+                continue
+            if rel.get('FirstURL'):
+                rows.append({'url':rel.get('FirstURL'),'title':str((rel.get('Text') or '').split(' - ',1)[0]),'snippet':str(rel.get('Text') or '')})
+            for t in rel.get('Topics') or []:
+                if isinstance(t,dict) and t.get('FirstURL'):
+                    rows.append({'url':t.get('FirstURL'),'title':str((t.get('Text') or '').split(' - ',1)[0]),'snippet':str(t.get('Text') or '')})
+        parsed.results=rows
+        return parsed
+    parsed.feed(text)
+    return parsed
+
 def search(query,lane,*,n=8,egress_path='EGRESS.md',db_path=None,route_id=None,mission_id=None,substrate=None,opener=None,_private_check=None,max_pages=3,providers=None,domains=None,searxng_url=None):
     n=int(n);max_pages=int(max_pages)
     results=[];attempts=[];seen=set();query=str(query).strip()
     if not query or len(query)>2000 or not 1<=int(n)<=100 or not 1<=int(max_pages)<=5:raise ValueError('query/n/max_pages outside bounds')
     endpoints=dict(SEARCH_ENDPOINTS)
-    searxng_url=searxng_url or os.getenv('WEB_FETCH_SEARXNG_URL')
-    if searxng_url:endpoints['searxng']=_url(searxng_url)[0]
-    providers=tuple(providers) if providers is not None else (('searxng',) if searxng_url else ())+('ddg_html','ddg_lite')
+    searxng_env=os.getenv('WEB_FETCH_SEARXNG_URL')
+    if searxng_env:
+        endpoints['searxng']=_url(searxng_env)[0]
+    elif searxng_url and providers is not None:
+        # tests / trusted caller with explicit provider list only
+        endpoints['searxng']=_url(searxng_url)[0]
+    providers=tuple(providers) if providers is not None else _default_providers(searxng_env or searxng_url)
     if not providers or any(p not in endpoints for p in providers):raise ValueError('unknown/unconfigured provider')
     query_sent=query
     if domains:
@@ -395,7 +607,14 @@ def search(query,lane,*,n=8,egress_path='EGRESS.md',db_path=None,route_id=None,m
         query_sent+=' ('+' OR '.join('site:'+d for d in normalized)+')'
     for provider in providers:
         base=endpoints[provider]
-        params={'q':query_sent}
+        if provider=='github':
+            params={'q':query_sent,'per_page':str(min(n,10))}
+        elif provider=='wikipedia':
+            params={'action':'opensearch','search':query_sent,'limit':str(min(n,10)),'namespace':'0','format':'json'}
+        elif provider=='ddg_api':
+            params={'q':query_sent,'format':'json','no_html':'1','no_redirect':'1'}
+        else:
+            params={'q':query_sent}
         if provider=='searxng':params.update(format='json',pageno=1)
         cur=base+('&' if '?' in base else '?')+urllib.parse.urlencode(params);visited=set()
         for page in range(int(max_pages)):
@@ -403,19 +622,16 @@ def search(query,lane,*,n=8,egress_path='EGRESS.md',db_path=None,route_id=None,m
             visited.add(cur)
             try:
                 raw,headers,landed,row,trace,secrets,status=_request(cur,lane,egress_path=egress_path,opener=opener,_private_check=_private_check)
-                text=_decode(raw,headers.get('content-type',''));parsed=_SearchPage()
-                if provider=='searxng':
-                    doc=json.loads(text)
-                    if not isinstance(doc,dict) or not isinstance(doc.get('results'),list):raise FetchFailure('INVALID_SEARCH_JSON')
-                    parsed.results=[{'url':r.get('url',''),'title':str(r.get('title','')),'snippet':str(r.get('content',''))} for r in doc['results'] if isinstance(r,dict)]
-                else:parsed.feed(text)
+                text=_decode(raw,headers.get('content-type',''))
                 if re.search(r'anomaly-modal|challenge-form|bots use DuckDuckGo',text,re.I):raise FetchFailure('SEARCH_CHALLENGE')
+                parsed=_parse_search_payload(provider,text,landed)
                 before=len(results)
                 for r in parsed.results:
                     try:url=_result_url(r['url'],landed)
                     except Exception:continue
                     if url in seen:continue
-                    seen.add(url);results.append(_redact({'title':_normalize(r['title']),'url':_safe_url(url,secrets),'snippet':_normalize(r['snippet'])[:600],'provider':provider,'page':page+1},secrets))
+                    kind={'wikipedia':'topic_lookup','ddg_api':'instant_answer','ddg_html':'web_search','ddg_lite':'web_search','github':'repo_search','searxng':'web_search'}.get(provider,'unknown')
+                    seen.add(url);results.append(_redact({'title':_normalize(r['title']),'url':_safe_url(url,secrets),'snippet':_normalize(r['snippet'])[:600],'provider':provider,'provider_kind':kind,'page':page+1},secrets))
                     if len(results)>=n:break
                 state='ok' if parsed.results else 'EMPTY_OR_LAYOUT_CHANGED'
                 attempts.append({'provider':provider,'page':page+1,'status':state,'added':len(results)-before})
@@ -434,12 +650,16 @@ def search(query,lane,*,n=8,egress_path='EGRESS.md',db_path=None,route_id=None,m
                 cur=action.split('?')[0]+'?'+urllib.parse.urlencode(form['fields'])
             except Exception as e:
                 state='DENIED' if isinstance(e,Rejected) else str(e) if isinstance(e,FetchFailure) else 'SEARCH_ERROR'
+                if provider=='github' and isinstance(e,Rejected) and 'auth' in str(e).lower():
+                    state='BLOCKED_CONFIG'
                 attempts.append({'provider':provider,'page':page+1,'status':state})
                 warn=_log(db_path,route_id,mission_id,substrate,'web.search',cur,0,False,'unverified',state)
                 if warn:attempts[-1]['audit_warning']=warn
                 break
         if len(results)>=n:break
-    return {'ok':bool(results),'status':('ok' if len(results)>=n else 'PARTIAL') if results else (attempts[-1]['status'] if attempts else 'EMPTY'),'grade':'unverified','query':query,'results':results,'attempts':attempts,'source_url':_safe_url(endpoints[providers[0]]),'lane':lane,'test_transport':opener is not None}
+    status=('ok' if len(results)>=n else 'PARTIAL') if results else (attempts[-1]['status'] if attempts else 'EMPTY')
+    retryable,retry_after_s=_retry_meta(status)
+    return {'ok':bool(results),'status':status,'retryable':retryable,'retry_after_s':retry_after_s,'grade':'unverified','query':query,'results':results,'attempts':attempts,'source_url':_safe_url(endpoints[providers[0]]),'lane':lane,'test_transport':opener is not None}
 
 def search_many(queries,lane,*,n=20,**kwargs):
     queries=list(dict.fromkeys(str(q).strip() for q in queries if str(q).strip()))
@@ -451,13 +671,153 @@ def search_many(queries,lane,*,n=20,**kwargs):
             if i<len(g['results']):
                 r=g['results'][i]
                 if r['url'] not in seen:seen.add(r['url']);out.append(dict(r,query=q))
-    return {'ok':bool(out),'status':'ok' if len(out)>=n else 'PARTIAL' if out else 'EMPTY','grade':'unverified','results':out[:n],'queries':[{'query':q,'status':g['status'],'attempts':g['attempts']} for q,g in zip(queries,groups)]}
+    if out:
+        many_status='ok' if len(out)>=n else 'PARTIAL'
+    else:
+        st=[g.get('status') for g in groups]
+        if any(s=='SEARCH_CHALLENGE' for s in st) and not any(s=='ok' for s in st):
+            many_status='SEARCH_CHALLENGE'
+        else:
+            many_status=next((s for s in st if s and s!='EMPTY'), 'EMPTY')
+    retryable,retry_after_s=_retry_meta(many_status)
+    return {'ok':bool(out),'status':many_status,'retryable':retryable,'retry_after_s':retry_after_s,'grade':'unverified','results':out[:n],'queries':[{'query':q,'status':g['status'],'attempts':g['attempts'],'retryable':g.get('retryable')} for q,g in zip(queries,groups)]}
 
 def fetch_many(urls,lane,*,workers=4,**kwargs):
     urls=list(dict.fromkeys(urls))
     if len(urls)>50 or not 1<=workers<=8:raise ValueError('at most 50 URLs and 1..8 workers')
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         return list(pool.map(lambda u:fetch(u,lane,**kwargs),urls))
+
+
+def _catalog_body(url, body):
+    if not isinstance(body, dict):
+        raise Rejected('catalog body must be object')
+    extra = set(body)
+    if url == CATALOG_SEARCH2:
+        extra -= {'rows', 'keyword', 'oppStatuses'}
+        if extra:
+            raise Rejected('catalog search extra field')
+        kw = str(body.get('keyword') or '').strip()
+        if not kw or len(kw) > 200:
+            raise Rejected('catalog keyword')
+        try:
+            rows = int(body.get('rows') or 10)
+        except (TypeError, ValueError):
+            raise Rejected('catalog rows')
+        if not 1 <= rows <= 25:
+            raise Rejected('catalog rows')
+        st = str(body.get('oppStatuses') or 'posted').strip() or 'posted'
+        return {'rows': rows, 'keyword': kw, 'oppStatuses': st}
+    if url == CATALOG_FETCH_OPP:
+        extra -= {'opportunityId'}
+        if extra:
+            raise Rejected('catalog fetch extra field')
+        oid = body.get('opportunityId')
+        if oid is None or str(oid).strip() == '':
+            raise Rejected('opportunityId required')
+        return {'opportunityId': str(oid).strip()}
+    raise Rejected('catalog post url not allowlisted')
+
+
+def catalog_json_post(url, body, lane, *, egress_path='EGRESS.md', db_path=None, route_id=None, mission_id=None, substrate=None, opener=None, _private_check=None):
+    """Allowlisted JSON POST to grants.gov catalog APIs. Not a generic POST tool."""
+    secrets=_active_secrets(egress_path)
+    result={'ok':False,'source_url':_safe_url(url,secrets),'lane':lane,'method':'POST'}
+    try:
+        canon,_=_url(url)
+        if canon not in CATALOG_POST_URLS:
+            raise Rejected('catalog post url not allowlisted')
+        payload=_catalog_body(canon, body)
+        raw,headers,cur,row,trace,used_secrets,status=_request(
+            canon,lane,egress_path=egress_path,opener=opener,_private_check=_private_check,
+            method='POST',data=payload,max_redirects=0)
+        secrets.extend(used_secrets)
+        ctype=(headers.get('content-type') or '').lower()
+        text=_decode(raw, ctype)
+        if 'html' in ctype or text.lstrip().lower().startswith('<!doctype') or text.lstrip().lower().startswith('<html'):
+            raise FetchFailure('HTML_NOT_JSON')
+        try:
+            doc=json.loads(text)
+        except ValueError:
+            raise FetchFailure('INVALID_JSON')
+        if not isinstance(doc, dict):
+            raise FetchFailure('INVALID_JSON')
+        err=doc.get('errorcode') or doc.get('errorCode')
+        result.update(ok=True,status=status,grade=row['grade'],json=doc,errorcode=err,
+                      source_url=_safe_url(cur,secrets),requested_url=_safe_url(url,secrets),
+                      fetched_at=int(time.time()),redirects=trace,chars=len(text),
+                      matched_rule=row.get('matched_rule'),match_kind=row.get('match_kind'))
+        result=_redact(result,secrets)
+    except Rejected as e:result.update(status='DENIED',reason=str(e),matched_rule=getattr(e,'matched_rule',None),match_kind=getattr(e,'match_kind',None))
+    except FetchFailure as e:result.update(status=str(e))
+    except (TimeoutError,socket.timeout):result.update(status='TIMEOUT')
+    except Exception:result.update(status='FETCH_ERROR')
+    warning=_log(db_path,route_id,mission_id,substrate,'web.catalog_post',result['source_url'],result.get('chars',0),False,result.get('grade'),result.get('status'))
+    if warning:result['audit_warning']=warning
+    return result
+
+
+def normalize_opp_hits(doc, *, source_url, fetched_at, original_query, derived_query=None):
+    data = doc.get('data') if isinstance(doc, dict) else None
+    if not isinstance(data, dict):
+        return {'rows': [], 'hit_count': None, 'pagination_incomplete': True}
+    hits = data.get('oppHits') or data.get('oppHitsList') or []
+    if not isinstance(hits, list):
+        hits = []
+    hit_count = data.get('hitCount')
+    rows = []
+    seen = set()
+    for h in hits:
+        if not isinstance(h, dict):
+            continue
+        oid = str(h.get('id') or h.get('opportunityId') or '').strip()
+        if not oid or oid in seen:
+            continue
+        seen.add(oid)
+        title = str(h.get('title') or h.get('opportunityTitle') or '').strip()
+        agency = str(h.get('agency') or h.get('agencyName') or '').strip()
+        posted = str(h.get('openDate') or h.get('postedDate') or '').strip() or 'unknown'
+        close = str(h.get('closeDate') or h.get('closeDte') or '').strip() or 'unknown'
+        status = str(h.get('oppStatus') or h.get('opportunityStatus') or '').strip() or 'unknown'
+        number = str(h.get('number') or h.get('opportunityNumber') or '').strip()
+        elig = h.get('eligibilities') or h.get('eligibility') or 'unknown'
+        if isinstance(elig, list):
+            elig = '; '.join(str(x) for x in elig[:8]) or 'unknown'
+        elig = str(elig).strip() or 'unknown'
+        human = ''
+        for key in ('opportunityLink', 'url', 'detailsUrl'):
+            if h.get(key):
+                try:
+                    human = _url(str(h[key]))[0]
+                except Exception:
+                    human = ''
+                break
+        rows.append({
+            'opportunity_id': oid,
+            'opportunity_number': number or 'unknown',
+            'title': title or 'unknown',
+            'publisher': agency or 'unknown',
+            'published_at': posted,
+            'deadline': close,
+            'deadline_timezone': 'unknown',
+            'eligibility': elig,
+            'status': status,
+            'source_url': source_url,
+            'detail_locator': f'{CATALOG_FETCH_OPP} opportunityId={oid}',
+            'human_url': human,
+            'fetched_at': fetched_at,
+            'original_query': original_query,
+            'derived_query': derived_query,
+            'qualification': 'needs_verification',
+            'qualification_reason': 'list row only; detail not yet fetched',
+        })
+    incomplete = False
+    try:
+        if hit_count is not None and int(hit_count) > len(rows):
+            incomplete = True
+    except (TypeError, ValueError):
+        incomplete = True
+    return {'rows': rows, 'hit_count': hit_count, 'pagination_incomplete': incomplete, 'page_size': len(rows)}
 
 if __name__=='__main__':
     import sys

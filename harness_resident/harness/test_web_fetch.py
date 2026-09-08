@@ -117,6 +117,38 @@ blocked.test
         r=self.fetch('/echo','auth.test',signal_filter=lambda s:s*100,max_chars=50)
         self.assertTrue(r['ok']);self.assertNotIn('EXAMPLE_SECRET',json.dumps(r));self.assertLessEqual(r['chars'],55);self.assertTrue(r['truncated'])
         self.assertEqual(self.fetch('/page',max_chars=-1)['status'],'DENIED')
+    def test_pending_exact_does_not_fall_through_star(self):
+        self.eg.write_text('''| domain | 用途 | 只读 | 鉴权 env | 速率/min | grade | 拍板 | lanes |
+| api.grants.gov | catalog | yes | none | 20 | attested | | scout |
+| * | open | yes | none | 1000 | unverified | TEST | research,scout |
+''')
+        r=w.fetch('https://api.grants.gov/v1/api/search2','scout',egress_path=str(self.eg))
+        self.assertEqual(r['status'],'DENIED',r)
+        self.assertEqual(r.get('matched_rule'),'api.grants.gov')
+        self.assertEqual(r.get('match_kind'),'exact')
+        self.assertIn('pending', str(r.get('reason') or ''))
+        self.assertEqual(Handler.calls,[])
+
+    def test_exact_deny_and_wrong_lane_do_not_use_star(self):
+        self.eg.write_text('''| domain | 用途 | 只读 | 鉴权 env | 速率/min | grade | 拍板 | lanes |
+| blocked.test | x | yes | none | 20 | attested | TEST | research |
+| source.test | source | yes | none | 1000 | attested | TEST | research |
+| * | open | yes | none | 1000 | unverified | TEST | research,scout |
+[deny]
+blocked.test
+''')
+        r=w.fetch('https://blocked.test/page','research',egress_path=str(self.eg))
+        self.assertEqual(r['status'],'DENIED')
+        self.assertEqual(r.get('match_kind'),'deny')
+        r2=w.fetch('https://source.test/page','scout',egress_path=str(self.eg))
+        self.assertEqual(r2['status'],'DENIED')
+        self.assertEqual(r2.get('matched_rule'),'source.test')
+        self.assertEqual(Handler.calls,[])
+
+    def test_no_exact_row_star_still_applies(self):
+        r=w.fetch('https://other.test/page','research',egress_path=str(self.eg))
+        self.assertTrue(r['ok'],r)
+        self.assertEqual(r.get('match_kind'),'star')
     def test_specific_lane_does_not_fall_through_star(self):
         self.assertEqual(w.fetch('https://source.test/page','scout',egress_path=str(self.eg))['status'],'DENIED')
         self.assertEqual(self.fetch('/page','sub.source.test')['grade'],'secondhand')
@@ -149,7 +181,7 @@ blocked.test
         receipts=w.fetch_many([r['url'] for r in found['results']],'research',egress_path=str(self.eg))
         self.assertEqual(len(receipts),3);self.assertTrue(all(r['ok'] for r in receipts),receipts);self.assertTrue(all('Real TLS fact' in r['text'] for r in receipts))
     def test_audit_failure_visible(self):
-        r=self.fetch('/page',db_path='EXAMPLE.db');self.assertEqual(r.get('audit_warning'),'tool_log_failed')
+        r=self.fetch('/page',db_path=str(self.root));self.assertEqual(r.get('audit_warning'),'tool_log_failed')
     def test_default_template_not_self_authorizing(self):
         self.eg.write_text(w.EGRESS_TEMPLATE);self.assertEqual(self.fetch('/page')['status'],'DENIED');self.assertEqual(Handler.calls,[])
     def test_legacy_override_cannot_disable_real_transport_check(self):

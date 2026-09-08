@@ -30,29 +30,39 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(self.sentinel.read_bytes(), b"keep-me")
 
     def test_dotdot_name_rejected_as_walk(self):
-        # exporter uses relative_to; plant a symlink escape
         os.symlink(self.td.name, self.src / "escape")
-        with self.assertRaises(SX.ExportReject):
-            SX.export_tree(str(self.src), str(self.dst))
+        r = SX.export_tree(str(self.src), str(self.dst))
+        self.assertTrue(r["ok"])
+        self.assertFalse((self.dst / "escape").exists())
+        self.assertEqual((self.dst / "ok.txt").read_text(encoding="utf-8"), "hello")
+        self.assertTrue(any(x["reason"] == "symlink dir" for x in r["rejected"]))
         self.assertEqual(self.sentinel.read_bytes(), b"keep-me")
 
     def test_symlink_file(self):
         os.symlink("/etc/passwd", self.src / "p")
-        with self.assertRaises(SX.ExportReject):
-            SX.export_tree(str(self.src), str(self.dst))
+        r = SX.export_tree(str(self.src), str(self.dst))
+        self.assertTrue(r["ok"])
         self.assertFalse((self.dst / "p").exists())
+        self.assertEqual((self.dst / "ok.txt").read_text(encoding="utf-8"), "hello")
+        self.assertTrue(any(x["path"] == "p" for x in r["rejected"]))
         self.assertEqual(self.sentinel.read_bytes(), b"keep-me")
 
     def test_hardlink(self):
         os.link(self.src / "ok.txt", self.src / "hard")
-        with self.assertRaises(SX.ExportReject):
-            SX.export_tree(str(self.src), str(self.dst))
+        r = SX.export_tree(str(self.src), str(self.dst))
+        self.assertTrue(r["ok"])
+        self.assertFalse((self.dst / "ok.txt").exists())
+        self.assertFalse((self.dst / "hard").exists())
+        self.assertTrue(any(x["reason"] == "hardlink" for x in r["rejected"]))
         self.assertEqual(self.sentinel.read_bytes(), b"keep-me")
 
     def test_fifo(self):
         os.mkfifo(self.src / "f")
-        with self.assertRaises(SX.ExportReject):
-            SX.export_tree(str(self.src), str(self.dst))
+        r = SX.export_tree(str(self.src), str(self.dst))
+        self.assertTrue(r["ok"])
+        self.assertFalse((self.dst / "f").exists())
+        self.assertEqual((self.dst / "ok.txt").read_text(encoding="utf-8"), "hello")
+        self.assertTrue(any(x["path"] == "f" for x in r["rejected"]))
         self.assertEqual(self.sentinel.read_bytes(), b"keep-me")
 
     def test_absolute_rel_impossible_via_name(self):
