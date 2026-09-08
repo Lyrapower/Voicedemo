@@ -258,9 +258,14 @@ def _github_auth_allowed(host, path, method):
         return False, 'github auth method not allowed'
     if host != 'api.github.com':
         return False, 'github auth host not allowed'
-    if path != GITHUB_SEARCH_PATH:
-        return False, 'github auth path not allowed'
-    return True, None
+    if path == GITHUB_SEARCH_PATH:
+        return True, None
+    # read-only repo metadata: GET /repos/{owner}/{repo} (no further sub-path)
+    if path.startswith('/repos/'):
+        rest = path[len('/repos/'):]
+        if rest and '/' in rest and rest.count('/') == 1 and not rest.endswith('/'):
+            return True, None
+    return False, 'github auth path not allowed'
 
 
 def _auth_header(row, host, path, method):
