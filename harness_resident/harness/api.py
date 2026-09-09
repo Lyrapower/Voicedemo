@@ -679,20 +679,25 @@ async def create_mission(body:MissionCreate):
     if body.status not in {"proposed","running"}:
         raise HTTPException(400,"status must be proposed or running")
     # 衔拍3 §①1: 若未显式给 search 块,从 lane 对应模板加载结构化 catalog 查询(scout 模板)
+    # 同理 §①2: 若未显式给 tools,从模板加载(scout 模板 tools = web.fetch/web.search/grants.catalog)
     search_block = body.search
-    if search_block is None and body.lane:
+    tools_list = body.tools
+    if body.lane:
         try:
             from mission.config import mission_template
             tmpl = mission_template(body.lane)
-            if tmpl and tmpl.get("search"):
-                search_block = tmpl["search"]
+            if tmpl:
+                if search_block is None and tmpl.get("search"):
+                    search_block = tmpl["search"]
+                if not tools_list and tmpl.get("tools"):
+                    tools_list = list(tmpl["tools"])
         except Exception:
             pass
     m=store.create_mission(goal=body.goal,lane=body.lane,worker=body.worker,
                            budget_hops=body.budget_hops,budget_tokens=body.budget_tokens,
                            budget_wall_s=body.budget_wall_s,budget_usd=body.budget_usd,
                            stop_conditions=body.stop_conditions,created_by=body.created_by,
-                           tools=body.tools,search=search_block)
+                           tools=tools_list,search=search_block)
     if body.status=="running":
         store.update_mission(m["mission_id"],status="running")
     return store.get_mission(m["mission_id"])
