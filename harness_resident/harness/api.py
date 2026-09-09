@@ -547,6 +547,7 @@ async def api_create_job(body:ApiJobBody, request: Request):
         approval_mode="auto" if body.read_only else "write_ok_no_deploy",
         read_only=bool(body.read_only),kind=body.kind,
         origin=body.origin,context_hash=body.context_hash,
+        lane=body.lane,
         latency_budget_ms=body.latency_budget_ms,steps=list(body.steps or []),
     ),scope=scope)
     return {"job_id":job["job_id"],"status":job["status"],"last_step":job.get("last_step"),
