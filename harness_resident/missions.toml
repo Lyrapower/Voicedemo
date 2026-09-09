@@ -3,17 +3,31 @@
 
 [mission.scout]
 lane = "scout"
-worker = "research"     # deepseek — only research worker has web.search/web.fetch loop
+worker = "deep"         # 钉死 glm-5.2 (cloud-glm52);runner 不 fallback 到 research。工具环按 allowed_tools 开(§①4)。
 budget_hops = 30
 budget_tokens = 0
 budget_wall_s = 3600     # 60 min
 budget_usd = 1.0
 stop_conditions = ["n>=10"]
-tools = ["web.fetch", "web.search"]
+tools = ["web.fetch", "web.search", "grants.catalog", "grants.detail"]
 data_sources = ["api.grants.gov", "www.grants.gov"]
 egress_lanes = ["scout"]
-# api.sam.gov 待 key,无则跳过并记 D
 note = "找本周新发布、加州或联邦、与商业地产/资管/能源/AI 基础设施相关、截止 >=14 天的 grant/RFP,出前 10 名 dossier"
+
+# 衔拍3 §①1: 结构化 catalog 查询——runner 从此组 Search2 请求,不从 goal 文本;同 query 一个 mission 内缓存。
+[mission.scout.search]
+keywords = [
+  "artificial intelligence infrastructure",
+  "AI infrastructure",
+  "broadband infrastructure",
+  "clean energy infrastructure",
+  "commercial real estate",
+]
+opp_statuses = ["posted"]
+agencies = []
+categories = []
+deadline_min_days = 14
+rows_per_query = 10
 
 [mission.builder]
 lane = "builder"

@@ -299,5 +299,89 @@ class TestScorecard(unittest.TestCase):
         self.assertEqual(sc["discipline_verdict"], "PASS")
 
 
+
+class TestPaid3Structured(unittest.TestCase):
+    """衔拍3 §①1–4: 结构化 query 组装、INVALID_URL、findings 由 runner 附、allowed_tools 开环。"""
+
+    def test_structured_query_assembly(self):
+        from harness.tool_loop import run_grants_catalog_structured, _CATALOG_CACHE
+        # stub catalog_json_post to capture the request body per keyword (no network)
+        import harness.tool_loop as TL
+        import harness.web_fetch_v3 as W3
+        captured = []
+        def fake_post(url, body, lane, **kw):
+            captured.append({"url": url, "body": body, "lane": lane})
+            return {"ok": True, "status": "200", "json": {"data": []}, "source_url": url}
+        W3.catalog_json_post = fake_post
+        _CATALOG_CACHE.clear()
+        sblk = {"keywords": ["AI infrastructure", "broadband"], "opp_statuses": ["posted"],
+                "agencies": [], "deadline_min_days": 14, "rows_per_query": 10}
+        out = run_grants_catalog_structured(sblk, lane="scout", db_path=None,
+                                             route_id="r1", mission_id="M-test")
+        # one Search2 POST per keyword, body carries keyword + oppStatuses
+        self.assertEqual(len(captured), 2)
+        self.assertTrue(all(c["body"]["oppStatuses"] == "posted" for c in captured))
+        self.assertEqual(captured[0]["body"]["keyword"], "AI infrastructure")
+        self.assertEqual(captured[1]["body"]["keyword"], "broadband")
+        # cache: second call with same mission+keyword hits cache (no new POST)
+        captured.clear()
+        run_grants_catalog_structured(sblk, lane="scout", db_path=None,
+                                       route_id="r1", mission_id="M-test")
+        self.assertEqual(len(captured), 0, "same query within mission must hit cache (消 RATE_LIMITED)")
+
+    def test_invalid_url_not_denied(self):
+        from harness.web_fetch_v3 import fetch
+        # malformed URL (space) → INVALID_URL, not DENIED
+        r = fetch("https://api.grants.gov/search?foo=bar baz", "scout", db_path=None)
+        self.assertEqual(r["status"], "INVALID_URL")
+        self.assertFalse(r["ok"])
+        # non-https → INVALID_URL
+        r2 = fetch("http://api.grants.gov/x", "scout", db_path=None)
+        self.assertEqual(r2["status"], "INVALID_URL")
+
+    def test_findings_built_by_runner(self):
+        from mission.runner import _build_findings, _parse_judgments
+        # worker output judges opp 100 HIT, opp 200 MISS
+        wo = ("opp 100: HIT — AI infrastructure grant matches goal\n"
+              "opp 200: MISS — Earth Science, not in scope\n")
+        judgments = _parse_judgments(wo)
+        self.assertEqual(judgments["100"], ("HIT", "AI infrastructure grant matches goal"))
+        self.assertEqual(judgments["200"][0], "MISS")
+        # hops carry catalog rows + worker_output; runner attaches URL/deadline/event_id
+        hops = [{
+            "hop": 1, "job_id": "J-abc12345", "event_id": "J-abc12345",
+            "worker_output": wo,
+        }]
+        store = MagicMock()
+        store.list_events = MagicMock(return_value=[{
+            "kind": "tool_search",
+            "payload": {"catalog_rows": [
+                {"opportunity_id": "100", "title": "AI Infra Grant", "publisher": "NSF",
+                 "deadline": "2026-12-01", "human_url": "https://www.grants.gov/x100"},
+                {"opportunity_id": "200", "title": "ROSES Earth", "publisher": "NASA",
+                 "deadline": "2026-10-20", "human_url": "https://www.grants.gov/x200"},
+            ]},
+        }])
+        findings = _build_findings(hops, store)
+        self.assertEqual(len(findings), 1, "only HIT (opp 100) becomes a finding")
+        f = findings[0]
+        self.assertEqual(f["opportunity_id"], "100")
+        self.assertEqual(f["url"], "https://www.grants.gov/x100")
+        self.assertEqual(f["deadline"], "2026-12-01")
+        self.assertEqual(f["event_id"], "J-abc12345")  # runner-attached, worker never wrote it
+        self.assertIn("AI infrastructure", f["reason"])
+
+    def test_allowed_tools_opens_research_loop(self):
+        """§①4: 工具环按 allowed_tools 开,不按 worker 名。deep + [web.search] → 环开。"""
+        from mission.config import mission_template
+        t = mission_template("scout")
+        self.assertEqual(t["worker"], "deep")  # 钉死 deep,不 fallback research
+        self.assertIn("web.search", t["tools"])
+        # the gate: allowed_tools 含 web.search 即开(不查 worker 名)
+        allowed = t["tools"]
+        opens = any(x in allowed for x in ("web.search", "grants.catalog", "grants.catalog_post"))
+        self.assertTrue(opens, "deep+scout 的 allowed_tools 含 web.search → 研究环必须开")
+
+
 if __name__ == "__main__":
     unittest.main()

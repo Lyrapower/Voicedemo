@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re as _re
 import time
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,100 @@ _BOUNDS_VIOLATION_STEPS = {
     "BLOCKED_SANDBOX_MISSING", "GATE_DENIED", "BLOCKED_SEARCH", "BLOCKED_EGRESS",
     "RETRY_DENIED",
 }
+
+# 衔拍3: scout 钉死 deep(glm-5.2);lineage 每跳记 model_resolved,验收线 = glm-5.2。
+_MODEL_BY_WORKER = {
+    "deep": "glm-5.2",        # cloud-glm52 substrate
+    "research": "deepseek-chat",
+    "full": "glm-5.2",
+    "fast": "glm-5.2",
+    "cc": "glm-5.3",
+    "local": "qwen3.5-9b",
+}
+
+
+def _model_resolved(worker: str) -> str:
+    return _MODEL_BY_WORKER.get(worker, worker or "")
+
+
+# 衔拍3 §①3: worker 只判 HIT/MISS+理由;runner 从 catalog rows 自动附 URL/截止/event_id。
+_JUDGMENT_RE = _re.compile(r"opp\s+([0-9A-Za-z\-]+)\s*:\s*(HIT|MISS|YES|NO|命中|不命中)\s*[—\-:]\s*(.+)", _re.I)
+
+
+def _parse_judgments(worker_output: str) -> dict[str, tuple[str, str]]:
+    """Parse `opp <id>: HIT/MISS — <reason>` lines → {opp_id: (verdict, reason)}."""
+    out: dict[str, tuple[str, str]] = {}
+    if not worker_output:
+        return out
+    for line in worker_output.splitlines():
+        m = _JUDGMENT_RE.search(line)
+        if not m:
+            continue
+        oid = m.group(1).strip()
+        v = m.group(2).strip().upper()
+        verdict = "HIT" if v in ("HIT", "YES", "命中") else "MISS"
+        reason = m.group(3).strip()[:200]
+        out[oid] = (verdict, reason)
+    return out
+
+
+def _collect_catalog_rows(hops: list[dict], store) -> dict[str, dict]:
+    """Merge catalog rows from all hops' tool_search events → {opp_id: row+hop_job_id}."""
+    merged: dict[str, dict] = {}
+    for h in hops:
+        jid = h.get("job_id") or h.get("event_id")
+        if not jid:
+            continue
+        try:
+            evs = store.list_events(jid)
+        except Exception:
+            evs = []
+        for e in evs:
+            if e.get("kind") != "tool_search":
+                continue
+            try:
+                payload = e.get("payload")
+                if isinstance(payload, str):
+                    payload = json.loads(payload)
+            except Exception:
+                payload = {}
+            for r in (payload or {}).get("catalog_rows") or []:
+                oid = r.get("opportunity_id")
+                if not oid:
+                    continue
+                if oid not in merged:
+                    merged[oid] = dict(r)
+                    merged[oid]["event_id"] = jid
+                    merged[oid]["hop"] = h.get("hop")
+    return merged
+
+
+def _build_findings(hops: list[dict], store) -> list[dict]:
+    """Runner-built findings: catalog rows the worker judged HIT, auto-attached URL/deadline/event_id."""
+    catalog = _collect_catalog_rows(hops, store)
+    if not catalog:
+        return []
+    judgments: dict[str, tuple[str, str]] = {}
+    for h in hops:
+        judgments.update(_parse_judgments(h.get("worker_output") or ""))
+    findings = []
+    for oid, row in catalog.items():
+        v = judgments.get(oid)
+        # default to HIT if worker gave no judgment but catalog returned the row (worker silent → treat as candidate)
+        verdict = v[0] if v else "HIT"
+        reason = v[1] if v else (row.get("summary") or "")[:120]
+        if verdict != "HIT":
+            continue
+        findings.append({
+            "opportunity_id": oid,
+            "title": row.get("title") or "unknown",
+            "agency": row.get("publisher") or "unknown",
+            "url": row.get("human_url") or f"https://www.grants.gov/search-results-detail/{oid}",
+            "deadline": row.get("deadline") or "unknown",
+            "event_id": row.get("event_id") or "",
+            "reason": reason,
+        })
+    return findings
 
 
 def _state_dir(mission_id: str) -> Path:
@@ -153,8 +248,11 @@ def _hop_goal(mission: dict, hops: list[dict], prior: dict | None, hop_n: int,
         f"\nBudget remaining: hops={budget_hops_left} usd={budget_usd_left:.4f}\n"
         f"\nAllowed tools (use ONLY these): {tools_txt}\n"
         f"\nExecute the next concrete action toward the mission goal using ONLY the allowed tools above. "
-        f"Every fact you report MUST come from a tool call (e.g. a web.fetch/web.search result) — do not "
-        f"assert facts from memory alone. Then output a fenced ```job block with fields (action, bounds, "
+        f"Every fact you report MUST come from a tool call (e.g. a web.fetch/web.search/grants.catalog result) — do not "
+        f"assert facts from memory alone. For EACH catalog opportunity the tools returned, output one judgment line "
+        f"exactly as: `opp <opportunity_id>: HIT — <one-sentence reason>` or `opp <opportunity_id>: MISS — <reason>`. "
+        f"Do NOT write the grants.gov URL, deadline, or event_id yourself — the runner attaches those from the catalog. "
+        f"Then output a fenced ```job block with fields (action, bounds, "
         f"resources) for the NEXT action, or a fenced ```STOP block if the mission is complete. Do not write "
         f"to the host filesystem outside the sandbox, do not spend money, do not call domains outside the "
         f"egress lanes."
@@ -175,7 +273,7 @@ def _dossier_goal(mission: dict, hops: list[dict]) -> str:
     )
 
 
-def _check_stop(mission: dict, hops: list[dict]) -> tuple[bool, str]:
+def _check_stop(mission: dict, hops: list[dict], store=None) -> tuple[bool, str]:
     """Return (should_close, reason)."""
     if mission["hops_used"] >= mission["budget_hops"] > 0:
         return True, "budget_exhausted_hops"
@@ -191,12 +289,12 @@ def _check_stop(mission: dict, hops: list[dict]) -> tuple[bool, str]:
         return True, "discipline_fail"
     # user stop conditions (simple 'n>=10' style evaluated against hops count / lineage)
     for cond in mission.get("stop_conditions") or []:
-        if _eval_condition(cond, mission, hops):
+        if _eval_condition(cond, mission, hops, store):
             return True, f"stop_condition:{cond}"
     return False, ""
 
 
-def _eval_condition(cond: str, mission: dict, hops: list[dict]) -> bool:
+def _eval_condition(cond: str, mission: dict, hops: list[dict], store=None) -> bool:
     """Best-effort eval of simple stop conditions like 'n>=10' or 'hops>=10'."""
     import re as _re
     m = _re.match(r"\s*(\w+)\s*(>=|<=|==|>|<)\s*(\d+)\s*$", cond)
@@ -204,7 +302,10 @@ def _eval_condition(cond: str, mission: dict, hops: list[dict]) -> bool:
         return False
     var, op, num = m.group(1), m.group(2), int(m.group(3))
     val = mission["hops_used"]
-    if var in {"n", "hops", "hop"}:
+    if var in {"n", "findings", "hit"}:
+        # 衔拍3 §①3: n counts runner-built findings (HITs), not hops
+        val = len(_build_findings(hops, store)) if store is not None else mission["hops_used"]
+    elif var in {"hops", "hop"}:
         val = mission["hops_used"]
     elif var == "usd":
         val = mission["usd_used"]
@@ -250,7 +351,7 @@ async def _tick_mission(mission: dict, supervisor, store) -> None:
     # 2. no active job — check stop / budget, then submit next hop
     m = store.get_mission(mid)  # refreshed counters
     hops = _load_lineage_hops(mid)
-    close, reason = _check_stop(m, hops)
+    close, reason = _check_stop(m, hops, store)
     if close:
         await _close_mission(m, hops, reason, store, supervisor)
         return
@@ -264,15 +365,16 @@ async def _tick_mission(mission: dict, supervisor, store) -> None:
     goal = _hop_goal(m, hops, prior, hop_n, next_payload)
 
     try:
-        # research/deepseek is a cloud route; deep/glm-5.2 is not. Mission hops must be
-        # able to reach the worker's route, so cloud_allowed follows the worker.
-        is_cloud = m["worker"] in {"research", "full"}
+        # cloud_lane workers: fast/deep/full/research all route to harness.cloud_lane.
+        # local→local_lane, cc→cc_lane. cloud_allowed follows whether the worker is a cloud route.
+        is_cloud = m["worker"] in {"fast", "deep", "full", "research"}
         new_job = store.create_job(
             channel="grid", goal=goal, worker=m["worker"],
             allowed_tools=m.get("tools") or [], allowed_paths=["."],
             cloud_allowed=is_cloud, approval_mode="auto",
             read_only=True, kind="chat",
             origin=f"mission:{mid}", lane=m.get("lane") or "",
+            search=m.get("search") or None,
         )
         store.update_mission(mid, active_job_id=new_job["job_id"])
     except Exception as e:
@@ -341,6 +443,8 @@ async def _complete_hop(mission: dict, job: dict, store) -> None:
         "status": status, "conclusion": conclusion,
         "worker_output": wo[-2000:], "last_step": job.get("last_step"),
         "tool_calls": tool_calls,
+        "worker": job.get("worker") or "",
+        "model_resolved": _model_resolved(job.get("worker") or ""),
     })
 
     store.update_mission(mid, hops_used=hops_used, usd_used=usd_used,
@@ -352,13 +456,15 @@ async def _complete_hop(mission: dict, job: dict, store) -> None:
 
 async def _close_mission(mission: dict, hops: list[dict], reason: str, store, supervisor) -> None:
     mid = mission["mission_id"]
+    w = mission.get("worker") or "deep"
+    is_cloud = w in {"fast", "deep", "full", "research"}
     # submit dossier hop (always allowed, even if budget exhausted)
     try:
         djob = store.create_job(
-            channel="grid", goal=_dossier_goal(mission, hops), worker=mission["worker"],
-            allowed_tools=[], allowed_paths=["."], cloud_allowed=False,
+            channel="grid", goal=_dossier_goal(mission, hops), worker=w,
+            allowed_tools=[], allowed_paths=["."], cloud_allowed=is_cloud,
             approval_mode="auto", read_only=True, kind="chat",
-            origin=f"mission:{mid}:dossier",
+            origin=f"mission:{mid}:dossier", lane=mission.get("lane") or "",
         )
     except Exception as e:
         store.update_mission(mid, status="failed", close_reason=f"dossier_err:{type(e).__name__}")
@@ -386,11 +492,23 @@ async def _close_mission(mission: dict, hops: list[dict], reason: str, store, su
     if not dossier_text:
         dossier_text = f"(dossier hop {djob['job_id']} produced no text; close_reason={reason})"
 
-    # dossier收口判: count findings = lines with both a URL and an event_id (J-... or hop N)
-    # for scout lane, require grants.gov URLs specifically
-    domain = "grants.gov" if mission.get("lane") == "scout" else ""
-    findings = _count_findings(dossier_text, domain=domain)
+    # 衔拍3 §①3: findings 由 runner 建——从 catalog rows 自动附 URL/截止/event_id,worker 只判 HIT/MISS+理由。
+    rfindings = _build_findings(hops, store)
+    findings = len(rfindings)
+    # runner-built dossier section (auto-attached URL/deadline/event_id); worker dossier appended below as narrative.
+    rlines = ["# MISSION DOSSIER (runner-built findings)", ""]
+    rlines.append(f"close_reason: {reason} | findings: {findings}")
+    rlines.append("")
+    rlines.append("| # | Title | Agency | Deadline | URL | event_id | Reason |")
+    rlines.append("|---|-------|--------|----------|-----|----------|--------|")
+    for i, f in enumerate(rfindings, 1):
+        rlines.append(f"| {i} | {f['title']} | {f['agency']} | {f['deadline']} | {f['url']} | {f['event_id']} | {f['reason']} |")
+    rlines.append("")
+    rlines.append("## Worker narrative")
+    rlines.append(dossier_text[:1500])
+    dossier_text = "\n".join(rlines)[:3000]
     dossier_complete = findings >= 1
+    # scout 验收线: 至少 1 条 grants.gov finding(衔拍3 绿=10 由 stop_condition n>=10 把关)
 
     dp = _state_dir(mid) / "DOSSIER.md"
     dp.write_text(dossier_text[:3000], encoding="utf-8")

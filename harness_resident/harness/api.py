@@ -53,6 +53,7 @@ class JobCreate(BaseModel):
     origin:str=""
     context_hash:str=""
     lane:str|None=None
+    search:list|dict|None=None
     latency_budget_ms:int|None=None
     steps:list=Field(default_factory=list)
 
@@ -218,7 +219,8 @@ def create_job_internal(body:JobCreate, *, scope:str="full"):
         cloud_allowed=ca,approval_mode=body.approval_mode,
         read_only=ro,kind=body.kind,status=status,last_step=last_step,
         origin=origin,context_hash=ctx,latency_budget_ms=latency,
-        steps=steps if steps else list(body.steps or []),topology_ack=ack,lane=lane)
+        steps=steps if steps else list(body.steps or []),topology_ack=ack,lane=lane,
+        search=body.search)
     if origin=="grid_compiled" or ctx:
         try: record_grid_action(job)
         except Exception: pass

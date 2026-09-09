@@ -483,6 +483,14 @@ def _active_secrets(path):
 def fetch(url,lane,*,egress_path='EGRESS.md',db_path=None,route_id=None,mission_id=None,substrate=None,signal_filter=None,opener=None,max_chars=MAX_CHARS,_tool='web.fetch',_private_check=None):
     secrets=_active_secrets(egress_path)
     result={'ok':False,'source_url':_safe_url(url,secrets),'lane':lane};grade=None
+    # 衔拍3 §①2: worker 拼的 malformed URL(含空格/非 https)→ INVALID_URL 进 prior,不算 DENIED。
+    u = url or ""
+    if not u or not u.lower().startswith("https://") or any(c in u for c in (" ", "\t", "\n")):
+        result.update(status="INVALID_URL", reason="malformed url (must be https, no whitespace)",
+                      ok=False, chars=0, truncated=False)
+        warning=_log(db_path,route_id,mission_id,substrate,_tool,result['source_url'],0,False,"unverified","INVALID_URL")
+        if warning:result['audit_warning']=warning
+        return result
     try:
         max_chars=int(max_chars)
         if not 1<=max_chars<=MAX_BYTES:raise Rejected('invalid max_chars')

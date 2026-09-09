@@ -420,3 +420,120 @@ def run_grants_catalog(
     elif rows:
         out["status"] = "ok"
     return out
+
+
+# 衔拍3 §①1: 结构化 catalog——同 query 一个 mission 内缓存(消 RATE_LIMITED×10)。
+_CATALOG_CACHE: dict[str, list] = {}
+
+
+def _catalog_cache_key(mission_id: str, keyword: str, statuses: str, agencies: str) -> str:
+    return f"{mission_id}|{keyword}|{statuses}|{agencies}"
+
+
+def run_grants_catalog_structured(
+    search_block: dict,
+    *,
+    lane: str,
+    db_path: str,
+    route_id: str,
+    mission_id: str,
+    egress_path: str = EGRESS_PATH,
+    max_details: int = 10,
+) -> dict:
+    """Structured grants.gov catalog from a missions.toml [search] block.
+
+    Iterates keywords (one Search2 POST each, cached per mission+keyword), merges rows,
+    dedupes by opportunity_id, filters by deadline_min_days, then fetches detail per row.
+    Returns {ok, status, rows, hit_count, keywords_run, cached, ...}.
+    """
+    from . import web_fetch_v3 as W3
+    import time as _t
+    keywords = list(search_block.get("keywords") or [])
+    opp_statuses = search_block.get("opp_statuses") or ["posted"]
+    agencies = search_block.get("agencies") or []
+    deadline_min_days = int(search_block.get("deadline_min_days") or 0)
+    rows_per = int(search_block.get("rows_per_query") or 10)
+    statuses_str = ",".join(opp_statuses) if isinstance(opp_statuses, list) else str(opp_statuses)
+    agencies_str = ",".join(agencies) if isinstance(agencies, list) else (str(agencies) if agencies else "")
+    out: dict[str, Any] = {
+        "ok": False, "status": "pending", "rows": [], "hit_count": 0,
+        "keywords_run": [], "cached_hits": 0, "deadline_min_days": deadline_min_days,
+        "original_queries": keywords,
+    }
+    if not keywords:
+        out["status"] = "NO_KEYWORDS"
+        return out
+    merged: dict[str, dict] = {}
+    cached_hits = 0
+    for kw in keywords:
+        ckey = _catalog_cache_key(mission_id, kw, statuses_str, agencies_str)
+        if ckey in _CATALOG_CACHE:
+            cached_hits += 1
+            for r in _CATALOG_CACHE[ckey]:
+                merged.setdefault(r["opportunity_id"], r)
+            out["keywords_run"].append({"keyword": kw, "cached": True})
+            continue
+        body = {"rows": rows_per, "keyword": kw, "oppStatuses": statuses_str}
+        if agencies_str:
+            body["agencies"] = agencies_str
+        search = W3.catalog_json_post(
+            W3.CATALOG_SEARCH2, body, lane,
+            egress_path=egress_path, db_path=db_path, route_id=route_id,
+            mission_id=mission_id, substrate=lane,
+        )
+        rows_k = []
+        if search.get("ok"):
+            parsed = W3.normalize_opp_hits(
+                search.get("json") or {},
+                source_url=str(search.get("source_url") or W3.CATALOG_SEARCH2),
+                fetched_at=search.get("fetched_at") or 0,
+                original_query=kw, derived_query=kw,
+            )
+            rows_k = parsed.get("rows") or []
+            _CATALOG_CACHE[ckey] = rows_k
+        for r in rows_k:
+            merged.setdefault(r["opportunity_id"], r)
+        out["keywords_run"].append({"keyword": kw, "cached": False, "ok": bool(search.get("ok")),
+                                    "status": search.get("status"), "n": len(rows_k)})
+    out["cached_hits"] = cached_hits
+    # deadline filter (client-side; closeDate >= now + deadline_min_days)
+    now = _t.time()
+    cutoff = now + deadline_min_days * 86400 if deadline_min_days > 0 else 0
+    rows = list(merged.values())
+    if cutoff > 0:
+        kept = []
+        for r in rows:
+            dl = r.get("deadline") or ""
+            try:
+                import datetime as _dt
+                ts = _dt.datetime.fromisoformat(dl.replace("Z", "")).timestamp()
+            except Exception:
+                ts = 0
+            if ts == 0 or ts >= cutoff:
+                kept.append(r)
+        rows = kept
+    # detail fetch per row (grants.detail by oppId — worker never拼 URL)
+    detailed = []
+    for row in rows[:max_details]:
+        detail = W3.catalog_json_post(
+            W3.CATALOG_FETCH_OPP, {"opportunityId": row["opportunity_id"]}, lane,
+            egress_path=egress_path, db_path=db_path, route_id=route_id,
+            mission_id=mission_id, substrate=lane,
+        )
+        row = dict(row)
+        row["detail_ok"] = bool(detail.get("ok"))
+        row["detail_status"] = detail.get("status")
+        dj = detail.get("json") if isinstance(detail.get("json"), dict) else {}
+        data = dj.get("data") if isinstance(dj.get("data"), dict) else {}
+        if data:
+            row["title"] = str(data.get("opportunityTitle") or row.get("title") or "unknown")
+            row["publisher"] = str(data.get("owningAgencyName") or data.get("agencyName") or row.get("publisher") or "unknown")
+            row["deadline"] = str(data.get("closeDate") or data.get("currentClosingDate") or row.get("deadline") or "unknown")
+            syn = str(data.get("synopsis") or data.get("description") or "")[:400]
+            row["summary"] = syn
+        detailed.append(row)
+    out["rows"] = detailed
+    out["hit_count"] = len(merged)
+    out["ok"] = bool(detailed) or bool(merged)
+    out["status"] = "ok" if detailed else ("NO_MATCH" if not merged else "NO_DEADLINE_MATCH")
+    return out

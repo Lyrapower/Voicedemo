@@ -143,6 +143,8 @@ class Store:
             self._conn.execute("ALTER TABLE jobs ADD COLUMN topology_ack INTEGER NOT NULL DEFAULT 0")
         if "lane" not in cols:
             self._conn.execute("ALTER TABLE jobs ADD COLUMN lane TEXT NOT NULL DEFAULT ''")
+        if "search" not in cols:
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN search TEXT NOT NULL DEFAULT ''")
         self._conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_confirm_hash "
             "ON jobs(context_hash) WHERE origin='grid_c_confirm' AND IFNULL(context_hash,'')!=''"
@@ -152,11 +154,12 @@ class Store:
     def create_job(self, *, channel, goal, worker, allowed_tools, allowed_paths, cloud_allowed, approval_mode,
                    read_only=True, kind="chat", status="queued", last_step=None,
                    origin="", context_hash="", latency_budget_ms=None, steps=None, topology_ack=False,
-                   lane=""):
+                   lane="", search=None):
         now=time.time()
         origin=origin or ""
         context_hash=context_hash or ""
         lane=lane or ""
+        search_json = json.dumps(search, ensure_ascii=False) if search else ""
         with self._lock:
             self._conn.execute("BEGIN IMMEDIATE")
             if origin=="grid_c_confirm" and context_hash:
@@ -171,12 +174,12 @@ class Store:
                 self._conn.execute("""INSERT INTO jobs(
                   job_id,channel,goal,worker,allowed_tools,allowed_paths,cloud_allowed,
                   approval_mode,status,created_at,updated_at,read_only,kind,last_step,
-                  origin,context_hash,latency_budget_ms,steps,topology_ack,lane
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                  origin,context_hash,latency_budget_ms,steps,topology_ack,lane,search
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (job_id,channel,goal,worker,json.dumps(allowed_tools),json.dumps(allowed_paths),
                  int(cloud_allowed),approval_mode,status,now,now,int(bool(read_only)),kind,last_step,
                  origin,context_hash,latency_budget_ms,
-                 json.dumps(steps or [],ensure_ascii=False),int(bool(topology_ack)),lane))
+                 json.dumps(steps or [],ensure_ascii=False),int(bool(topology_ack)),lane,search_json))
                 self._conn.commit()
             except sqlite3.IntegrityError:
                 self._conn.rollback()
@@ -231,7 +234,7 @@ class Store:
     def update_job(self, job_id, **fields):
         fields["updated_at"]=time.time()
         allowed={"worker","status","retry_count","last_step","last_artifact","pending_tool","cloud_allowed","updated_at","read_only","kind","receipt_event_id",
-                 "origin","context_hash","latency_budget_ms","steps","topology_ack","lane"}
+                 "origin","context_hash","latency_budget_ms","steps","topology_ack","lane","search"}
         bad=set(fields)-allowed
         if bad: raise ValueError(f"unsupported fields: {sorted(bad)}")
         pairs=", ".join(f"{k}=?" for k in fields)
@@ -393,6 +396,7 @@ class Store:
           "steps":json.loads(r["steps"]) if "steps" in keys and r["steps"] else [],
           "topology_ack":bool(r["topology_ack"]) if "topology_ack" in keys else False,
           "lane":r["lane"] if "lane" in keys else "",
+          "search": json.loads(r["search"]) if "search" in keys and r["search"] else None,
         }
 
     def put_job_receipt(self, *, event_id: str, job_id: str, receipt_line: str, worker_output: str = ""):

@@ -506,14 +506,17 @@ class Supervisor:
         return any(k in g for k in ("search","grant","rfp","scout","opportunit","dossier","rwa","knowledge","gardener","prototype"))
 
     async def _web_research_loop(self,job,route,worker,sess,messages,text):
-        if worker!="research":
+        # 衔拍3 §①4: 工具环按 allowed_tools 开,不按 worker 名。deep 只要 allowed_tools 含
+        # web.search / grants.catalog 即开研究环——scout→deep 的设定才成立。
+        allowed = job.get("allowed_tools") or []
+        if not any(t in allowed for t in ("web.search", "grants.catalog", "grants.catalog_post")):
             return text
         os.environ.setdefault("WEB_FETCH_SEARCH_PROVIDERS","github,ddg_api,wikipedia,ddg_html,ddg_lite")
         from .tool_loop import (
             classify_discovery, collect_search_queries, format_search_result,
             format_tool_result, qualify_fetch, run_fetches, run_search, PROVIDER_KIND,
             SCOUT_CATALOG_URLS, catalog_hits_from_fetch, catalog_follow_urls,
-            run_grants_catalog,
+            run_grants_catalog, run_grants_catalog_structured,
         )
         db_path=str(self.cfg.core.db_path)
         if not Path(db_path).is_absolute():
@@ -529,9 +532,16 @@ class Supervisor:
         for r in sr.get("results") or []:
             r.setdefault("provider_kind", PROVIDER_KIND.get(str(r.get("provider") or ""), "unknown"))
         if lane=="scout":
-            cat_api=run_grants_catalog(
-                str(job.get("goal") or ""), lane=lane, db_path=db_path,
-                route_id=str(route), mission_id=str(job.get("job_id") or ""))
+            # 衔拍3 §①1: 结构化 catalog 从 job.search 块组请求(不从 goal 文本);同 query mission 内缓存。
+            sblk = job.get("search")
+            if sblk and isinstance(sblk, dict) and sblk.get("keywords"):
+                cat_api = run_grants_catalog_structured(
+                    sblk, lane=lane, db_path=db_path,
+                    route_id=str(route), mission_id=str(job.get("job_id") or ""))
+            else:
+                cat_api = run_grants_catalog(
+                    str(job.get("goal") or ""), lane=lane, db_path=db_path,
+                    route_id=str(route), mission_id=str(job.get("job_id") or ""))
             sr["catalog"]=cat_api
             for row in cat_api.get("rows") or []:
                 sr.setdefault("results", []).append({
@@ -545,8 +555,10 @@ class Supervisor:
                         f"eligibility: {row.get('eligibility')} status {row.get('status')} "
                         f"qualification {row.get('qualification')}"
                     ),
+                    "opportunity_id": row.get("opportunity_id"),
                     "opportunity_number": row.get("opportunity_number"),
                     "deadline": row.get("deadline"),
+                    "summary": row.get("summary"),
                 })
             cat=[qualify_fetch(x) for x in run_fetches(
                 list(SCOUT_CATALOG_URLS),lane=lane,db_path=db_path,
@@ -577,6 +589,14 @@ class Supervisor:
             "n":len(sr.get("results") or []),"discovery_class":sr["discovery_class"],
             "lane":lane,"attempts":sr.get("queries"),
             "catalog_fetches":sr.get("catalog_fetches") or [],
+            # 衔拍3 §①3: catalog rows 进 event,runner 据此自动附 URL/截止/event_id 建 findings。
+            "catalog_rows":[
+                {"opportunity_id":r.get("opportunity_id"),"title":r.get("title"),
+                 "publisher":r.get("publisher"),"deadline":r.get("deadline"),
+                 "human_url":r.get("human_url"),"status":r.get("status"),
+                 "summary":(r.get("summary") or "")[:200]}
+                for r in (sr.get("catalog",{}) or {}).get("rows",[])
+            ],
         })
         blob=format_search_result(sr)
         budget=int(job.get("fetch_budget") or 4)
