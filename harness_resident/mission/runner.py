@@ -54,11 +54,11 @@ def _model_resolved(worker: str) -> str:
 
 
 # 衔拍3 §①3: worker 只判 HIT/MISS+理由;runner 从 catalog rows 自动附 URL/截止/event_id。
-_JUDGMENT_RE = _re.compile(r"opp\s+([0-9A-Za-z\-]+)\s*:\s*(HIT|MISS|YES|NO|命中|不命中)\s*[—\-:]\s*(.+)", _re.I)
+_JUDGMENT_RE = _re.compile(r"(?:opp\s+)?([0-9A-Za-z\-]{3,})\s*[:\-]?\s*(HIT|MISS|YES|NO|命中|不命中)\b\s*[—\-:\)]?\s*(.*)", _re.I)
 
 
 def _parse_judgments(worker_output: str) -> dict[str, tuple[str, str]]:
-    """Parse `opp <id>: HIT/MISS — <reason>` lines → {opp_id: (verdict, reason)}."""
+    """Parse judgment lines like `opp 363240: HIT — reason` or `363240 HIT reason` → {opp_id: (verdict, reason)}."""
     out: dict[str, tuple[str, str]] = {}
     if not worker_output:
         return out
@@ -69,7 +69,7 @@ def _parse_judgments(worker_output: str) -> dict[str, tuple[str, str]]:
         oid = m.group(1).strip()
         v = m.group(2).strip().upper()
         verdict = "HIT" if v in ("HIT", "YES", "命中") else "MISS"
-        reason = m.group(3).strip()[:200]
+        reason = m.group(3).strip().strip("—-:)").strip()[:200]
         out[oid] = (verdict, reason)
     return out
 
@@ -116,9 +116,9 @@ def _build_findings(hops: list[dict], store) -> list[dict]:
     findings = []
     for oid, row in catalog.items():
         v = judgments.get(oid)
-        # default to HIT if worker gave no judgment but catalog returned the row (worker silent → treat as candidate)
-        verdict = v[0] if v else "HIT"
-        reason = v[1] if v else (row.get("summary") or "")[:120]
+        # 衔拍3: worker 必须显式判 HIT 才进 dossier;无判断 → MISS(ROSES 等广匹配不静默进 dossier)
+        verdict = v[0] if v else "MISS"
+        reason = v[1] if v else ""
         if verdict != "HIT":
             continue
         findings.append({
@@ -248,13 +248,20 @@ def _hop_goal(mission: dict, hops: list[dict], prior: dict | None, hop_n: int,
         f"\nBudget remaining: hops={budget_hops_left} usd={budget_usd_left:.4f}\n"
         f"\nAllowed tools (use ONLY these): {tools_txt}\n"
         f"\nExecute the next concrete action toward the mission goal using ONLY the allowed tools above. "
-        f"Every fact you report MUST come from a tool call (e.g. a web.fetch/web.search/grants.catalog result) — do not "
-        f"assert facts from memory alone. For EACH catalog opportunity the tools returned, output one judgment line "
-        f"exactly as: `opp <opportunity_id>: HIT — <one-sentence reason>` or `opp <opportunity_id>: MISS — <reason>`. "
-        f"Do NOT write the grants.gov URL, deadline, or event_id yourself — the runner attaches those from the catalog. "
-        f"Then output a fenced ```job block with fields (action, bounds, "
-        f"resources) for the NEXT action, or a fenced ```STOP block if the mission is complete. Do not write "
-        f"to the host filesystem outside the sandbox, do not spend money, do not call domains outside the "
+        f"Every fact you report MUST come from a tool call (e.g. a web.search/grants.catalog result) — do not "
+        f"assert facts from memory alone.\n"
+        f"\nJUDGMENT RULE (mandatory, do not skip): The grants.catalog tool already returns each opportunity "
+        f"WITH its detail (title, agency, deadline, eligibility, summary) — do NOT call grants.detail yourself, "
+        f"do NOT emit fake tool calls like `<<grants.detail:...>>`, and do NOT attempt web.fetch on grants.gov "
+        f"detail URLs. For EACH opportunity the catalog returned, output ONE line EXACTLY in this format:\n"
+        f"  opp <opportunity_id>: HIT — <one-sentence reason it matches the mission scope>\n"
+        f"  opp <opportunity_id>: MISS — <one-sentence reason it is out of scope>\n"
+        f"Judge strictly: a NASA ROSES Earth-Science opportunity is MISS for an AI-infrastructure mission; only "
+        f"opportunities whose subject genuinely matches the mission scope are HIT. After all judgment lines, "
+        f"output a fenced ```job block with fields (action, bounds, resources) for the NEXT action, or a fenced "
+        f"```STOP block if the mission is complete. Do not write the grants.gov URL, deadline, or event_id "
+        f"yourself — the runner attaches those. Do not write to the host filesystem outside the sandbox, do not "
+        f"spend money, do not call domains outside the "
         f"egress lanes."
     )
 
