@@ -465,6 +465,7 @@ def run_grants_catalog_structured(
         return out
     merged: dict[str, dict] = {}
     cached_hits = 0
+    import time as _t2
     for kw in keywords:
         ckey = _catalog_cache_key(mission_id, kw, statuses_str, agencies_str)
         if ckey in _CATALOG_CACHE:
@@ -476,13 +477,19 @@ def run_grants_catalog_structured(
         body = {"rows": rows_per, "keyword": kw, "oppStatuses": statuses_str}
         if agencies_str:
             body["agencies"] = agencies_str
-        search = W3.catalog_json_post(
-            W3.CATALOG_SEARCH2, body, lane,
-            egress_path=egress_path, db_path=db_path, route_id=route_id,
-            mission_id=mission_id, substrate=lane,
-        )
+        # retry on transient failure (CONNECT_FAILED/TIMEOUT) — 衔拍3 §①1 可靠性
+        search = None
+        for attempt in range(3):
+            search = W3.catalog_json_post(
+                W3.CATALOG_SEARCH2, body, lane,
+                egress_path=egress_path, db_path=db_path, route_id=route_id,
+                mission_id=mission_id, substrate=lane,
+            )
+            if search.get("ok"):
+                break
+            _t2.sleep(1.0 * (attempt + 1))  # backoff 1s, 2s
         rows_k = []
-        if search.get("ok"):
+        if search and search.get("ok"):
             parsed = W3.normalize_opp_hits(
                 search.get("json") or {},
                 source_url=str(search.get("source_url") or W3.CATALOG_SEARCH2),
@@ -493,8 +500,10 @@ def run_grants_catalog_structured(
             _CATALOG_CACHE[ckey] = rows_k
         for r in rows_k:
             merged.setdefault(r["opportunity_id"], r)
-        out["keywords_run"].append({"keyword": kw, "cached": False, "ok": bool(search.get("ok")),
-                                    "status": search.get("status"), "n": len(rows_k)})
+        out["keywords_run"].append({"keyword": kw, "cached": False, "ok": bool(search and search.get("ok")),
+                                    "status": (search or {}).get("status"), "n": len(rows_k),
+                                    "attempts": attempt + 1})
+        _t2.sleep(0.4)  # gentle pacing between keywords (avoid grants.gov rate limit)
     out["cached_hits"] = cached_hits
     # deadline filter (client-side; closeDate >= now + deadline_min_days)
     now = _t.time()
