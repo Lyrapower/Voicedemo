@@ -112,7 +112,17 @@ def _build_findings(hops: list[dict], store) -> list[dict]:
         return []
     judgments: dict[str, tuple[str, str]] = {}
     for h in hops:
-        judgments.update(_parse_judgments(h.get("worker_output") or ""))
+        # 衔拍3: 读完整 worker_output(lineage 只存 wo[-2000:],判定在开头会被截断丢)
+        jid = h.get("job_id") or h.get("event_id")
+        wo = h.get("worker_output") or ""
+        if store is not None and jid:
+            try:
+                full = store.get_job_result_text(jid)
+                if full and isinstance(full, str):
+                    wo = full
+            except Exception:
+                pass
+        judgments.update(_parse_judgments(wo))
     findings = []
     for oid, row in catalog.items():
         v = judgments.get(oid)

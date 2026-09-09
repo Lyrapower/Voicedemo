@@ -19,15 +19,20 @@ note = "找本周新发布、加州或联邦、与商业地产/资管/能源/AI 
 keywords = [
   "artificial intelligence infrastructure",
   "AI infrastructure",
+  "cyberinfrastructure",
+  "machine learning",
+  "broadband deployment",
   "broadband infrastructure",
-  "clean energy infrastructure",
-  "commercial real estate",
+  "clean energy",
+  "renewable energy infrastructure",
+  "smart grid",
+  "energy infrastructure",
 ]
 opp_statuses = ["posted"]
 agencies = []
 categories = []
 deadline_min_days = 14
-rows_per_query = 10
+rows_per_query = 25
 
 [mission.builder]
 lane = "builder"
