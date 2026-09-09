@@ -458,7 +458,9 @@ def run_grants_detail(
     data = dj.get("data") if isinstance(dj.get("data"), dict) else {}
     if not data:
         return out
-    at = data.get("applicantTypes") or data.get("eligibleApplicants") or data.get("eligibility") or []
+    syn = data.get("synopsis") if isinstance(data.get("synopsis"), dict) else {}
+    at = (syn.get("applicantTypes") or data.get("applicantTypes")
+          or data.get("eligibleApplicants") or data.get("eligibility") or [])
     if isinstance(at, dict):
         at = at.get("applicantType") or at.get("list") or list(at.values())
     if not isinstance(at, list):
@@ -471,11 +473,19 @@ def run_grants_detail(
             labels.append(str(x).strip())
     labels = [x for x in labels if x]
     out["applicant_types"] = labels
-    out["eligibility"] = "; ".join(labels) if labels else str(data.get("eligibility") or "").strip()
-    out["title"] = str(data.get("opportunityTitle") or "").strip()
-    out["deadline"] = str(data.get("closeDate") or data.get("currentClosingDate") or "").strip()
-    out["status"] = str(data.get("opportunityStatus") or data.get("oppStatus") or "").strip()
-    out["agency"] = str(data.get("owningAgencyName") or data.get("agencyName") or "").strip()
+    desc = str(syn.get("applicantEligibilityDesc") or "").strip()
+    out["eligibility"] = ("; ".join(labels) if labels else "") or desc[:400] or str(data.get("eligibility") or "").strip()
+    out["title"] = str(data.get("opportunityTitle") or syn.get("opportunityTitle") or "").strip()
+    raw_dl = str(syn.get("responseDateStr") or data.get("closeDate") or data.get("currentClosingDate") or "").strip()
+    # grants.gov: 2027-01-20-00-00-00
+    parts = raw_dl.split("-")
+    if len(parts) >= 3 and parts[0].isdigit() and len(parts[0]) == 4:
+        out["deadline"] = f"{parts[0]}-{parts[1]}-{parts[2]}"
+    else:
+        out["deadline"] = raw_dl
+    ost = str(data.get("ost") or data.get("opportunityStatus") or syn.get("opportunityStatus") or "").strip()
+    out["status"] = "posted" if ost.upper() == "POSTED" else ost
+    out["agency"] = str((data.get("agencyDetails") or {}).get("agencyName") or syn.get("agencyName") or "").strip()
     return out
 
 
