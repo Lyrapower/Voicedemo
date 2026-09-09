@@ -113,6 +113,17 @@ def format_search_result(sr: dict) -> str:
             f"- [{kind}/{r.get('provider','')}] {r.get('title','')} | {r.get('url','')} | "
             f"{r.get('snippet','')[:160]}"
         )
+    # 衔拍3 §①3: catalog rows 全量展示(不混入 results[:8] 被截断)——worker 据此对每条判 HIT/MISS
+    cat = sr.get("catalog") or {}
+    cat_rows = cat.get("rows") or []
+    if cat_rows:
+        lines.append(f"[grants.catalog status={cat.get('status')} hit_count={cat.get('hit_count')} rows={len(cat_rows)}]")
+        for r in cat_rows:
+            lines.append(
+                f"- [grants_gov] opp {r.get('opportunity_id')} | {r.get('title','')} | "
+                f"agency={r.get('publisher','')} | deadline={r.get('deadline','')} | "
+                f"status={r.get('status','')} | summary={(r.get('summary') or '')[:200]}"
+            )
     for q in sr.get("queries") or []:
         lines.append(f"query {q.get('query')} status={q.get('status')} attempts={q.get('attempts')}")
     return "\n".join(lines)
