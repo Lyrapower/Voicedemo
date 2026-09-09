@@ -707,7 +707,7 @@ def _catalog_body(url, body):
         raise Rejected('catalog body must be object')
     extra = set(body)
     if url == CATALOG_SEARCH2:
-        extra -= {'rows', 'keyword', 'oppStatuses'}
+        extra -= {'rows', 'keyword', 'oppStatuses', 'startRecordNum'}
         if extra:
             raise Rejected('catalog search extra field')
         kw = str(body.get('keyword') or '').strip()
@@ -720,7 +720,14 @@ def _catalog_body(url, body):
         if not 1 <= rows <= 25:
             raise Rejected('catalog rows')
         st = str(body.get('oppStatuses') or 'posted').strip() or 'posted'
-        return {'rows': rows, 'keyword': kw, 'oppStatuses': st}
+        try:
+            off = int(body.get('startRecordNum') or 0)
+        except (TypeError, ValueError):
+            off = 0
+        out = {'rows': rows, 'keyword': kw, 'oppStatuses': st}
+        if off > 0:
+            out['startRecordNum'] = off
+        return out
     if url == CATALOG_FETCH_OPP:
         extra -= {'opportunityId'}
         if extra:

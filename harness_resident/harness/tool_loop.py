@@ -464,6 +464,7 @@ def run_grants_catalog_structured(
     agencies = search_block.get("agencies") or []
     deadline_min_days = int(search_block.get("deadline_min_days") or 0)
     rows_per = int(search_block.get("rows_per_query") or 10)
+    offset = int(search_block.get("offset") or 0)  # 衔拍3: 分页——每跳取不同页,累积 HITs
     statuses_str = ",".join(opp_statuses) if isinstance(opp_statuses, list) else str(opp_statuses)
     agencies_str = ",".join(agencies) if isinstance(agencies, list) else (str(agencies) if agencies else "")
     out: dict[str, Any] = {
@@ -478,7 +479,7 @@ def run_grants_catalog_structured(
     cached_hits = 0
     import time as _t2
     for kw in keywords:
-        ckey = _catalog_cache_key(mission_id, kw, statuses_str, agencies_str)
+        ckey = _catalog_cache_key(mission_id, kw, statuses_str, agencies_str) + f"|off{offset}"
         if ckey in _CATALOG_CACHE:
             cached_hits += 1
             for r in _CATALOG_CACHE[ckey]:
@@ -486,6 +487,8 @@ def run_grants_catalog_structured(
             out["keywords_run"].append({"keyword": kw, "cached": True})
             continue
         body = {"rows": rows_per, "keyword": kw, "oppStatuses": statuses_str}
+        if offset > 0:
+            body["startRecordNum"] = offset
         if agencies_str:
             body["agencies"] = agencies_str
         # retry on transient failure (CONNECT_FAILED/TIMEOUT) — 衔拍3 §①1 可靠性

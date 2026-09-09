@@ -571,7 +571,8 @@ class Supervisor:
             if sblk and isinstance(sblk, dict) and sblk.get("keywords"):
                 cat_api = run_grants_catalog_structured(
                     sblk, lane=lane, db_path=db_path,
-                    route_id=str(route), mission_id=str(job.get("job_id") or ""))
+                    route_id=str(route), mission_id=str(job.get("job_id") or ""),
+                    max_details=25)
             else:
                 cat_api = run_grants_catalog(
                     str(job.get("goal") or ""), lane=lane, db_path=db_path,

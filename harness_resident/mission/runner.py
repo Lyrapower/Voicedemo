@@ -385,13 +385,19 @@ async def _tick_mission(mission: dict, supervisor, store) -> None:
         # cloud_lane workers: fast/deep/full/research all route to harness.cloud_lane.
         # local→local_lane, cc→cc_lane. cloud_allowed follows whether the worker is a cloud route.
         is_cloud = m["worker"] in {"fast", "deep", "full", "research"}
+        # 衔拍3 §①1: 分页——每跳取 catalog 不同页(offset=(hop-1)*rows_per_query),累积 HITs 不卡在同 6 行
+        hop_search = None
+        if m.get("search"):
+            hop_search = dict(m["search"])
+            rpp = int(hop_search.get("rows_per_query") or 10)
+            hop_search["offset"] = (hop_n - 1) * rpp
         new_job = store.create_job(
             channel="grid", goal=goal, worker=m["worker"],
             allowed_tools=m.get("tools") or [], allowed_paths=["."],
             cloud_allowed=is_cloud, approval_mode="auto",
             read_only=True, kind="chat",
             origin=f"mission:{mid}", lane=m.get("lane") or "",
-            search=m.get("search") or None,
+            search=hop_search,
         )
         store.update_mission(mid, active_job_id=new_job["job_id"])
     except Exception as e:
