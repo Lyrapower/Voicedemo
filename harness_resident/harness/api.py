@@ -78,6 +78,7 @@ class MissionCreate(BaseModel):
     budget_usd:float=0.0
     stop_conditions:list[str]=Field(default_factory=list)
     tools:list[str]=Field(default_factory=list)
+    search:list|dict|None=None
     created_by:str="manual"
     status:str="proposed"
     read_only:bool=True
@@ -677,11 +678,21 @@ async def cancel_job(job_id:str):
 async def create_mission(body:MissionCreate):
     if body.status not in {"proposed","running"}:
         raise HTTPException(400,"status must be proposed or running")
+    # 衔拍3 §①1: 若未显式给 search 块,从 lane 对应模板加载结构化 catalog 查询(scout 模板)
+    search_block = body.search
+    if search_block is None and body.lane:
+        try:
+            from mission.config import mission_template
+            tmpl = mission_template(body.lane)
+            if tmpl and tmpl.get("search"):
+                search_block = tmpl["search"]
+        except Exception:
+            pass
     m=store.create_mission(goal=body.goal,lane=body.lane,worker=body.worker,
                            budget_hops=body.budget_hops,budget_tokens=body.budget_tokens,
                            budget_wall_s=body.budget_wall_s,budget_usd=body.budget_usd,
                            stop_conditions=body.stop_conditions,created_by=body.created_by,
-                           tools=body.tools)
+                           tools=body.tools,search=search_block)
     if body.status=="running":
         store.update_mission(m["mission_id"],status="running")
     return store.get_mission(m["mission_id"])
