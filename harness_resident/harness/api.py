@@ -693,7 +693,12 @@ async def create_mission(body:MissionCreate):
                     tools_list = list(tmpl["tools"])
         except Exception:
             pass
-    m=store.create_mission(goal=body.goal,lane=body.lane,worker=body.worker,
+    try:
+        from mission.runner import resolve_mission_worker, WorkerLockError
+        locked_worker = resolve_mission_worker(body.lane, body.worker)
+    except WorkerLockError as e:
+        raise HTTPException(400, str(e))
+    m=store.create_mission(goal=body.goal,lane=body.lane,worker=locked_worker,
                            budget_hops=body.budget_hops,budget_tokens=body.budget_tokens,
                            budget_wall_s=body.budget_wall_s,budget_usd=body.budget_usd,
                            stop_conditions=body.stop_conditions,created_by=body.created_by,

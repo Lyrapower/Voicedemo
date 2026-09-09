@@ -629,6 +629,8 @@ class Supervisor:
                 {"opportunity_id":r.get("opportunity_id"),"title":r.get("title"),
                  "publisher":r.get("publisher"),"deadline":r.get("deadline"),
                  "human_url":r.get("human_url"),"status":r.get("status"),
+                 "eligibility":r.get("eligibility"),
+                 "applicant_types":r.get("applicant_types") or [],
                  "summary":(r.get("summary") or "")[:200]}
                 for r in (sr.get("catalog",{}) or {}).get("rows",[])
             ],

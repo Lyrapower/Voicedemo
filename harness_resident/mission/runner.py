@@ -53,6 +53,28 @@ def _model_resolved(worker: str) -> str:
     return _MODEL_BY_WORKER.get(worker, worker or "")
 
 
+class WorkerLockError(ValueError):
+    """scout 钉死 deep; research worker 只跑 research 模板。禁止 fallback。"""
+
+
+def resolve_mission_worker(lane: str, requested: str | None) -> str:
+    """衔补: scout 模板 worker 钉死 deep; runner 不允许 fallback 到 research;
+    research worker 只跑 missions.toml 里 worker=research 的模板(现为 rwa)。"""
+    from mission.config import mission_template
+    req = (requested or "").strip()
+    tmpl = mission_template(lane) if lane else None
+    tmpl_worker = str((tmpl or {}).get("worker") or "")
+    if lane == "scout":
+        if req and req != "deep":
+            raise WorkerLockError("scout_worker_locked_deep")
+        return "deep"
+    if req == "research":
+        if tmpl_worker != "research":
+            raise WorkerLockError("research_worker_template_only")
+        return "research"
+    return req or tmpl_worker or "deep"
+
+
 # 衔拍3 §①3: worker 只判 HIT/MISS+理由;runner 从 catalog rows 自动附 URL/截止/event_id。
 _JUDGMENT_RE = _re.compile(r"(?:opp\s+)?([0-9A-Za-z\-]{3,})\s*[:\-]?\s*(HIT|MISS|YES|NO|命中|不命中)\b\s*[—\-:\)]?\s*(.*)", _re.I)
 
@@ -105,14 +127,165 @@ def _collect_catalog_rows(hops: list[dict], store) -> dict[str, dict]:
     return merged
 
 
-def _build_findings(hops: list[dict], store) -> list[dict]:
-    """Runner-built findings: catalog rows the worker judged HIT, auto-attached URL/deadline/event_id."""
+_DEADLINE_EMPTY = {"", "unknown", "—", "-", "n/a", "none", "null"}
+_REASON_STOP = {
+    "the", "and", "for", "with", "that", "this", "from", "into", "your", "must",
+    "only", "grant", "grants", "scope", "mission", "discover", "funding",
+}
+_ELIG_OK = _re.compile(
+    r"individual|small\s+business|for[- ]?profit|unrestricted|private\s+institutions?|"
+    r"non[- ]?profits?|anyone|individuals",
+    _re.I,
+)
+_ELIG_INST = _re.compile(
+    r"institutions?\s+of\s+higher\s+education|state\s+controlled|state\s+governments?|"
+    r"county\s+governments?|city\s+or\s+township|public\s+housing|tribal\s+governments?|"
+    r"independent\s+school\s+districts|public\s+and\s+state",
+    _re.I,
+)
+
+
+def _blank(s: Any) -> bool:
+    return str(s or "").strip().lower() in _DEADLINE_EMPTY
+
+
+def _parse_deadline(raw: Any, now=None):
+    """Return (aware-utc datetime | None). Accepts ISO and US mm/dd/yyyy."""
+    from datetime import datetime, timezone
+    s = str(raw or "").strip()
+    if _blank(s):
+        return None
+    s = s.replace("Z", "")
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%m/%d/%Y", "%m-%d-%Y", "%Y/%m/%d"):
+        try:
+            dt = datetime.strptime(s[:19], fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except ValueError:
+            continue
+    try:
+        from datetime import datetime as _dt, timezone as _tz
+        dt = _dt.fromisoformat(s[:19])
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_tz.utc)
+        return dt
+    except ValueError:
+        return None
+
+
+def _deadline_kind(raw: Any, now=None) -> tuple[str | None, str]:
+    """('', '') ok-and-count; ('rolling','') count; (None, reason) abandon."""
+    from datetime import datetime, timezone, timedelta
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    dt = _parse_deadline(raw, now)
+    if dt is None:
+        return None, "missing_field"
+    days = (dt - now).total_seconds() / 86400.0
+    if days < 14:
+        return None, "deadline_lt_14d"
+    if days > 730:
+        return "rolling", ""
+    return "", ""
+
+
+def _tokens(text: str) -> set[str]:
+    return {w.lower() for w in _re.findall(r"[A-Za-z\u4e00-\u9fff]{4,}", text or "")} - _REASON_STOP
+
+
+def _reason_cites_both(reason: str, goal: str, eligibility: str) -> bool:
+    if not str(reason or "").strip():
+        return False
+    rlow = reason.lower()
+    gtoks, etoks = _tokens(goal), _tokens(eligibility)
+    cites_goal = (not gtoks) or any(t in rlow for t in gtoks)
+    cites_elig = (not etoks) or any(t in rlow for t in etoks)
+    return cites_goal and cites_elig
+
+
+def _is_ineligible(elig: str) -> bool:
+    parts = [p.strip() for p in _re.split(r"[;|,/\n]", elig or "") if p.strip() and not _blank(p)]
+    if not parts:
+        return False
+    if any(_ELIG_OK.search(p) for p in parts):
+        return False
+    return bool(parts) and all(_ELIG_INST.search(p) for p in parts)
+
+
+def _write_abandoned_lineage(mission_id: str, abandoned: list[dict]) -> None:
+    for a in abandoned:
+        rec = dict(a)
+        rec["status"] = "ABANDONED"
+        rec.setdefault("reason", "missing_field")
+        _append_lineage_hop(mission_id, rec)
+
+
+def render_findings_receipt(findings: list[dict], *, model_id: str, window_compressed: str,
+                            mid: str, status: str, close_reason: str, hops_used: int,
+                            budget_hops: int, models: list[str], abandoned: list[dict] | None = None) -> str:
+    """Header counts are derived from findings rows. Do not hand-fill."""
+    n = len(findings)
+    n_url = sum(1 for f in findings if "grants.gov" in str(f.get("url") or "").lower())
+    n_dl = sum(1 for f in findings if _parse_deadline(f.get("deadline")) is not None)
+    n_eid = sum(1 for f in findings if str(f.get("event_id") or "").startswith("J-"))
+    n_title = sum(1 for f in findings if not _blank(f.get("title")))
+    lines = [
+        "# 衔拍3 §① 真跑 回执",
+        "",
+        f"模型 id: {model_id}",
+        f"窗口压缩: {window_compressed}",
+        "",
+        "---",
+        "",
+        f"## 结果: {status}",
+        "",
+        "| 项 | 值 |",
+        "|----|----|",
+        f"| MID | {mid} |",
+        f"| status | {status} |",
+        f"| close_reason | {close_reason} |",
+        f"| hops_used | {hops_used} / {budget_hops} |",
+        f"| model_resolved (每跳) | {' · '.join(models) if models else '(none)'} |",
+        f"| findings | {n} |",
+        f"| grants.gov URL | {n_url}/{n} |",
+        f"| deadline 列 | {n_dl}/{n} |",
+        f"| title 列 | {n_title}/{n} |",
+        f"| event_id 列 | {n_eid}/{n} |",
+        f"| abandoned | {len(abandoned or [])} |",
+        "",
+        "## findings (runner-built)",
+        "",
+        "| # | opp_id | Title | Agency | Deadline | kind | eligibility | URL | event_id | Reason |",
+        "|---|--------|-------|--------|----------|------|-------------|-----|----------|--------|",
+    ]
+    for i, f in enumerate(findings, 1):
+        lines.append(
+            f"| {i} | {f.get('opportunity_id','')} | {f.get('title','')} | {f.get('agency','')} | "
+            f"{f.get('deadline','')} | {f.get('deadline_kind') or ''} | {f.get('eligibility','')} | "
+            f"{f.get('url','')} | {f.get('event_id','')} | {f.get('reason','')} |"
+        )
+    if abandoned:
+        lines += ["", "## abandoned", "",
+                  "| opp_id | reason | title | deadline | status |",
+                  "|--------|--------|-------|----------|--------|"]
+        for a in abandoned:
+            lines.append(
+                f"| {a.get('opportunity_id','')} | {a.get('reason','')} | {a.get('title','')} | "
+                f"{a.get('deadline','')} | {a.get('opp_status','')} |"
+            )
+    return "\n".join(lines) + "\n"
+
+
+def _build_findings(hops: list[dict], store, *, goal: str = "", now=None,
+                    detail_fn=None, abandoned_out: list | None = None) -> list[dict]:
+    """HIT rows that survive title/deadline/status/eligibility filters. Failures → ABANDONED."""
     catalog = _collect_catalog_rows(hops, store)
     if not catalog:
         return []
     judgments: dict[str, tuple[str, str]] = {}
     for h in hops:
-        # 衔拍3: 读完整 worker_output(lineage 只存 wo[-2000:],判定在开头会被截断丢)
         jid = h.get("job_id") or h.get("event_id")
         wo = h.get("worker_output") or ""
         if store is not None and jid:
@@ -123,23 +296,61 @@ def _build_findings(hops: list[dict], store) -> list[dict]:
             except Exception:
                 pass
         judgments.update(_parse_judgments(wo))
-    findings = []
+    findings: list[dict] = []
+    abandoned: list[dict] = []
     for oid, row in catalog.items():
         v = judgments.get(oid)
-        # 衔拍3: worker 必须显式判 HIT 才进 dossier;无判断 → MISS(ROSES 等广匹配不静默进 dossier)
         verdict = v[0] if v else "MISS"
         reason = v[1] if v else ""
         if verdict != "HIT":
             continue
+        extra = {}
+        if detail_fn is not None:
+            try:
+                extra = detail_fn(oid) or {}
+            except Exception:
+                extra = {}
+        title = extra.get("title") or row.get("title")
+        deadline = extra.get("deadline") or row.get("deadline")
+        elig = extra.get("eligibility") or row.get("eligibility") or ""
+        if extra.get("applicant_types"):
+            elig = elig or "; ".join(str(x) for x in extra["applicant_types"])
+        status = str(extra.get("status") or row.get("status") or row.get("opp_status") or "").strip().lower()
+        def _aband(code: str) -> None:
+            abandoned.append({
+                "opportunity_id": oid, "reason": code, "title": title or "",
+                "deadline": deadline or "", "opp_status": status,
+                "event_id": row.get("event_id") or "",
+            })
+        if _blank(title) or _blank(deadline):
+            _aband("missing_field")
+            continue
+        if status and status != "posted":
+            _aband("not_posted")
+            continue
+        kind, dreason = _deadline_kind(deadline, now)
+        if dreason:
+            _aband(dreason)
+            continue
+        if _is_ineligible(str(elig)):
+            _aband("ineligible")
+            continue
+        if not _reason_cites_both(reason, goal, str(elig)):
+            _aband("reason_not_citing")
+            continue
         findings.append({
             "opportunity_id": oid,
-            "title": row.get("title") or "unknown",
-            "agency": row.get("publisher") or "unknown",
+            "title": str(title).strip(),
+            "agency": row.get("publisher") or extra.get("agency") or "unknown",
             "url": row.get("human_url") or f"https://www.grants.gov/search-results-detail/{oid}",
-            "deadline": row.get("deadline") or "unknown",
+            "deadline": str(deadline).strip(),
+            "deadline_kind": kind or "",
+            "eligibility": str(elig),
             "event_id": row.get("event_id") or "",
             "reason": reason,
         })
+    if abandoned_out is not None:
+        abandoned_out.extend(abandoned)
     return findings
 
 
@@ -260,19 +471,20 @@ def _hop_goal(mission: dict, hops: list[dict], prior: dict | None, hop_n: int,
         f"\nExecute the next concrete action toward the mission goal using ONLY the allowed tools above. "
         f"Every fact you report MUST come from a tool call (e.g. a web.search/grants.catalog result) — do not "
         f"assert facts from memory alone.\n"
-        f"\nJUDGMENT RULE (mandatory, do not skip): The grants.catalog tool already returns each opportunity "
-        f"WITH its detail (title, agency, deadline, eligibility, summary) — do NOT call grants.detail yourself, "
-        f"do NOT emit fake tool calls like `<<grants.detail:...>>`, and do NOT attempt web.fetch on grants.gov "
-        f"detail URLs. For EACH opportunity the catalog returned, output ONE line EXACTLY in this format:\n"
-        f"  opp <opportunity_id>: HIT — <one-sentence reason it matches the mission scope>\n"
+        f"\nJUDGMENT RULE (mandatory, do not skip): The runner calls grants.detail(oppId) and attaches "
+        f"eligibility. Do NOT call grants.detail yourself, do NOT emit fake tool calls, and do NOT "
+        f"web.fetch grants.gov detail URLs. For EACH catalog opportunity, output ONE line:\n"
+        f"  opp <opportunity_id>: HIT — <reason that Cites BOTH the mission goal AND that row's eligibility>\n"
         f"  opp <opportunity_id>: MISS — <one-sentence reason it is out of scope>\n"
-        f"Judge strictly: a NASA ROSES Earth-Science opportunity is MISS for an AI-infrastructure mission; only "
-        f"opportunities whose subject genuinely matches the mission scope are HIT. After all judgment lines, "
-        f"output a fenced ```job block with fields (action, bounds, resources) for the NEXT action, or a fenced "
-        f"```STOP block if the mission is complete. Do not write the grants.gov URL, deadline, or event_id "
-        f"yourself — the runner attaches those. Do not write to the host filesystem outside the sandbox, do not "
-        f"spend money, do not call domains outside the "
-        f"egress lanes."
+        f"HIT reason is required and must quote/cite (1) the mission goal text and (2) eligibility. "
+        f"A NASA ROSES Earth-Science opportunity is MISS for an AI-infrastructure mission.\n"
+        f"When you write the next ```job block, bounds MUST include:\n"
+        f"  goal: {mission.get('goal') or ''}\n"
+        f"  eligibility: <copy the eligibility string of the opportunities you judged>\n"
+        f"After all judgment lines, output a fenced ```job block with fields (action, bounds, resources), "
+        f"or ```STOP if complete. Do not write the grants.gov URL, deadline, or event_id yourself. "
+        f"Do not write to the host filesystem outside the sandbox, do not spend money, do not call "
+        f"domains outside the egress lanes."
     )
 
 
@@ -293,6 +505,17 @@ def _dossier_goal(mission: dict, hops: list[dict]) -> str:
 def _check_stop(mission: dict, hops: list[dict], store=None) -> tuple[bool, str]:
     """Return (should_close, reason)."""
     if mission["hops_used"] >= mission["budget_hops"] > 0:
+        # 勘: 30 跳不满过滤后 n>=10 → INCOMPLETE, 不放宽
+        target = 0
+        for cond in mission.get("stop_conditions") or []:
+            m = _re.match(r"\s*(n|findings|hit)\s*>=\s*(\d+)\s*$", cond)
+            if m:
+                target = int(m.group(2))
+                break
+        if target and store is not None:
+            n_ok = len(_build_findings(hops, store, goal=mission.get("goal") or ""))
+            if n_ok < target:
+                return True, "INCOMPLETE"
         return True, "budget_exhausted_hops"
     if mission["usd_used"] >= mission["budget_usd"] > 0:
         return True, "budget_exhausted_usd"
@@ -321,7 +544,8 @@ def _eval_condition(cond: str, mission: dict, hops: list[dict], store=None) -> b
     val = mission["hops_used"]
     if var in {"n", "findings", "hit"}:
         # 衔拍3 §①3: n counts runner-built findings (HITs), not hops
-        val = len(_build_findings(hops, store)) if store is not None else mission["hops_used"]
+        val = (len(_build_findings(hops, store, goal=mission.get("goal") or ""))
+               if store is not None else mission["hops_used"])
     elif var in {"hops", "hop"}:
         val = mission["hops_used"]
     elif var == "usd":
@@ -382,9 +606,15 @@ async def _tick_mission(mission: dict, supervisor, store) -> None:
     goal = _hop_goal(m, hops, prior, hop_n, next_payload)
 
     try:
+        # 衔补: scout 钉死 deep; 禁止 fallback research。锁失败则本 mission 失败,不改投 research。
+        try:
+            worker = resolve_mission_worker(m.get("lane") or "", m.get("worker"))
+        except WorkerLockError as e:
+            store.update_mission(mid, status="failed", close_reason=str(e), active_job_id=None)
+            return
         # cloud_lane workers: fast/deep/full/research all route to harness.cloud_lane.
         # local→local_lane, cc→cc_lane. cloud_allowed follows whether the worker is a cloud route.
-        is_cloud = m["worker"] in {"fast", "deep", "full", "research"}
+        is_cloud = worker in {"fast", "deep", "full", "research"}
         # 衔拍3 §①1: 分页——每跳取 catalog 不同页(offset=(hop-1)*rows_per_query),累积 HITs 不卡在同 6 行
         hop_search = None
         if m.get("search"):
@@ -392,7 +622,7 @@ async def _tick_mission(mission: dict, supervisor, store) -> None:
             rpp = int(hop_search.get("rows_per_query") or 10)
             hop_search["offset"] = (hop_n - 1) * rpp
         new_job = store.create_job(
-            channel="grid", goal=goal, worker=m["worker"],
+            channel="grid", goal=goal, worker=worker,
             allowed_tools=m.get("tools") or [], allowed_paths=["."],
             cloud_allowed=is_cloud, approval_mode="auto",
             read_only=True, kind="chat",
@@ -458,6 +688,22 @@ async def _complete_hop(mission: dict, job: dict, store) -> None:
         if parsed:
             ok, _ = validate_payload(parsed)
             next_payload = parsed if ok else None
+    if next_payload is not None:
+        b = next_payload.get("bounds")
+        if not isinstance(b, dict):
+            b = {}
+        b.setdefault("goal", mission.get("goal") or "")
+        # eligibility filled from catalog rows of this hop when present
+        if not b.get("eligibility"):
+            try:
+                rows = _collect_catalog_rows(
+                    [{"hop": hops_used, "job_id": jid, "event_id": jid}], store)
+                eligs = [str(r.get("eligibility") or "") for r in rows.values() if r.get("eligibility")]
+                if eligs:
+                    b["eligibility"] = "; ".join(eligs[:6])
+            except Exception:
+                pass
+        next_payload["bounds"] = b
     _save_next_payload(mid, next_payload)
 
     # append lineage hop
@@ -470,6 +716,15 @@ async def _complete_hop(mission: dict, job: dict, store) -> None:
         "model_resolved": _model_resolved(job.get("worker") or ""),
     })
 
+    abandoned: list[dict] = []
+    hops_now = _load_lineage_hops(mid)
+    _build_findings(hops_now, store, goal=mission.get("goal") or "", abandoned_out=abandoned)
+    # only persist newly seen abandon codes for this hop's opps
+    seen = {(a.get("opportunity_id"), a.get("reason")) for a in hops_now if a.get("status") == "ABANDONED"}
+    fresh = [a for a in abandoned if (a.get("opportunity_id"), a.get("reason")) not in seen]
+    if fresh:
+        _write_abandoned_lineage(mid, fresh)
+
     store.update_mission(mid, hops_used=hops_used, usd_used=usd_used,
                          denied_streak=denied_streak, out_of_bounds=out_of_bounds,
                          no_evidence_hops=no_evidence_hops,
@@ -479,7 +734,10 @@ async def _complete_hop(mission: dict, job: dict, store) -> None:
 
 async def _close_mission(mission: dict, hops: list[dict], reason: str, store, supervisor) -> None:
     mid = mission["mission_id"]
-    w = mission.get("worker") or "deep"
+    try:
+        w = resolve_mission_worker(mission.get("lane") or "", mission.get("worker"))
+    except WorkerLockError:
+        w = "deep"  # 锁失败也不许 dossier hop fallback 到 research
     is_cloud = w in {"fast", "deep", "full", "research"}
     # submit dossier hop (always allowed, even if budget exhausted)
     try:
@@ -515,17 +773,46 @@ async def _close_mission(mission: dict, hops: list[dict], reason: str, store, su
     if not dossier_text:
         dossier_text = f"(dossier hop {djob['job_id']} produced no text; close_reason={reason})"
 
-    # 衔拍3 §①3: findings 由 runner 建——从 catalog rows 自动附 URL/截止/event_id,worker 只判 HIT/MISS+理由。
-    rfindings = _build_findings(hops, store)
+    # 勘: findings 经过滤; 抬头计数从行程序生成。runner 调 grants.detail 补 eligibility。
+    abandoned: list[dict] = []
+    def _detail(oid: str) -> dict:
+        try:
+            from harness.tool_loop import run_grants_detail
+            return run_grants_detail(
+                oid, lane=mission.get("lane") or "scout",
+                db_path=str(getattr(store, "path", "") or ""),
+                mission_id=mid,
+            ) or {}
+        except Exception:
+            return {}
+    rfindings = _build_findings(
+        hops, store, goal=mission.get("goal") or "",
+        detail_fn=_detail, abandoned_out=abandoned,
+    )
     findings = len(rfindings)
-    # runner-built dossier section (auto-attached URL/deadline/event_id); worker dossier appended below as narrative.
+    seen = {(a.get("opportunity_id"), a.get("reason")) for a in hops if a.get("status") == "ABANDONED"}
+    fresh = [a for a in abandoned if (a.get("opportunity_id"), a.get("reason")) not in seen]
+    if fresh:
+        _write_abandoned_lineage(mid, fresh)
+    models = [h.get("model_resolved") or "" for h in hops if h.get("status") != "ABANDONED"]
+    receipt = render_findings_receipt(
+        rfindings, model_id="glm-5.2", window_compressed="否",
+        mid=mid, status="pending", close_reason=reason,
+        hops_used=mission.get("hops_used") or 0,
+        budget_hops=mission.get("budget_hops") or 0,
+        models=models, abandoned=abandoned,
+    )
+    (_state_dir(mid) / "RECEIPT.md").write_text(receipt, encoding="utf-8")
     rlines = ["# MISSION DOSSIER (runner-built findings)", ""]
     rlines.append(f"close_reason: {reason} | findings: {findings}")
     rlines.append("")
-    rlines.append("| # | Title | Agency | Deadline | URL | event_id | Reason |")
-    rlines.append("|---|-------|--------|----------|-----|----------|--------|")
+    rlines.append("| # | Title | Agency | Deadline | kind | eligibility | URL | event_id | Reason |")
+    rlines.append("|---|-------|--------|----------|------|-------------|-----|----------|--------|")
     for i, f in enumerate(rfindings, 1):
-        rlines.append(f"| {i} | {f['title']} | {f['agency']} | {f['deadline']} | {f['url']} | {f['event_id']} | {f['reason']} |")
+        rlines.append(
+            f"| {i} | {f['title']} | {f['agency']} | {f['deadline']} | {f.get('deadline_kind') or ''} | "
+            f"{f.get('eligibility','')} | {f['url']} | {f['event_id']} | {f['reason']} |"
+        )
     rlines.append("")
     rlines.append("## Worker narrative")
     rlines.append(dossier_text[:1500])
@@ -558,9 +845,19 @@ async def _close_mission(mission: dict, hops: list[dict], reason: str, store, su
     # no_progress / discipline_fail / denied_streak / incomplete dossier => failed
     if reason.startswith("no_progress") or reason == "discipline_fail" or reason == "denied_streak":
         final_status = "failed"
+    elif reason == "INCOMPLETE":
+        final_status = "failed"
     elif not dossier_complete:
         final_status = "failed"  # INCOMPLETE dossier
     else:
         final_status = "done"
+    receipt = render_findings_receipt(
+        rfindings, model_id="glm-5.2", window_compressed="否",
+        mid=mid, status=final_status, close_reason=reason,
+        hops_used=mission.get("hops_used") or 0,
+        budget_hops=mission.get("budget_hops") or 0,
+        models=models, abandoned=abandoned,
+    )
+    (_state_dir(mid) / "RECEIPT.md").write_text(receipt, encoding="utf-8")
     store.update_mission(mid, status=final_status, close_reason=reason,
                          dossier_path=str(dp), active_job_id=None)

@@ -433,6 +433,52 @@ def run_grants_catalog(
     return out
 
 
+def run_grants_detail(
+    opp_id: str,
+    *,
+    lane: str,
+    db_path: str,
+    route_id: str = "",
+    mission_id: str = "",
+    egress_path: str = EGRESS_PATH,
+) -> dict:
+    """grants.detail(oppId) — runner only. Extracts applicantTypes/eligibility."""
+    from . import web_fetch_v3 as W3
+    detail = W3.catalog_json_post(
+        W3.CATALOG_FETCH_OPP, {"opportunityId": str(opp_id)}, lane,
+        egress_path=egress_path, db_path=db_path, route_id=route_id,
+        mission_id=mission_id, substrate=lane,
+    )
+    out: dict[str, Any] = {
+        "ok": bool(detail.get("ok")), "opportunity_id": str(opp_id),
+        "eligibility": "", "applicant_types": [], "title": "",
+        "deadline": "", "status": "", "agency": "",
+    }
+    dj = detail.get("json") if isinstance(detail.get("json"), dict) else {}
+    data = dj.get("data") if isinstance(dj.get("data"), dict) else {}
+    if not data:
+        return out
+    at = data.get("applicantTypes") or data.get("eligibleApplicants") or data.get("eligibility") or []
+    if isinstance(at, dict):
+        at = at.get("applicantType") or at.get("list") or list(at.values())
+    if not isinstance(at, list):
+        at = [at]
+    labels = []
+    for x in at:
+        if isinstance(x, dict):
+            labels.append(str(x.get("description") or x.get("name") or x.get("id") or "").strip())
+        else:
+            labels.append(str(x).strip())
+    labels = [x for x in labels if x]
+    out["applicant_types"] = labels
+    out["eligibility"] = "; ".join(labels) if labels else str(data.get("eligibility") or "").strip()
+    out["title"] = str(data.get("opportunityTitle") or "").strip()
+    out["deadline"] = str(data.get("closeDate") or data.get("currentClosingDate") or "").strip()
+    out["status"] = str(data.get("opportunityStatus") or data.get("oppStatus") or "").strip()
+    out["agency"] = str(data.get("owningAgencyName") or data.get("agencyName") or "").strip()
+    return out
+
+
 # 衔拍3 §①1: 结构化 catalog——同 query 一个 mission 内缓存(消 RATE_LIMITED×10)。
 _CATALOG_CACHE: dict[str, list] = {}
 
@@ -554,6 +600,21 @@ def run_grants_catalog_structured(
             row["deadline"] = str(data.get("closeDate") or data.get("currentClosingDate") or row.get("deadline") or "unknown")
             syn = str(data.get("synopsis") or data.get("description") or "")[:400]
             row["summary"] = syn
+            at = data.get("applicantTypes") or data.get("eligibleApplicants") or data.get("eligibility") or []
+            if isinstance(at, dict):
+                at = at.get("applicantType") or at.get("list") or list(at.values())
+            if not isinstance(at, list):
+                at = [at]
+            labels = []
+            for x in at:
+                if isinstance(x, dict):
+                    labels.append(str(x.get("description") or x.get("name") or x.get("id") or "").strip())
+                else:
+                    labels.append(str(x).strip())
+            labels = [x for x in labels if x]
+            row["applicant_types"] = labels
+            row["eligibility"] = "; ".join(labels) if labels else str(row.get("eligibility") or "")
+            row["status"] = str(data.get("opportunityStatus") or data.get("oppStatus") or row.get("status") or "")
         detailed.append(row)
     out["rows"] = detailed
     out["hit_count"] = len(merged)

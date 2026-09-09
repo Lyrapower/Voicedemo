@@ -6,6 +6,7 @@ Covers: payload 缺项拒, 预算耗尽停, 3 连 DENIED 停, 越 bounds 计数,
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import tempfile
 import unittest
@@ -362,7 +363,7 @@ class TestPaid3Structured(unittest.TestCase):
                  "deadline": "2026-10-20", "human_url": "https://www.grants.gov/x200"},
             ]},
         }])
-        findings = _build_findings(hops, store)
+        findings = _build_findings(hops, store, goal="Discover AI infrastructure grants")
         self.assertEqual(len(findings), 1, "only HIT (opp 100) becomes a finding")
         f = findings[0]
         self.assertEqual(f["opportunity_id"], "100")
@@ -370,6 +371,102 @@ class TestPaid3Structured(unittest.TestCase):
         self.assertEqual(f["deadline"], "2026-12-01")
         self.assertEqual(f["event_id"], "J-abc12345")  # runner-attached, worker never wrote it
         self.assertIn("AI infrastructure", f["reason"])
+
+    def test_missing_title_abandoned(self):
+        """处决案 (a): 缺 title 的 row → 不进 findings 且 lineage 有 ABANDONED."""
+        from datetime import datetime, timezone
+        from pathlib import Path
+        from mission.runner import _build_findings, _write_abandoned_lineage
+        from mission import runner as R
+        wo = ("opp 901: HIT — Discover AI infrastructure; eligibility includes individuals\n")
+        hops = [{"hop": 1, "job_id": "J-aaaa1111", "event_id": "J-aaaa1111", "worker_output": wo}]
+        store = MagicMock()
+        store.list_events = MagicMock(return_value=[{
+            "kind": "tool_search",
+            "payload": {"catalog_rows": [
+                {"opportunity_id": "901", "title": "", "publisher": "NSF",
+                 "deadline": "2026-12-01", "status": "posted",
+                 "eligibility": "individuals",
+                 "human_url": "https://www.grants.gov/x901"},
+            ]},
+        }])
+        abandoned = []
+        findings = _build_findings(
+            hops, store, goal="Discover AI infrastructure",
+            now=datetime(2026, 9, 8, tzinfo=timezone.utc),
+            abandoned_out=abandoned,
+        )
+        self.assertEqual(findings, [])
+        self.assertTrue(any(a["reason"] == "missing_field" for a in abandoned))
+        with tempfile.TemporaryDirectory() as td:
+            orig = R._state_dir
+            R._state_dir = lambda mid: Path(td)
+            try:
+                _write_abandoned_lineage("M-t", abandoned)
+                hops_l = json.loads((Path(td) / "lineage.json").read_text())
+                self.assertTrue(any(h.get("status") == "ABANDONED" for h in hops_l))
+                self.assertEqual(hops_l[0].get("reason"), "missing_field")
+            finally:
+                R._state_dir = orig
+
+    def test_deadline_rolling_vs_past(self):
+        """处决案 (b): deadline=2076-08-19 → rolling 计入; 2025-xx 已过 → 不计."""
+        from datetime import datetime, timezone
+        from mission.runner import _build_findings
+        wo = (
+            "opp 2076: HIT — Discover AI infrastructure; eligibility includes individuals\n"
+            "opp 2025: HIT — Discover AI infrastructure; eligibility includes individuals\n"
+        )
+        hops = [{"hop": 1, "job_id": "J-bbbb2222", "event_id": "J-bbbb2222", "worker_output": wo}]
+        store = MagicMock()
+        store.list_events = MagicMock(return_value=[{
+            "kind": "tool_search",
+            "payload": {"catalog_rows": [
+                {"opportunity_id": "2076", "title": "Rolling FOA", "publisher": "NSF",
+                 "deadline": "2076-08-19", "status": "posted",
+                 "eligibility": "individuals",
+                 "human_url": "https://www.grants.gov/x2076"},
+                {"opportunity_id": "2025", "title": "Expired FOA", "publisher": "NSF",
+                 "deadline": "2025-06-01", "status": "posted",
+                 "eligibility": "individuals",
+                 "human_url": "https://www.grants.gov/x2025"},
+            ]},
+        }])
+        abandoned = []
+        findings = _build_findings(
+            hops, store, goal="Discover AI infrastructure",
+            now=datetime(2026, 9, 8, tzinfo=timezone.utc),
+            abandoned_out=abandoned,
+        )
+        self.assertEqual([f["opportunity_id"] for f in findings], ["2076"])
+        self.assertEqual(findings[0].get("deadline_kind"), "rolling")
+        self.assertTrue(any(a["opportunity_id"] == "2025" and a["reason"] == "deadline_lt_14d" for a in abandoned))
+
+    def test_eligibility_institution_only_ineligible(self):
+        """处决案 (c): eligibility 只含高校/州机构类 → ineligible 不计."""
+        from datetime import datetime, timezone
+        from mission.runner import _build_findings
+        wo = ("opp 909: HIT — Discover AI infrastructure; Public and State controlled "
+              "institutions of higher education only\n")
+        hops = [{"hop": 1, "job_id": "J-cccc3333", "event_id": "J-cccc3333", "worker_output": wo}]
+        store = MagicMock()
+        store.list_events = MagicMock(return_value=[{
+            "kind": "tool_search",
+            "payload": {"catalog_rows": [
+                {"opportunity_id": "909", "title": "Campus only", "publisher": "NSF",
+                 "deadline": "2026-12-01", "status": "posted",
+                 "eligibility": "Public and State controlled institutions of higher education",
+                 "human_url": "https://www.grants.gov/x909"},
+            ]},
+        }])
+        abandoned = []
+        findings = _build_findings(
+            hops, store, goal="Discover AI infrastructure",
+            now=datetime(2026, 9, 8, tzinfo=timezone.utc),
+            abandoned_out=abandoned,
+        )
+        self.assertEqual(findings, [])
+        self.assertTrue(any(a["reason"] == "ineligible" for a in abandoned))
 
     def test_allowed_tools_opens_research_loop(self):
         """§①4: 工具环按 allowed_tools 开,不按 worker 名。deep + [web.search] → 环开。"""
@@ -381,6 +478,25 @@ class TestPaid3Structured(unittest.TestCase):
         allowed = t["tools"]
         opens = any(x in allowed for x in ("web.search", "grants.catalog", "grants.catalog_post"))
         self.assertTrue(opens, "deep+scout 的 allowed_tools 含 web.search → 研究环必须开")
+
+    def test_scout_worker_locked_deep_no_research_fallback(self):
+        """衔补: scout 钉死 deep; runner 拒 fallback research; research 只跑 research 模板。"""
+        from mission.runner import resolve_mission_worker, WorkerLockError
+        self.assertEqual(resolve_mission_worker("scout", "deep"), "deep")
+        self.assertEqual(resolve_mission_worker("scout", None), "deep")
+        self.assertEqual(resolve_mission_worker("scout", ""), "deep")
+        with self.assertRaises(WorkerLockError) as cm:
+            resolve_mission_worker("scout", "research")
+        self.assertEqual(str(cm.exception), "scout_worker_locked_deep")
+        with self.assertRaises(WorkerLockError):
+            resolve_mission_worker("scout", "fast")
+        with self.assertRaises(WorkerLockError):
+            resolve_mission_worker("gardener", "research")
+        with self.assertRaises(WorkerLockError):
+            resolve_mission_worker("builder", "research")
+        self.assertEqual(resolve_mission_worker("rwa", "research"), "research")
+        from mission.runner import _model_resolved
+        self.assertEqual(_model_resolved("deep"), "glm-5.2")
 
     def test_sandbox_timeout_sweep(self):
         """衔拍3: cc dispatch >120s → blocked SANDBOX_TIMEOUT + 容器卷清理 + 该跳 DENIED 续下一跳。"""
