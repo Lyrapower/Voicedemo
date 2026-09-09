@@ -529,12 +529,22 @@ async def _close_mission(mission: dict, hops: list[dict], reason: str, store, su
     rlines.append("")
     rlines.append("## Worker narrative")
     rlines.append(dossier_text[:1500])
-    dossier_text = "\n".join(rlines)[:3000]
+    # 衔拍3 §①3: runner-built findings 表必须完整渲染 10 行(URL/截止/event_id 不能被截断);
+    # 只截 worker narrative,不截 findings 表。cap 提到 8000 容纳 10 行长 reason。
+    dossier_text = "\n".join(rlines)
+    if len(dossier_text) > 8000:
+        # 保留 findings 表,只裁 narrative
+        cut = dossier_text.find("## Worker narrative")
+        if cut > 0:
+            head = dossier_text[:cut]
+            dossier_text = head + "## Worker narrative\n" + dossier_text[cut+len("## Worker narrative"):][:1500]
+        else:
+            dossier_text = dossier_text[:8000]
     dossier_complete = findings >= 1
     # scout 验收线: 至少 1 条 grants.gov finding(衔拍3 绿=10 由 stop_condition n>=10 把关)
 
     dp = _state_dir(mid) / "DOSSIER.md"
-    dp.write_text(dossier_text[:3000], encoding="utf-8")
+    dp.write_text(dossier_text, encoding="utf-8")
 
     # scorecard
     from .scorecard import build_scorecard
