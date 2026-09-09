@@ -103,7 +103,41 @@ class Supervisor:
                 task=asyncio.create_task(self._run_job(job),name=f"job:{job['job_id']}")
                 self._tasks[job["job_id"]]=task
 
+            # 衔拍3: cc dispatch >120s 无进展 → blocked SANDBOX_TIMEOUT + 容器卷清理 + 该跳 DENIED 续下一跳
+            await self._sandbox_timeout_sweep()
+
             await asyncio.sleep(self.cfg.core.poll_interval_seconds)
+
+    async def _sandbox_timeout_sweep(self) -> None:
+        """衔拍3: cc jobs stuck in 'dispatch' >120s → blocked SANDBOX_TIMEOUT + cleanup."""
+        SANDBOX_TIMEOUT_S = 120
+        now = time.time()
+        for jid, t in list(self._tasks.items()):
+            if t.done():
+                continue
+            try:
+                j = self.store.get_job(jid)
+            except KeyError:
+                continue
+            if j.get("worker") != "cc" or j.get("last_step") != "dispatch":
+                continue
+            if now - float(j.get("updated_at") or 0) < SANDBOX_TIMEOUT_S:
+                continue
+            # dispatch hung >120s — clean up containers/volumes, cancel, mark blocked
+            try:
+                self.cc.cleanup_job(jid, remove_volumes=True)
+            except Exception:
+                pass
+            t.cancel()
+            self.store.update_job(jid, status="blocked", last_step="SANDBOX_TIMEOUT")
+            age = int(now - float(j.get("updated_at") or 0))
+            self.store.append_event(jid, "job_blocked",
+                                    {"reason": "SANDBOX_TIMEOUT", "dispatch_age_s": age})
+            try:
+                self._record_job_receipt(j, status="DENIED", executed=False, error="SANDBOX_TIMEOUT",
+                                         metadata={"route_id": "cc", "route_class": "cc", "sandbox": "docker"})
+            except Exception:
+                pass
 
     async def stop(self):
         self._stop.set()

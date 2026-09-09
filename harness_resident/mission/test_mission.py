@@ -382,6 +382,39 @@ class TestPaid3Structured(unittest.TestCase):
         opens = any(x in allowed for x in ("web.search", "grants.catalog", "grants.catalog_post"))
         self.assertTrue(opens, "deep+scout 的 allowed_tools 含 web.search → 研究环必须开")
 
+    def test_sandbox_timeout_sweep(self):
+        """衔拍3: cc dispatch >120s → blocked SANDBOX_TIMEOUT + 容器卷清理 + 该跳 DENIED 续下一跳。"""
+        import asyncio, time
+        from harness.supervisor import Supervisor
+        sup = Supervisor.__new__(Supervisor)
+        sup._tasks = {}
+        now = time.time()
+        hung = {"job_id": "J-st1", "worker": "cc", "last_step": "dispatch",
+                "updated_at": now - 200, "status": "running"}
+        healthy = {"job_id": "J-ok1", "worker": "cc", "last_step": "cc_done",
+                   "updated_at": now, "status": "done"}
+        store = MagicMock()
+        store.get_job = MagicMock(side_effect=lambda jid: hung if jid == "J-st1" else healthy)
+        sup.store = store
+        cleanup_calls = []
+        sup.cc = MagicMock()
+        sup.cc.cleanup_job = MagicMock(side_effect=lambda jid, **kw: cleanup_calls.append(jid))
+        sup._record_job_receipt = MagicMock()
+        async def _hang():
+            await asyncio.sleep(100)
+        async def _run():
+            sup._tasks["J-st1"] = asyncio.ensure_future(_hang())
+            sup._tasks["J-ok1"] = asyncio.ensure_future(_hang())
+            await sup._sandbox_timeout_sweep()
+        asyncio.run(_run())
+        store.update_job.assert_any_call("J-st1", status="blocked", last_step="SANDBOX_TIMEOUT")
+        self.assertEqual(cleanup_calls, ["J-st1"])
+        self.assertTrue(sup._tasks["J-st1"].cancelled() or sup._tasks["J-st1"].done())
+        for c in store.update_job.call_args_list:
+            self.assertNotEqual(c.args[0], "J-ok1")
+        from mission.runner import _BOUNDS_VIOLATION_STEPS
+        self.assertNotIn("SANDBOX_TIMEOUT", _BOUNDS_VIOLATION_STEPS)
+
 
 if __name__ == "__main__":
     unittest.main()

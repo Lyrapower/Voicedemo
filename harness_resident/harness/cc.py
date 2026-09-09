@@ -337,6 +337,13 @@ class CCExecutor:
         if remove_volumes:
             self._d(["volume","rm","-f",names["work"],names["bridge"]], check=False)
 
+    def cleanup_job(self, job_id: str, *, remove_volumes: bool = True) -> None:
+        """衔拍3: standalone cleanup for a hung job's containers + volumes (SANDBOX_TIMEOUT watchdog)."""
+        try:
+            self._cleanup_job(self._names(job_id), remove_volumes=remove_volumes)
+        except Exception:
+            pass
+
     def _inspect_cc(self, name: str) -> dict[str,str]:
         fmt="{{.HostConfig.NetworkMode}}|{{.HostConfig.Privileged}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.CapAdd}}"
         r=self._d(["inspect","-f",fmt,name], timeout=8)
