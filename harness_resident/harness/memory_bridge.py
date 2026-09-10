@@ -120,6 +120,7 @@ def tool_surface_block(allowed: list[str] | None = None) -> str:
         "web.fetch · GET 已登记域名 · ```tool {\"tool\":\"web.fetch\",\"url\":\"https://…\"} · 结果回 prior.status/text",
         "web.search · 检索 · ```tool {\"tool\":\"web.search\",\"q\":\"…\"} · 结果回 prior.hits",
         "grants.catalog · 联邦/州目录 · ```tool {\"tool\":\"grants.catalog\"} · 结果回 prior.rows",
+        "rwa.read · 链上证据卡只读 · ```tool {\"tool\":\"rwa.read\",\"symbol\":\"USYC\",\"chain\":\"ethereum\"} · 结果回 prior.cards",
         "本线程只可读,执行请绑 mission",
     ]
     if allowed:

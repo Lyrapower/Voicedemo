@@ -544,7 +544,13 @@ class Supervisor:
         # 衔拍3 §①4: 工具环按 allowed_tools 开,不按 worker 名。deep 只要 allowed_tools 含
         # web.search / grants.catalog 即开研究环——scout→deep 的设定才成立。
         allowed = job.get("allowed_tools") or []
-        if not any(t in allowed for t in ("web.search", "grants.catalog", "grants.catalog_post")):
+        if not any(t in allowed for t in ("web.search", "grants.catalog", "grants.catalog_post", "rwa.read")):
+            return text
+        if "rwa.read" in allowed:
+            from .rwa_read import run_rwa_read
+            rr = run_rwa_read()
+            text = (text or "") + "\n[rwa.read cards=%d permission=%s]\n" % (
+                len(rr.get("cards") or []), rr.get("permission"))
             return text
         os.environ.setdefault("WEB_FETCH_SEARCH_PROVIDERS","github,ddg_api,wikipedia,ddg_html,ddg_lite")
         from .tool_loop import (

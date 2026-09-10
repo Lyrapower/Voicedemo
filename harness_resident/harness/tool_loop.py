@@ -631,3 +631,8 @@ def run_grants_catalog_structured(
     out["ok"] = bool(detailed) or bool(merged)
     out["status"] = "ok" if detailed else ("NO_MATCH" if not merged else "NO_DEADLINE_MATCH")
     return out
+
+def run_rwa_read_tool(args=None):
+    from harness.rwa_read import run_rwa_read
+    return run_rwa_read(args)
+

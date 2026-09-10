@@ -103,16 +103,24 @@ note = "扫记忆文件与 provenance,列过期/冲突/孤簇;每条出 hypothes
 
 [mission.rwa]
 lane = "rwa"
-worker = "research"      # deepseek
+worker = "deep"
+read_only = true
 budget_hops = 40
 budget_tokens = 0
 budget_wall_s = 7200
 budget_usd = 3.0
 stop_conditions = []
-tools = ["web.fetch", "web.search", "rwa.read"]
+tools = ["rwa.read"]
 data_sources = ["rpc.three"]
-egress_lanes = ["research", "deep"]
-note = "选 3 类资产,每类按七栏出可行/不可行 dossier,每栏一条 claim 带等级;不交易"
+egress_lanes = ["rwa"]
+goal = """
+你是 RWA 事实登记 worker。对 rwa.read 返回的每张证据卡,你只做三件事,每条一行可解析:
+1. kind:归入四类之一——代币化国债 / 代币化基金 / 代币化股票 / 稳定币。
+2. issuer:原文摘录发行方与托管方名称,不评价。
+3. note:一句事实(链、规模、NAV 口径),没有就留空。
+你不判断"好坏"、不给方向、不写建议。HIT / MISS 由 runner 按卡上 confidence 判:witnesses_agree 及以上为 HIT,dispute / skipped 为 MISS。
+"""
+note = "rwa.read chain-only; rwa.xyz egress_pending"
 
 [mission.rwa.wallet]
 kind = "onchain"
