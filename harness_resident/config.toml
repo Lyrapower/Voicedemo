@@ -31,6 +31,11 @@ broker_net = "grid-cc-broker-net"
 mounts = []
 sandbox_required = true
 
+[x402]
+daily_limit = 0
+per_tx_limit = 0
+payees = []
+
 [harness]
 host = "127.0.0.1"
 port = 8630
