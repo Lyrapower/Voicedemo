@@ -74,6 +74,8 @@ _MEMORY_SYSTEM_MARKERS = (
     "身份旧档",
     "[魂组近程]",
     "[魂组召回]",
+    "工作卡·harness-shared",
+    "agents·此刻身份",
 )
 
 
@@ -148,7 +150,11 @@ def _build(system: str, messages: Any) -> list[dict[str, str]]:
 
 
 def build_glm52_cloud_memory_messages(messages: Any) -> list[dict[str, str]]:
-    return _build(GLM52_CLOUD_MEMORY_SYSTEM, messages)
+    out = _build(GLM52_CLOUD_MEMORY_SYSTEM, messages)
+    extra = _harness_shared_system_blocks()
+    if not extra:
+        return out
+    return [out[0]] + extra + out[1:]
 
 
 def build_kimi_cloud_memory_messages(messages: Any) -> list[dict[str, str]]:
@@ -156,7 +162,20 @@ def build_kimi_cloud_memory_messages(messages: Any) -> list[dict[str, str]]:
 
 
 def build_deepseek_cloud_memory_messages(messages: Any) -> list[dict[str, str]]:
-    return _build(DEEPSEEK_CLOUD_MEMORY_SYSTEM, messages)
+    out = _build(DEEPSEEK_CLOUD_MEMORY_SYSTEM, messages)
+    extra = _harness_shared_system_blocks()
+    if not extra:
+        return out
+    return [out[0]] + extra + out[1:]
+
+
+def _harness_shared_system_blocks() -> list[dict[str, str]]:
+    """Read-only inject from harness-shared. Does not write store."""
+    try:
+        from code_task.harness_shared_inject import system_blocks
+        return system_blocks()
+    except Exception:
+        return []
 
 
 def build_glm53_cloud_memory_messages(messages: Any) -> list[dict[str, str]]:

@@ -226,13 +226,14 @@ def _make_store_tool_executor(substrate: str):
         return None
     # cloud_nodes 按底座选(侯=glm52 → cloud-glm52 + cloud + cloud-kimi)
     if substrate == "glm53":
-        nodes = ["cloud-glm53", "cloud", "cloud-glm52"]
+        nodes = ["cloud-glm53", "cloud", "cloud-glm52", "harness-shared"]
     elif substrate == "glm53_full":
-        nodes = ["cloud-glm53-full", "cloud", "cloud-glm52"]
+        nodes = ["cloud-glm53-full", "cloud", "cloud-glm52", "harness-shared"]
     elif substrate == "deepseek_v4":
-        nodes = ["cloud-deepseek", "cloud", "cloud-glm52"]
+        nodes = ["cloud-deepseek", "harness-shared"]
     else:
-        nodes = ["cloud-glm52", "cloud", "cloud-kimi"]
+        # glm52 = deep worker; harness-shared is read-only work cards
+        nodes = ["cloud-glm52", "cloud", "cloud-kimi", "harness-shared"]
 
     def _exec_wrapper(name: str, args: dict[str, str]) -> str:
         return _store_execute_tool(name, args, cloud_nodes=nodes)

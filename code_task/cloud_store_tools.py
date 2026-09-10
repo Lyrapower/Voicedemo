@@ -83,7 +83,7 @@ TOOL_DECLARATION = (
   - kind:    事件 kind,白名单 aether_* / stock_card.v1;grid_diary 等日记类硬拒(events.recent)
 
 三类工具:
-  · store.* 查 cloud-* 对话原文(messages + 冷库),单条超 ~3k token 截断带 [截断],用 store.get(id) 拉全文。
+  · store.* 查本 lane 对话原文 + harness-shared 工作卡(只读,不写)。单条超 ~3k token 截断带 [截断],用 store.get(id) 拉全文。时间窗按 PDT 日历日,不是裸 unix 秒。
   · pulse.snapshot 取 alpha 8600 热力面排序 + 健康灯(剥 raw rows,只引数字不引结论)。
   · ows.day 取 OWS 8620 单日 GEX/IVP;net=0 或 IV30 缺时显式标"参考不可信"(Theta FREE OI=0 同族)。
   · events.recent 取 8501 events 表最近 N 条;日记类(grid_diary)硬拒。
@@ -157,8 +157,14 @@ def _to_float(s: Any, default: float = 0.0) -> float:
 
 def _ts_s(ts: Any) -> str:
     try:
-        return str(int(float(ts))) if ts not in (None, "") else "?"
-    except (TypeError, ValueError):
+        if ts in (None, ""):
+            return "?"
+        sec = float(ts)
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        pdt = datetime.fromtimestamp(sec, ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d %H:%M PDT")
+        return "%s (%s)" % (int(sec), pdt)
+    except (TypeError, ValueError, OSError):
         return str(ts)
 
 
@@ -207,22 +213,31 @@ def tool_search(args: dict[str, str], *, db_path: str, cloud_nodes: list[str]) -
     return truncate_for_tool("\n\n".join(parts))
 
 
-def tool_recent(args: dict[str, str], *, db_path: str, cloud_nodes: list[str]) -> str:
-    limit = max(1, min(_to_int(args.get("limit"), 20), 100))
-    days = args.get("days")
+def _pdt_recent_window(args: dict[str, str]) -> tuple[float, float, str]:
+    """PDT calendar window. days=N → 含今天在内的 N 个 PDT 日;默认 1 日(今日 00:00 PDT → 现在)."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    pt = ZoneInfo("America/Los_Angeles")
+    now = datetime.now(pt)
     start_ts = args.get("start_ts")
     end_ts = args.get("end_ts")
-    now = time.time()
     if start_ts or end_ts:
         lo = _to_float(start_ts, 0.0)
-        hi = _to_float(end_ts, now)
-    elif days is not None:
-        lo = now - _to_float(days, 1.0) * 86400.0
-        hi = now
-    else:
-        lo = now - 86400.0
-        hi = now
-    parts: list[str] = ["store.recent limit=%d range=[%s,%s]" % (limit, int(lo), int(hi))]
+        hi = _to_float(end_ts, now.timestamp())
+        label = "range PDT unix-override [%s,%s]" % (int(lo), int(hi))
+        return lo, hi, label
+    n = max(1, int(_to_float(args.get("days"), 1.0)))
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=n - 1)
+    lo, hi = start.timestamp(), now.timestamp()
+    label = "range PDT %s .. %s (%d calendar day(s))" % (
+        start.strftime("%Y-%m-%d %H:%M"), now.strftime("%Y-%m-%d %H:%M"), n)
+    return lo, hi, label
+
+
+def tool_recent(args: dict[str, str], *, db_path: str, cloud_nodes: list[str]) -> str:
+    limit = max(1, min(_to_int(args.get("limit"), 20), 100))
+    lo, hi, label = _pdt_recent_window(args)
+    parts: list[str] = ["store.recent limit=%d %s" % (limit, label)]
     conn = _ro_conn(db_path)
     try:
         nodes_ph = ",".join("?" for _ in cloud_nodes)

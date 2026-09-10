@@ -8,31 +8,70 @@ budget_hops = 30
 budget_tokens = 0
 budget_wall_s = 3600     # 60 min
 budget_usd = 1.0
-stop_conditions = ["n>=10"]
+stop_conditions = []
 tools = ["web.fetch", "web.search", "grants.catalog"]
-data_sources = ["api.grants.gov", "www.grants.gov"]
+data_sources = ["api.grants.gov", "www.grants.gov", "data.ca.gov"]
 egress_lanes = ["scout"]
-note = "找本周新发布、加州或联邦、与商业地产/资管/能源/AI 基础设施相关、截止 >=14 天的 grant/RFP,出前 10 名 dossier"
+goal = """
+你是资源侦察 worker。目录源里当前开放的公开机会,你只做三件事,每条一行可解析:
+1. kind:归入七类之一——资金 / 硬件资源 / 项目与人才计划 / 融资 / 采购 / 社区 / 政策数据。
+2. eligibility:原文摘录申请人资格条款,不归类、不判是否符合;摘不到写 needs_verification。
+3. note:一句事实(规模、地区、主办方类型),没有就留空。
+你不判断"是否相关",不按申请人、领域、地区筛选,不写"不符合目标"。
+HIT / MISS 不由你判:runner 按字段齐全(opp_id、title、agency、deadline 可解析且未过、URL、event_id)判 HIT;缺字段且 detail 取不到、或 deadline 已过判 MISS。
+输出上限:每跳把拿到的行全部写完,不截断,不挑选。
+"""
+note = "scout catalog recon; goal field is the worker prompt"
 
-# 衔拍3 §①1: 结构化 catalog 查询——runner 从此组 Search2 请求,不从 goal 文本;同 query 一个 mission 内缓存。
+# SOURCE v2 / Universe v4: discovery unfiltered. cap is display only.
 [mission.scout.search]
-keywords = [
-  "artificial intelligence infrastructure",
-  "AI infrastructure",
-  "cyberinfrastructure",
-  "machine learning",
-  "broadband deployment",
-  "broadband infrastructure",
-  "clean energy",
-  "renewable energy infrastructure",
-  "smart grid",
-  "energy infrastructure",
-]
-opp_statuses = ["posted"]
-agencies = []
-categories = []
-deadline_min_days = 14
+schema_version = 2
+universe_version = 4
+mode = "global_unfiltered"
+profile_filter = false
+unknown_is_allowed = true
+display_page_size = 30
+deadline_min_days = 0
+
+[mission.scout.search.grants_gov]
+enabled = true
+eligibilities = ""
+agencies = ""
+fundingCategories = ""
+oppStatuses = "forecasted|posted"
 rows_per_query = 25
+keywords_per_hop = 4
+keywords = [
+  "artificial intelligence",
+  "machine learning",
+  "compute infrastructure",
+  "research software",
+  "cyberinfrastructure",
+  "open source",
+  "data infrastructure",
+  "SBIR",
+  "STTR",
+  "energy efficiency buildings",
+  "digital twin",
+  "industrial innovation",
+  "workforce training",
+  "edge computing",
+  "water cooling",
+  "commercial real estate",
+]
+
+[mission.scout.search.ca_grants]
+enabled = true
+package_id = "california-grants-portal"
+page_size = 200
+applicant_filter = false
+exclude_urgent = false
+note = "2026-09-09 egress ok; ApplicationDeadline; no ApplicantType gate"
+
+[mission.scout.search.sam_gov]
+enabled = true
+auth_mode = "approved_broker_loader"
+note = "无 SAM_API_KEY → auth_required; 不阻塞其他源"
 
 [mission.builder]
 lane = "builder"
@@ -74,3 +113,30 @@ tools = ["web.fetch", "web.search", "rwa.read"]
 data_sources = ["rpc.three"]
 egress_lanes = ["research", "deep"]
 note = "选 3 类资产,每类按七栏出可行/不可行 dossier,每栏一条 claim 带等级;不交易"
+
+[mission.rwa.wallet]
+kind = "onchain"
+provider = "local_eoa"
+budget_usd = 100
+note = "两周只出 dossier 一笔不交易也算过"
+
+[mission.day_trade]
+lane = "day_trade"
+worker = "deep"
+budget_hops = 20
+budget_tokens = 0
+budget_wall_s = 14400
+budget_usd = 1.0
+stop_conditions = []
+tools = ["web.fetch"]
+data_sources = []
+egress_lanes = ["scout"]
+note = "paper day session; money job born BLOCKED; open = /approve W-"
+
+[mission.day_trade.wallet]
+kind = "alpaca_paper"
+provider = "alpaca"
+budget_usd = 100
+max_per_tx = 25
+max_daily_loss = 20
+max_positions = 2
