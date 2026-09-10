@@ -103,14 +103,15 @@ class Supervisor:
                 task=asyncio.create_task(self._run_job(job),name=f"job:{job['job_id']}")
                 self._tasks[job["job_id"]]=task
 
-            # 衔拍3: cc dispatch >120s 无进展 → blocked SANDBOX_TIMEOUT + 容器卷清理 + 该跳 DENIED 续下一跳
+            # cc dispatch hung → blocked SANDBOX_TIMEOUT; limit from CC_SANDBOX_TIMEOUT_S / config
             await self._sandbox_timeout_sweep()
 
             await asyncio.sleep(self.cfg.core.poll_interval_seconds)
 
     async def _sandbox_timeout_sweep(self) -> None:
-        """衔拍3: cc jobs stuck in 'dispatch' >120s → blocked SANDBOX_TIMEOUT + cleanup."""
-        SANDBOX_TIMEOUT_S = 120
+        """cc jobs stuck in 'dispatch' longer than sandbox_timeout_s → blocked + cleanup."""
+        from harness.cc_sandbox_timeout import sandbox_timeout_s
+        limit = sandbox_timeout_s(self.cfg)
         now = time.time()
         for jid, t in list(self._tasks.items()):
             if t.done():
@@ -121,9 +122,9 @@ class Supervisor:
                 continue
             if j.get("worker") != "cc" or j.get("last_step") != "dispatch":
                 continue
-            if now - float(j.get("updated_at") or 0) < SANDBOX_TIMEOUT_S:
+            if now - float(j.get("updated_at") or 0) < limit:
                 continue
-            # dispatch hung >120s — clean up containers/volumes, cancel, mark blocked
+            # dispatch hung past measured timeout — clean up containers/volumes, cancel, mark blocked
             try:
                 self.cc.cleanup_job(jid, remove_volumes=True)
             except Exception:

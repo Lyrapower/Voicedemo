@@ -19,6 +19,7 @@ enabled = true
 binary = "/Users/ciciwang/Projects/demo/aster_grid_v5/.tools/node_modules/.bin/claude"
 work_root = "./agent_jobs"
 timeout_seconds = 1800
+sandbox_timeout_s = 363
 model = "glm-5.3:cloud"
 ollama_endpoint = "http://127.0.0.1:11434"
 sandbox = "docker"

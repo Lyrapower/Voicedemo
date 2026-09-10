@@ -33,6 +33,7 @@ class CCConfig:
     binary: str
     work_root: str
     timeout_seconds: int
+    sandbox_timeout_s: int = 363
     model: str = ""
     ollama_endpoint: str = ""
     sandbox: str = "none"
@@ -222,6 +223,11 @@ def load_config(path: str = "config.toml") -> Config:
 
     cc_data = dict(data["cc"])
     cc_data["mounts"] = tuple(cc_data.get("mounts") or ())
+    env_sbx = os.getenv("CC_SANDBOX_TIMEOUT_S")
+    if env_sbx not in (None, ""):
+        cc_data["sandbox_timeout_s"] = max(1, int(float(env_sbx)))
+    else:
+        cc_data.setdefault("sandbox_timeout_s", 363)
 
     voice_raw = data.get("voice") or {}
     audio8_raw = voice_raw.get("audio8") or {}
