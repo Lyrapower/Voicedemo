@@ -64,7 +64,7 @@ class TestRwaRead(unittest.TestCase):
 
     def test_buidl_skipped_no_address(self):
         from harness.rwa_read import execute
-        out = execute(symbol="BUIDL", chain="ethereum", rpc_env={})
+        out = execute(symbol="BUIDL", chain="ethereum", rpc_env={}, attach_xyz=False)
         self.assertEqual(len(out["cards"]), 1)
         c = out["cards"][0]
         self.assertEqual(c["skip"], "no_address")
@@ -95,13 +95,39 @@ class TestRwaRead(unittest.TestCase):
                 "address": "0x136471a34f6ef19fE571EFFC1CA711fdb8E49f2b",
                 "source_url": "https://developers.circle.com/tokenized/usyc/smart-contracts",
             }]
-            out = execute(symbol="USYC", chain="ethereum", registry=reg, rpc_env={1: (u1, u2, "required")})
+            out = execute(symbol="USYC", chain="ethereum", registry=reg, rpc_env={1: (u1, u2, "required")}, attach_xyz=False)
         finally:
             s1.shutdown(); s2.shutdown()
         c = out["cards"][0]
         self.assertEqual(c["confidence"], "dispute")
         self.assertIsNone(c.get("total_supply"))
         self.assertIsNone(c.get("supply_units"))
+
+    def test_parse_rwa_xyz_labeled_fields(self):
+        from harness.rwa_read import parse_rwa_xyz_text
+        text = "Total Asset Value\n$2.60B\nNet Asset Value\n$1.14\nHolders\n34\n"
+        p = parse_rwa_xyz_text(text)
+        self.assertEqual(p["status"], "ok")
+        self.assertEqual(p["total_usd_all_chains"], 2.6e9)
+        self.assertEqual(p["nav_usd"], 1.14)
+        self.assertEqual(p["holders"], 34)
+        empty = parse_rwa_xyz_text("Sign up for a free account")
+        self.assertEqual(empty["status"], "empty")
+        self.assertNotIn("total_usd_all_chains", empty)
+
+    def test_xyz_column_not_copied_onto_supply(self):
+        from harness.rwa_read import XYZ_COL, execute
+        from unittest.mock import patch
+        fake = {"source": "rwa.xyz", "grade": "secondhand", "status": "ok",
+                "total_usd_all_chains": 2.6e9, "nav_usd": 1.14, "holders": 34}
+        with patch("harness.rwa_read.fetch_rwa_xyz_reference", return_value=fake):
+            out = execute(symbol="BUIDL", chain="ethereum", rpc_env={}, attach_xyz=True)
+        c = out["cards"][0]
+        self.assertEqual(c["skip"], "no_address")
+        self.assertIsNone(c.get("total_supply"))
+        self.assertIsNone(c.get("nav_usd"))
+        self.assertEqual(c[XYZ_COL]["holders"], 34)
+        self.assertEqual(c[XYZ_COL]["nav_usd"], 1.14)
 
 
 if __name__ == "__main__":

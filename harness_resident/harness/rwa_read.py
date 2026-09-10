@@ -1,7 +1,13 @@
-"""rwa.read — read-only wrap of app.crypto_rwa.rwa_onchain_reader. No new egress hosts."""
+"""rwa.read — read-only wrap of app.crypto_rwa.rwa_onchain_reader.
+
+rwa.xyz is GET-only reference (EGRESS lane=rwa). Numbers stay in
+「rwa.xyz 参考值」; they are not copied onto supply/NAV dual fields.
+"""
 from __future__ import annotations
 
 import os
+import re
+from pathlib import Path
 from typing import Any
 
 from app.crypto_rwa.rwa_onchain_reader import (
@@ -16,6 +22,10 @@ from app.harness.action_envelope import FactualReceipt
 from app.harness.provenance import record_receipt, read_events
 
 PERM = "read_only"
+EGRESS_PATH = str(Path(__file__).resolve().parents[2] / "EGRESS.md")
+XYZ_ASSET = "https://app.rwa.xyz/assets/%s"
+XYZ_COL = "rwa.xyz 参考值"
+_MULT = {"K": 1e3, "M": 1e6, "B": 1e9, "T": 1e12}
 CONF_RANK = {
     "attested": 5,
     "witnesses_agree": 4,
@@ -56,6 +66,74 @@ def _probe_block(url: str) -> int | None:
         return _block_int(raw)
     except Exception:
         return None
+
+
+def _label_num(text: str, label: str) -> float | None:
+    m = re.search(re.escape(label) + r"\s+\$?\s*([\d,.]+)\s*([KMBT])?", text, re.I)
+    if not m:
+        return None
+    try:
+        n = float(m.group(1).replace(",", ""))
+    except ValueError:
+        return None
+    suf = (m.group(2) or "").upper()
+    if suf:
+        n *= _MULT[suf]
+    return n
+
+
+def _label_int(text: str, label: str) -> int | None:
+    m = re.search(re.escape(label) + r"\s+(\d[\d,]*)\b", text, re.I)
+    if not m:
+        return None
+    try:
+        return int(m.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def parse_rwa_xyz_text(text: str) -> dict:
+    """Parse labeled marketplace fields. Missing labels → empty, no invented numbers."""
+    out: dict[str, Any] = {"source": "rwa.xyz", "grade": "secondhand"}
+    tav = _label_num(text, "Total Asset Value")
+    nav = _label_num(text, "Net Asset Value")
+    hol = _label_int(text, "Holders")
+    if tav is not None:
+        out["total_usd_all_chains"] = tav
+    if nav is not None:
+        out["nav_usd"] = nav
+    if hol is not None:
+        out["holders"] = hol
+    if tav is None and nav is None and hol is None:
+        out["status"] = "empty"
+        out["reason"] = "no_labeled_fields"
+    else:
+        out["status"] = "ok"
+    return out
+
+
+def fetch_rwa_xyz_reference(symbol: str, *, opener=None, egress_path: str | None = None) -> dict:
+    from harness.web_fetch_v3 import fetch
+    url = XYZ_ASSET % str(symbol or "").upper()
+    fr = fetch(url, "rwa", egress_path=egress_path or EGRESS_PATH, opener=opener, max_chars=16000)
+    base = {"source": "rwa.xyz", "grade": "secondhand", "source_url": url, "http_status": fr.get("status")}
+    if not fr.get("ok"):
+        base.update(status="empty", reason=str(fr.get("reason") or fr.get("status") or "fetch_failed"))
+        return base
+    parsed = parse_rwa_xyz_text(fr.get("text") or "")
+    parsed.update(source_url=fr.get("source_url") or url, http_status=fr.get("status"))
+    return parsed
+
+
+def _attach_xyz(card: dict, cache: dict, *, attach: bool, opener=None) -> None:
+    if not attach:
+        return
+    sym = str(card.get("symbol") or "")
+    if not sym:
+        return
+    if sym not in cache:
+        cache[sym] = fetch_rwa_xyz_reference(sym, opener=opener)
+    card[XYZ_COL] = dict(cache[sym])
 
 
 def _strip_numbers(card: dict) -> dict:
@@ -117,7 +195,8 @@ def _emit(card: dict, *, status: str = "EXECUTED", error: str = "") -> dict:
 
 
 def execute(symbol: str | None = None, chain: str | None = None, *,
-            registry: list | None = None, rpc_env: dict | None = None) -> dict:
+            registry: list | None = None, rpc_env: dict | None = None,
+            attach_xyz: bool = True, xyz_opener=None) -> dict:
     """Input {symbol, chain} or empty (full registry). permission=read_only."""
     reg = list(registry if registry is not None else DEFAULT_REGISTRY)
     if symbol:
@@ -125,6 +204,7 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
     if chain:
         reg = [e for e in reg if str(e.get("chain") or "").lower() == chain.lower()]
     env = dict(rpc_env if rpc_env is not None else _rpc_env_from_os())
+    xyz_cache: dict = {}
 
     cards: list[dict] = []
     for e in reg:
@@ -136,6 +216,7 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
                 "skip": "no_address", "total_supply": None, "supply_units": None,
                 "nav_usd": None, "rpc_agree": None,
             }
+            _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
             _emit(card)
             cards.append(card)
             continue
@@ -148,6 +229,7 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
                 "confidence": "skipped", "evidence_grade": "skipped",
                 "skip": "no_rpc", "total_supply": None,
             }
+            _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
             _emit(card)
             cards.append(card)
             continue
@@ -162,6 +244,7 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
                     "rpc_agree": False, "total_supply": None, "supply_units": None, "nav_usd": None,
                 }
                 _strip_numbers(card)
+                _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
                 _emit(card)
                 cards.append(card)
                 continue
@@ -182,10 +265,12 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
             card["evidence_grade"] = card["confidence"]
             why = _g3_guard(card)
             if why:
+                _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
                 _emit(card, status="DENIED", error=why)
                 card["reject"] = why
                 cards.append(card)
                 continue
+            _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
             _emit(card)
             cards.append(card)
         for sk in doc.get("skipped") or []:
@@ -195,6 +280,7 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
                 "confidence": "skipped", "evidence_grade": "skipped",
                 "skip": sk.get("reason"), "block": None,
             }
+            _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
             _emit(card)
             cards.append(card)
     return {"ok": True, "permission": PERM, "tool": "rwa.read", "cards": cards}

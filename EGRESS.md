@@ -9,6 +9,8 @@
 | api.sam.gov | SAM.gov 机会 | yes | SAM_API_KEY | 10 | attested | 2026-09-07 | scout |
 | api.github.com | GitHub API | yes | GITHUB_TOKEN | 30 | issuer_claim | 2026-09-07 | maintainer,research |
 | api.grants.gov | grants.gov Search2 + fetchOpportunity JSON POST | yes | none | 20 | attested | 2026-09-08 | scout |
+| rwa.xyz | rwa.xyz 参考值第二源 | yes | none | 10 | secondhand | 2026-09-10 | rwa |
+| app.rwa.xyz | rwa.xyz 参考值第二源 | yes | none | 10 | secondhand | 2026-09-10 | rwa |
 | * | 开放网研究读取 | yes | none | 30 | unverified | 2026-09-07 | research,deep,full,cc,scout |
 | html.duckduckgo.com | 搜索 HTML | yes | none | 20 | unverified | 2026-09-07 | research,deep,full,cc,scout |
 | lite.duckduckgo.com | 搜索备用 Lite | yes | none | 20 | unverified | 2026-09-07 | research,deep,full,cc,scout |
@@ -19,4 +21,4 @@
 拍板列为空 = 未生效(fetch 一律拒)。Lyra 在拍板列填日期即生效。grade 按 rwa v7 阶梯;lanes 空 = 所有 lane。
 开放网 `*` + DDG 两行：Lyra 2026-09-07 拍板（WEB_FETCH_V3）。精确域名优先；该行 lane 不含调用方则不掉到 `*`。
 RPC 三家为既有授权端点最小登记(RWA CHAIN CONNECT v1 · G6);reader 仍走 urllib eth_call,不新建 web.fetch。未列 vendor → 停。
-
+rwa.xyz / app.rwa.xyz：PKG v2 · GET only · lane=rwa · 用途=参考值第二源 · 2026-09-10。不混进 dual。

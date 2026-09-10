@@ -111,7 +111,7 @@ budget_wall_s = 7200
 budget_usd = 3.0
 stop_conditions = []
 tools = ["rwa.read"]
-data_sources = ["rpc.three"]
+data_sources = ["rpc.three", "rwa.xyz"]
 egress_lanes = ["rwa"]
 goal = """
 你是 RWA 事实登记 worker。对 rwa.read 返回的每张证据卡,你只做三件事,每条一行可解析:
@@ -120,7 +120,7 @@ goal = """
 3. note:一句事实(链、规模、NAV 口径),没有就留空。
 你不判断"好坏"、不给方向、不写建议。HIT / MISS 由 runner 按卡上 confidence 判:witnesses_agree 及以上为 HIT,dispute / skipped 为 MISS。
 """
-note = "rwa.read chain-only; rwa.xyz egress_pending"
+note = "rwa.read + rwa.xyz reference (secondhand); 不混进 dual"
 
 [mission.rwa.wallet]
 kind = "onchain"
