@@ -482,15 +482,24 @@ def _active_secrets(path):
 
 def fetch(url,lane,*,egress_path='EGRESS.md',db_path=None,route_id=None,mission_id=None,substrate=None,signal_filter=None,opener=None,max_chars=MAX_CHARS,_tool='web.fetch',_private_check=None):
     secrets=_active_secrets(egress_path)
-    result={'ok':False,'source_url':_safe_url(url,secrets),'lane':lane};grade=None
-    # 衔拍3 §①2: worker 拼的 malformed URL(含空格/非 https)→ INVALID_URL 进 prior,不算 DENIED。
-    u = url or ""
-    if not u or not u.lower().startswith("https://") or any(c in u for c in (" ", "\t", "\n")):
-        result.update(status="INVALID_URL", reason="malformed url (must be https, no whitespace)",
+    try:
+        from harness.url_normalize import normalize_url
+    except ImportError:
+        from url_normalize import normalize_url
+    raw_in = url if isinstance(url, str) else ('' if url is None else str(url))
+    norm, why = normalize_url(raw_in)
+    result={'ok':False,'source_url':_safe_url(raw_in,secrets),'lane':lane,'raw':raw_in};grade=None
+    if norm is None:
+        result.update(status='DENIED', reason='INVALID_URL:'+why, url=None,
                       ok=False, chars=0, truncated=False)
-        warning=_log(db_path,route_id,mission_id,substrate,_tool,result['source_url'],0,False,"unverified","INVALID_URL")
+        warning=_log(db_path,route_id,mission_id,substrate,_tool,result['source_url'],0,False,'unverified','DENIED')
         if warning:result['audit_warning']=warning
         return result
+    url = norm
+    result['url'] = norm
+    if norm != raw_in:
+        result['normalized'] = True
+    result['source_url'] = _safe_url(norm, secrets)
     try:
         max_chars=int(max_chars)
         if not 1<=max_chars<=MAX_BYTES:raise Rejected('invalid max_chars')
@@ -707,7 +716,8 @@ def _catalog_body(url, body):
         raise Rejected('catalog body must be object')
     extra = set(body)
     if url == CATALOG_SEARCH2:
-        extra -= {'rows', 'keyword', 'oppStatuses', 'startRecordNum'}
+        extra -= {'rows', 'keyword', 'oppStatuses', 'startRecordNum',
+                  'eligibilities', 'fundingCategories', 'agencies'}
         if extra:
             raise Rejected('catalog search extra field')
         kw = str(body.get('keyword') or '').strip()
@@ -727,6 +737,16 @@ def _catalog_body(url, body):
         out = {'rows': rows, 'keyword': kw, 'oppStatuses': st}
         if off > 0:
             out['startRecordNum'] = off
+        for fld in ('eligibilities', 'fundingCategories', 'agencies'):
+            if fld not in body:
+                continue
+            v = str(body.get(fld) or '').strip()
+            if v:
+                if len(v) > 200 or not re.match(r'^[A-Za-z0-9|,\-]+$', v):
+                    raise Rejected('catalog ' + fld)
+                out[fld] = v.replace(',', '|')
+            else:
+                out[fld] = ''
         return out
     if url == CATALOG_FETCH_OPP:
         extra -= {'opportunityId'}
