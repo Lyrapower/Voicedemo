@@ -118,7 +118,7 @@ goal = """
 1. kind:归入四类之一——代币化国债 / 代币化基金 / 代币化股票 / 稳定币。
 2. issuer:原文摘录发行方与托管方名称,不评价。
 3. note:一句事实(链、规模、NAV 口径),没有就留空。
-你不判断"好坏"、不给方向、不写建议。HIT / MISS 由 runner 按卡上 confidence 判:witnesses_agree 及以上为 HIT,dispute / skipped 为 MISS。
+你不判断"好坏"、不给方向、不写建议。HIT/MISS 由 runner 调用 judgment_for_card 的明确枚举映射判定；witnesses_agree 且 fresh 为 HIT，不 fresh 为 BLOCKED；dispute/skipped 为 MISS；未知为 UNKNOWN。不得按字符串比较等级。
 """
 note = "rwa.read + rwa.xyz reference (secondhand); 不混进 dual"
 

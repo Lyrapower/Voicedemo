@@ -74,6 +74,51 @@ def settle(mid_in, spr_in, mid_out, spr_out, contracts=1, *, multiplier=100,
     return dict(gross=money(gross), commission=money(comm), slippage=money(slip), net=money(gross-comm-slip))
 
 
+def _unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError('duplicate_json_key')
+        result[key] = value
+    return result
+
+
+def _response_rows(data, receipt):
+    """Explicit wire-format adapter, grounded in the v6 field receipt.
+    Accept legacy flat arrays or a response array in an envelope. Metadata is
+    never merged into rows. Non-empty upstream errors/pagination fail closed.
+    """
+    if isinstance(data, list):
+        receipt['response_shape'] = 'flat_array'
+        rows = data
+    elif isinstance(data, dict):
+        receipt['response_shape'] = 'response_envelope'
+        allowed = {'response', 'header', 'error', 'error_type', 'error_msg',
+                   'error_message', 'errors', 'status', 'next_page', 'next_page_token'}
+        if not set(data) <= allowed or 'response' not in data:
+            raise ThetaError('schema_error')
+        header = data.get('header', {})
+        if not isinstance(header, dict):
+            raise ThetaError('schema_error')
+        for metadata in (data, header):
+            for field in ('error', 'error_type', 'error_msg', 'error_message', 'errors'):
+                if field in metadata and metadata[field] not in (None, '', [], {}):
+                    raise ThetaError('upstream_error')
+            if 'status' in metadata and metadata['status'] not in ('ok', 'success', 'OK', 'SUCCESS', 200):
+                raise ThetaError('upstream_error')
+            for field in ('next_page', 'next_page_token'):
+                if metadata.get(field) not in (None, ''):
+                    raise ThetaError('pagination_not_supported')
+        rows = data['response']
+    else:
+        receipt['response_shape'] = 'invalid'
+        raise ThetaError('schema_error')
+    if not isinstance(rows, list) or any(not isinstance(r, dict) for r in rows):
+        raise ThetaError('schema_error')
+    receipt['row_count'] = len(rows)
+    return rows
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise ThetaError('redirect_refused')
@@ -107,9 +152,8 @@ class Theta:
             if not isinstance(raw, bytes) or len(raw) > 2_000_000:
                 raise ThetaError('response_too_large_or_invalid')
             receipt['sha256'] = hashlib.sha256(raw).hexdigest()
-            data = json.loads(raw.decode('utf-8'), parse_constant=lambda x: (_ for _ in ()).throw(ValueError('nonfinite_json')))
-            if not isinstance(data, list) or any(not isinstance(r, dict) for r in data):
-                raise ThetaError('schema_error')
+            data = json.loads(raw.decode('utf-8'), object_pairs_hook=_unique_object, parse_constant=lambda x: (_ for _ in ()).throw(ValueError('nonfinite_json')))
+            data = _response_rows(data, receipt)
             receipt['status'] = 'ok'
             return data
         except urllib.error.HTTPError as exc:
@@ -127,7 +171,9 @@ class Theta:
     def expirations(self, symbol):
         rows = self.get('/v3/option/list/expirations', symbol=symbol)
         try:
-            return sorted({parse_date(r['expiration']).isoformat() for r in rows if r.get('symbol') == symbol})
+            if any(r.get('symbol') != symbol or 'expiration' not in r for r in rows):
+                raise ValueError('expiration_row_mismatch')
+            return sorted({parse_date(r['expiration']).isoformat() for r in rows})
         except (KeyError, ValueError, TypeError) as exc:
             raise ThetaError('schema_error') from exc
 

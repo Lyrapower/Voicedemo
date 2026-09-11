@@ -19,10 +19,10 @@ def main():
     if args.offline and args.require_theta:
         parser.error('--offline conflicts with --require-theta')
     root = Path(__file__).resolve().parent.parent
-    out = Path(args.report) if args.report else Path(tempfile.mkdtemp(prefix='prestart_v6_'))
+    out = Path(args.report) if args.report else Path(tempfile.mkdtemp(prefix='prestart_v6_1_'))
     if args.report:
         out.mkdir(parents=True, exist_ok=False)
-    report = {'version': 6, 'at_utc': datetime.now(timezone.utc).isoformat(),
+    report = {'version': '6.1', 'at_utc': datetime.now(timezone.utc).isoformat(),
               'scope': 'package_local_tests', 'production_acceptance': 'NOT YET ACCEPTED'}
     with (out/'unittest.log').open('w') as stream:
         suite = unittest.defaultTestLoader.discover(str(root/'tests'), top_level_dir=str(root))
@@ -47,7 +47,7 @@ def main():
     code = 1 if not ok or report['theta']['status'] == 'invalid_THETA_PORT' else (2 if args.require_theta and report['theta']['status'] != 'read_probe_ok' else 0)
     report['exit_code'] = code
     (out/'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n')
-    print(f"PRESTART_v6 unit={'PASS' if ok else 'FAIL'} run={r.testsRun} failed={len(r.failures)+len(r.errors)} "
+    print(f"PRESTART_v6.1 unit={'PASS' if ok else 'FAIL'} run={r.testsRun} failed={len(r.failures)+len(r.errors)} "
           f"theta={report['theta']['status']} production=NOT_YET_ACCEPTED report={out/'report.json'}")
     if not ok:
         print((out/'unittest.log').read_text(), file=sys.stderr)

@@ -31,3 +31,10 @@ class HTTPTests(unittest.TestCase):
     def test_empty_result_valid(self):
         self.handler.payload=b'[]'
         self.assertEqual(self.th.expirations('SPY'),[])
+    def test_real_http_envelope_fixture(self):
+        self.handler.payload=b'{"response":[{"symbol":"SPY","expiration":"2026-09-11"}]}'
+        self.assertEqual(self.th.expirations('SPY'),['2026-09-11'])
+        self.assertEqual(self.th.log[-1]['response_shape'],'response_envelope')
+    def test_real_http_error_envelope_fixture(self):
+        self.handler.payload=b'{"response":[],"error":"denied"}'
+        with self.assertRaisesRegex(ThetaError,'upstream_error'):self.th.expirations('SPY')

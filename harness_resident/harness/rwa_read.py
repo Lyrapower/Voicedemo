@@ -174,6 +174,16 @@ def judgment_for_card(confidence: str | None, *, fresh: bool = True) -> str:
     return "UNKNOWN"
 
 
+def visible_judgment(card: dict) -> str:
+    """Consumer-visible verdict. A reject cannot stay a fresh HIT."""
+    if card.get("reject"):
+        return "BLOCKED"
+    fresh = card.get("fresh")
+    if fresh is None:
+        fresh = True
+    return judgment_for_card(card.get("confidence"), fresh=bool(fresh))
+
+
 def _g3_guard(card: dict) -> str | None:
     prior = _prior_card(card["symbol"], card["chain"])
     if not prior:
@@ -246,7 +256,7 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
             }
             _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
             _emit(card)
-            card["judgment"] = judgment_for_card(card.get("confidence"))
+            card["judgment"] = visible_judgment(card)
             cards.append(card)
             continue
         cid = e.get("chain_id")
@@ -260,7 +270,7 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
             }
             _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
             _emit(card)
-            card["judgment"] = judgment_for_card(card.get("confidence"))
+            card["judgment"] = visible_judgment(card)
             cards.append(card)
             continue
         url1, url2, pol = pair[0], (pair[1] if len(pair) > 1 else None), (pair[2] if len(pair) > 2 else "required")
@@ -276,7 +286,7 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
                 _strip_numbers(card)
                 _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
                 _emit(card)
-                card["judgment"] = judgment_for_card(card.get("confidence"))
+                card["judgment"] = visible_judgment(card)
                 cards.append(card)
                 continue
         doc = reader_run(None, [e], None, None, {cid: (url1, url2, pol)}, emit_provenance=False)
@@ -299,12 +309,12 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
                 _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
                 _emit(card, status="DENIED", error=why)
                 card["reject"] = why
-                card["judgment"] = judgment_for_card(card.get("confidence"))
+                card["judgment"] = visible_judgment(card)
                 cards.append(card)
                 continue
             _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
             _emit(card)
-            card["judgment"] = judgment_for_card(card.get("confidence"))
+            card["judgment"] = visible_judgment(card)
             cards.append(card)
         for sk in doc.get("skipped") or []:
             card = {
@@ -315,7 +325,7 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
             }
             _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
             _emit(card)
-            card["judgment"] = judgment_for_card(card.get("confidence"))
+            card["judgment"] = visible_judgment(card)
             cards.append(card)
     return {"ok": True, "permission": PERM, "tool": "rwa.read", "cards": cards}
 
