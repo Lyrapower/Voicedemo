@@ -69,6 +69,7 @@ class TestRwaRead(unittest.TestCase):
         c = out["cards"][0]
         self.assertEqual(c["skip"], "no_address")
         self.assertEqual(c["confidence"], "skipped")
+        self.assertEqual(c.get("judgment"), "MISS")
         self.assertIsNone(c.get("total_supply"))
 
     def test_g3_reject_upgrade_on_older_block_then_accept_newer(self):
@@ -84,6 +85,36 @@ class TestRwaRead(unittest.TestCase):
         self.assertIsNone(_g3_guard(newer))
         ev = _emit(newer)
         self.assertEqual(ev.get("status"), "EXECUTED")
+
+    def test_g3_same_block_replay_and_hash(self):
+        from harness.rwa_read import _emit, _g3_guard
+        a = {"symbol": "USYC", "chain": "ethereum", "confidence": "witnesses_agree",
+             "source_url": "https://example.test", "block": 100, "block_hash": "aaa",
+             "evidence_grade": "witnesses_agree"}
+        _emit(a)
+        self.assertIsNone(_g3_guard(dict(a)))
+        same_h = dict(a, confidence="attested", evidence_grade="attested")
+        self.assertEqual(_g3_guard(same_h), "rejected:confidence_upgrade_without_newer_block")
+        mismatch = dict(a, block_hash="bbb")
+        self.assertEqual(_g3_guard(mismatch), "rejected:same_height_hash_mismatch")
+
+    def test_g3_newer_block_needs_evidence(self):
+        from harness.rwa_read import _emit, _g3_guard
+        a = {"symbol": "USYC", "chain": "ethereum", "confidence": "witnesses_agree",
+             "source_url": "https://example.test", "block": 100, "evidence_grade": "witnesses_agree"}
+        _emit(a)
+        bare = {"symbol": "USYC", "chain": "ethereum", "confidence": "attested",
+                "block": 102, "evidence_grade": "attested"}
+        self.assertEqual(_g3_guard(bare), "rejected:confidence_upgrade_without_evidence")
+
+    def test_judgment_enum_map(self):
+        from harness.rwa_read import judgment_for_card
+        self.assertEqual(judgment_for_card("witnesses_agree"), "HIT")
+        self.assertEqual(judgment_for_card("witnesses_agree", fresh=False), "BLOCKED")
+        self.assertEqual(judgment_for_card("dispute"), "MISS")
+        self.assertEqual(judgment_for_card("skipped"), "MISS")
+        self.assertEqual(judgment_for_card("issuer_claim"), "UNKNOWN")
+        self.assertEqual(judgment_for_card("not_a_grade"), "UNKNOWN")
 
     def test_rpc2_wrong_height_is_dispute_no_numbers(self):
         from harness.rwa_read import execute

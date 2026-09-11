@@ -158,6 +158,22 @@ def _prior_card(symbol: str, chain: str) -> dict | None:
     return last
 
 
+HIT_CONF = {"attested", "witnesses_agree"}
+MISS_CONF = {"dispute", "skipped"}
+
+
+def judgment_for_card(confidence: str | None, *, fresh: bool = True) -> str:
+    """Explicit enum map. Unknown is UNKNOWN. No string '及以上'."""
+    c = str(confidence or "")
+    if c not in CONF_RANK:
+        return "UNKNOWN"
+    if c in HIT_CONF:
+        return "HIT" if fresh else "BLOCKED"
+    if c in MISS_CONF:
+        return "MISS"
+    return "UNKNOWN"
+
+
 def _g3_guard(card: dict) -> str | None:
     prior = _prior_card(card["symbol"], card["chain"])
     if not prior:
@@ -166,8 +182,19 @@ def _g3_guard(card: dict) -> str | None:
     old_rank = CONF_RANK.get(str(prior.get("confidence") or ""), 0)
     new_b = _block_int(card.get("block"))
     old_b = _block_int(prior.get("block"))
+    new_h = card.get("block_hash") or card.get("blockhash")
+    old_h = prior.get("block_hash") or prior.get("blockhash")
+    if new_b is not None and old_b is not None and new_b == old_b:
+        if new_h and old_h and new_h != old_h:
+            return "rejected:same_height_hash_mismatch"
+        if new_rank > old_rank:
+            return "rejected:confidence_upgrade_without_newer_block"
+        return None
     if new_rank > old_rank and new_b is not None and old_b is not None and new_b < old_b:
         return "rejected:confidence_upgrade_without_newer_block"
+    if new_rank > old_rank and new_b is not None and old_b is not None and new_b > old_b:
+        if not card.get("source_url") or str(card.get("confidence") or "") in {"dispute", "skipped", "unverified"}:
+            return "rejected:confidence_upgrade_without_evidence"
     return None
 
 
@@ -187,6 +214,7 @@ def _emit(card: dict, *, status: str = "EXECUTED", error: str = "") -> dict:
             "confidence": card.get("confidence"),
             "source_url": card.get("source_url"),
             "block": card.get("block"),
+            "block_hash": card.get("block_hash") or card.get("blockhash"),
             "evidence_grade": card.get("evidence_grade") or card.get("confidence"),
             "reject": error.replace("rejected:", "") if error.startswith("rejected:") else "",
         },
@@ -218,6 +246,7 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
             }
             _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
             _emit(card)
+            card["judgment"] = judgment_for_card(card.get("confidence"))
             cards.append(card)
             continue
         cid = e.get("chain_id")
@@ -231,6 +260,7 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
             }
             _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
             _emit(card)
+            card["judgment"] = judgment_for_card(card.get("confidence"))
             cards.append(card)
             continue
         url1, url2, pol = pair[0], (pair[1] if len(pair) > 1 else None), (pair[2] if len(pair) > 2 else "required")
@@ -246,6 +276,7 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
                 _strip_numbers(card)
                 _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
                 _emit(card)
+                card["judgment"] = judgment_for_card(card.get("confidence"))
                 cards.append(card)
                 continue
         doc = reader_run(None, [e], None, None, {cid: (url1, url2, pol)}, emit_provenance=False)
@@ -268,10 +299,12 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
                 _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
                 _emit(card, status="DENIED", error=why)
                 card["reject"] = why
+                card["judgment"] = judgment_for_card(card.get("confidence"))
                 cards.append(card)
                 continue
             _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
             _emit(card)
+            card["judgment"] = judgment_for_card(card.get("confidence"))
             cards.append(card)
         for sk in doc.get("skipped") or []:
             card = {
@@ -282,6 +315,7 @@ def execute(symbol: str | None = None, chain: str | None = None, *,
             }
             _attach_xyz(card, xyz_cache, attach=attach_xyz, opener=xyz_opener)
             _emit(card)
+            card["judgment"] = judgment_for_card(card.get("confidence"))
             cards.append(card)
     return {"ok": True, "permission": PERM, "tool": "rwa.read", "cards": cards}
 

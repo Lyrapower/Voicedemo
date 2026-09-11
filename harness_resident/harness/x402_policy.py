@@ -1,13 +1,38 @@
-"""x402 策略层:只判 ALLOW/DENY,不付款,不出网,不依赖第三方库。
-PKG v5 核心 + 接线:provenance → record_action, gate → resource_gate。"""
+"""Local, durable policy reservations; NEVER a payment client or spend capability.
+SQLite journal + budget update commit together. A resource-gate adapter must
+validate a token against the complete context. No token is persisted.
+"""
 from __future__ import annotations
-import hashlib, json, time
+import hashlib
+import json
+import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any
+from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 
-from app.harness.action_envelope import ActionEnvelope
-from app.harness.provenance import record_action
-from app.harness.resource_gate import gate as resource_gate
+SCALE = 1_000_000
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False)
+
+
+def units(value):
+    if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
+        raise ValueError('bad_amount')
+    if len(str(value)) > 64:
+        raise ValueError('bad_amount')
+    try:
+        n = Decimal(str(value))
+        if not n.is_finite() or n <= 0 or n > Decimal('1000000000'):
+            raise ValueError('bad_amount')
+        u = n * SCALE
+        if u <= 0 or u != u.to_integral_value():
+            raise ValueError('amount_precision')
+        return int(u)
+    except InvalidOperation as exc:
+        raise ValueError('bad_amount') from exc
 
 
 @dataclass
@@ -15,148 +40,169 @@ class Policy:
     daily_cap: dict = field(default_factory=dict)
     per_tx_cap: dict = field(default_factory=dict)
     payee_whitelist: set = field(default_factory=set)
-    day_key: callable = lambda: time.strftime("%Y-%m-%d")
-
-
-class MemProvenance:
-    """默认记录器;现场替换为 provenance.record_action。hash 链保证可回放。"""
-    def __init__(self): self.chain=[]
-    def record_action(self, **ev):
-        prev = self.chain[-1]["hash"] if self.chain else "0"*64
-        body = json.dumps({**ev, "prev": prev}, sort_keys=True)
-        self.chain.append({**ev, "prev": prev, "hash": hashlib.sha256(body.encode()).hexdigest()})
-    def verify(self):
-        prev="0"*64
-        for e in self.chain:
-            body=json.dumps({k:v for k,v in e.items() if k!="hash"}, sort_keys=True)
-            if e["prev"]!=prev or hashlib.sha256(body.encode()).hexdigest()!=e["hash"]: return False
-            prev=e["hash"]
-        return True
-
-
-class RecordActionProvenance:
-    """PKG v5 接线:Mem 链 + 现有 record_action(ActionEnvelope)。"""
-    def __init__(self):
-        self.mem = MemProvenance()
-        self.chain = self.mem.chain
-    def record_action(self, **ev):
-        self.mem.record_action(**ev)
-        env = ActionEnvelope(
-            mission_id=str(ev.get("mission") or "x402"),
-            action_id=str(ev.get("action") or "authorize"),
-            decision_origin="USER",
-            selected_resource="x402",
-            operation="authorize",
-            arguments={k: ev.get(k) for k in ("agent", "amount", "payee", "verdict", "reason")},
-            authorization_scope="money_moving",
-        )
-        record_action(env)
-    def verify(self):
-        return self.mem.verify()
+    currency: str = 'USD'
+    day_key: object = field(default=lambda: datetime.now(timezone.utc).date().isoformat())
 
 
 class X402Policy:
-    def __init__(self, policy: Policy, provenance=None, gate=None):
-        self.p=policy; self.prov=provenance or MemProvenance(); self.gate=gate
-        self.spent={}
+    def __init__(self, policy: Policy, provenance=None, gate=None, *, state_path=None):
+        self.p, self.prov, self.gate = policy, provenance, gate
+        # Memory-only authorization is deliberately unavailable.
+        self.path = str(state_path) if state_path is not None else None
+        if self.path == ':memory:':
+            self.path = None
+        if self.path:
+            with self._connect() as db:
+                db.executescript('''
+                CREATE TABLE IF NOT EXISTS budget(agent TEXT, day TEXT, currency TEXT,
+                    amount INTEGER NOT NULL, PRIMARY KEY(agent,day,currency));
+                CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                    request_id TEXT UNIQUE, request_hash TEXT NOT NULL,
+                    body TEXT NOT NULL, hash TEXT NOT NULL, delivered INTEGER NOT NULL DEFAULT 0);
+                ''')
 
-    def authorize(self, agent, amount, payee, mission, action, human_token=None):
-        reason=None
-        if human_token is None: reason="no_human_token"
-        elif self.gate and not self.gate(human_token, f"{mission}:{action}"): reason="token_not_bound"
-        elif amount<=0: reason="bad_amount"
-        elif payee not in self.p.payee_whitelist: reason="payee_not_whitelisted"
-        elif amount>self.p.per_tx_cap.get(agent,0): reason="per_tx_cap"
+    @contextmanager
+    def _connect(self):
+        db = sqlite3.connect(self.path, timeout=10, isolation_level=None)
+        db.execute('PRAGMA synchronous=FULL')
+        db.execute('PRAGMA busy_timeout=10000')
+        try:
+            yield db
+        finally:
+            db.close()
+
+    @staticmethod
+    def _verify_db(db):
+        prev = '0' * 64
+        totals = {}
+        for body, digest, rid, fingerprint in db.execute('SELECT body,hash,request_id,request_hash FROM events ORDER BY seq'):
+            try:
+                event = json.loads(body)
+                if event['request_id'] != rid or event['request_hash'] != fingerprint:
+                    return False
+                if event['verdict'] == 'ALLOW':
+                    key = (event['agent'], event['day'], event['currency'])
+                    totals[key] = totals.get(key, 0) + event['amount_units']
+                if event['prev'] != prev:
+                    return False
+            except (ValueError, KeyError, TypeError):
+                return False
+            if hashlib.sha256(body.encode()).hexdigest() != digest:
+                return False
+            prev = digest
+        actual = {(a, d, c): n for a, d, c, n in db.execute('SELECT * FROM budget')}
+        return actual == totals
+
+    def verify(self):
+        if not self.path:
+            return False
+        try:
+            with self._connect() as db:
+                return self._verify_db(db)
+        except sqlite3.Error:
+            return False
+
+    def authorize(self, agent, amount, payee, mission, action, human_token=None,
+                  *, request_id=None, currency='USD'):
+        if not self.path:
+            return 'DENY', 'durable_state_required'
+        reason = None
+        if not all(isinstance(s, str) and 0 < len(s) <= 256 for s in
+                   (agent, payee, mission, action, request_id)):
+            return 'DENY', 'bad_identity_or_request_id'
+        try:
+            amount_u = units(amount)
+            daily = units(self.p.daily_cap[agent]) if agent in self.p.daily_cap else 0
+            per_tx = units(self.p.per_tx_cap[agent]) if agent in self.p.per_tx_cap else 0
+        except (ValueError, TypeError):
+            return 'DENY', 'bad_amount_or_cap'
+        if currency != self.p.currency or currency != 'USD':
+            return 'DENY', 'unsupported_currency'
+        try:
+            day = self.p.day_key()
+            if not isinstance(day, str) or datetime.strptime(day, '%Y-%m-%d').strftime('%Y-%m-%d') != day:
+                raise ValueError('bad_day')
+        except Exception:
+            return 'DENY', 'clock_error'
+        context = dict(agent=agent, amount_units=amount_u, currency=currency,
+                       payee=payee, mission=mission, action=action, request_id=request_id)
+        # Complete context including amount/payee must be bound, not "mission:action".
+        if not human_token:
+            reason = 'no_human_token'
+        elif not callable(self.gate):
+            reason = 'gate_required'
         else:
-            k=(agent,self.p.day_key())
-            if self.spent.get(k,0)+amount>self.p.daily_cap.get(agent,0): reason="daily_cap"
-        verdict="DENY" if reason else "ALLOW"
-        if verdict=="ALLOW":
-            k=(agent,self.p.day_key()); self.spent[k]=self.spent.get(k,0)+amount
-        self.prov.record_action(kind="x402_authorize", agent=agent, amount=amount, payee=payee,
-                                mission=mission, action=action, verdict=verdict, reason=reason or "ok")
-        return verdict, reason or "ok"
+            try:
+                if self.gate(human_token, dict(context)) is not True:
+                    reason = 'token_not_bound'
+            except Exception:
+                reason = 'gate_error'
+        fingerprint = hashlib.sha256(canonical(dict(context, daily=daily, per_tx=per_tx,
+                     whitelisted=payee in self.p.payee_whitelist)).encode()).hexdigest()
+        try:
+            with self._connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                try:
+                    if not self._verify_db(db):
+                        db.rollback()
+                        return 'DENY', 'audit_corrupt'
+                    old = db.execute('SELECT request_hash,body FROM events WHERE request_id=?',
+                                     (request_id,)).fetchone()
+                    if old:
+                        db.rollback()
+                        if old[0] != fingerprint:
+                            return 'DENY', 'idempotency_conflict'
+                        if reason:
+                            return 'DENY', reason
+                        prior = json.loads(old[1])
+                        # An old reservation cannot be revived as today's authorization.
+                        if prior['day'] != day:
+                            return 'DENY', 'request_expired'
+                        return prior['verdict'], prior['reason']
+                    used = db.execute('SELECT amount FROM budget WHERE agent=? AND day=? AND currency=?',
+                                      (agent, day, currency)).fetchone()
+                    used = used[0] if used else 0
+                    if reason is None:
+                        if payee not in self.p.payee_whitelist:
+                            reason = 'payee_not_whitelisted'
+                        elif amount_u > per_tx:
+                            reason = 'per_tx_cap'
+                        elif used + amount_u > daily:
+                            reason = 'daily_cap'
+                    verdict = 'DENY' if reason else 'ALLOW'
+                    reason = reason or 'ok'
+                    if verdict == 'ALLOW':
+                        db.execute('INSERT INTO budget VALUES(?,?,?,?) ON CONFLICT(agent,day,currency) '
+                                   'DO UPDATE SET amount=excluded.amount', (agent, day, currency, used+amount_u))
+                    tail = db.execute('SELECT hash FROM events ORDER BY seq DESC LIMIT 1').fetchone()
+                    body = canonical(dict(context, request_hash=fingerprint, kind='x402_policy_reservation', day=day,
+                        verdict=verdict, reason=reason, prev=tail[0] if tail else '0'*64))
+                    digest = hashlib.sha256(body.encode()).hexdigest()
+                    db.execute('INSERT INTO events(request_id,request_hash,body,hash) VALUES(?,?,?,?)',
+                               (request_id, fingerprint, body, digest))
+                    db.commit()
+                    return verdict, reason
+                except BaseException:
+                    db.rollback()
+                    raise
+        except sqlite3.Error:
+            return 'DENY', 'durable_audit_or_state_failure'
 
-
-@dataclass
-class X402Config:
-    daily_limit: float = 0.0
-    per_tx_limit: float = 0.0
-    payees: tuple[str, ...] = ()
-    agents: dict[str, dict[str, float]] = field(default_factory=dict)
-
-
-def load_x402_config(raw: dict[str, Any] | None = None) -> X402Config:
-    raw = dict(raw or {})
-    agents = {}
-    for name, blk in (raw.get("agents") or {}).items():
-        if isinstance(blk, dict):
-            agents[str(name)] = {
-                "daily_limit": float(blk.get("daily_limit") or blk.get("daily") or 0),
-                "per_tx_limit": float(blk.get("per_tx_limit") or blk.get("per_tx") or 0),
-            }
-    return X402Config(
-        daily_limit=float(raw.get("daily_limit") or 0),
-        per_tx_limit=float(raw.get("per_tx_limit") or 0),
-        payees=tuple(str(p) for p in (raw.get("payees") or [])),
-        agents=agents,
-    )
-
-
-def _surface() -> dict[str, Any]:
-    return {"capabilities": [
-        {"capability_id": "x402", "status": "declared", "permission": "money_moving", "kind": "policy"},
-    ], "model_profiles": []}
-
-
-def bound_gate(token, binding, surface=None):
-    mission, _, action = binding.partition(":")
-    env = ActionEnvelope(
-        mission_id=mission, action_id=action, decision_origin="USER",
-        selected_resource="x402", operation="authorize",
-        authorization_scope="money_moving",
-    )
-    return resource_gate(env, authorization_token=token, surface=surface or _surface()).allowed
-
-
-def _limits(cfg: X402Config, agent: str) -> tuple[float, float]:
-    ov = cfg.agents.get(agent) or {}
-    daily = float(ov.get("daily_limit", cfg.daily_limit))
-    per_tx = float(ov.get("per_tx_limit", cfg.per_tx_limit))
-    return daily, per_tx
-
-
-_WIRED: X402Policy | None = None
-
-
-def reset_spent() -> None:
-    global _WIRED
-    _WIRED = None
-
-
-def authorize(
-    agent: str,
-    amount: float,
-    payee: str,
-    mission: str,
-    action: str,
-    *,
-    cfg: X402Config | None = None,
-    authorization_token: str | None = None,
-    surface: dict[str, Any] | None = None,
-) -> dict[str, str]:
-    """ALLOW/DENY + reason. PKG 类 + record_action + resource_gate。"""
-    global _WIRED
-    cfg = cfg or X402Config()
-    daily, per_tx = _limits(cfg, agent)
-    if _WIRED is None:
-        _WIRED = X402Policy(
-            Policy(daily_cap={}, per_tx_cap={}, payee_whitelist=set()),
-            provenance=RecordActionProvenance(),
-            gate=lambda t, b: bound_gate(t, b, surface),
-        )
-    _WIRED.p.daily_cap[agent] = daily
-    _WIRED.p.per_tx_cap[agent] = per_tx
-    _WIRED.p.payee_whitelist = set(cfg.payees)
-    verdict, reason = _WIRED.authorize(agent, amount, payee, mission, action, authorization_token)
-    return {"decision": verdict, "reason": reason}
+    def flush_provenance(self):
+        """At-least-once outbox. Consumer MUST deduplicate event_id; True means durable ACK."""
+        if self.prov is None or not self.path:
+            return {'status': 'pending', 'delivered': 0}
+        delivered = 0
+        with self._connect() as db:
+            if not self._verify_db(db):
+                return {'status': 'audit_corrupt', 'delivered': 0}
+            for seq, body, digest in db.execute('SELECT seq,body,hash FROM events WHERE delivered=0 ORDER BY seq').fetchall():
+                try:
+                    ack = self.prov.record_action(event_id=digest, **json.loads(body))
+                except Exception:
+                    return {'status': 'pending', 'delivered': delivered}
+                if ack is not True:
+                    return {'status': 'pending', 'delivered': delivered}
+                db.execute('UPDATE events SET delivered=1 WHERE seq=?', (seq,))
+                delivered += 1
+        return {'status': 'synced', 'delivered': delivered}

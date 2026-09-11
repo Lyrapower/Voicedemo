@@ -1,4 +1,4 @@
-"""web.fetch URL normalize — re-export PKG v5 web_fetch_normalize."""
+"""web.fetch URL normalize — re-export PKG v6 web_fetch_normalize."""
 from __future__ import annotations
 
 try:
