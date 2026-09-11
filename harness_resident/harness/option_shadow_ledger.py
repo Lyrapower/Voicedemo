@@ -1,78 +1,110 @@
-"""option.shadow_ledger — paper premium book. Theta :25503 only. No UI, no morning prompt."""
+"""期权影子权利金账。数据源=Theta Terminal v3 REST(本机)。零第三方依赖。
+PKG v5 核心 + 晚班 job:读 briefs,落 ledgers/option_shadow/<date>.json,收据进 harness-shared。"""
 from __future__ import annotations
-
-import hashlib
-import json
-import os
-import re
-import socket
-import urllib.request
-from datetime import datetime
+import json, hashlib, os, re, socket, urllib.request, urllib.parse
+from datetime import datetime, date
 from pathlib import Path
-from typing import Any
 from zoneinfo import ZoneInfo
+ET=ZoneInfo("America/New_York"); PT=ZoneInfo("America/Los_Angeles")
+COMMISSION_PER_CONTRACT=0.65
 
-PT = ZoneInfo("America/Los_Angeles")
-COMMISSION = 0.65 * 2
-THETA = os.getenv("THETA_BASE", "http://127.0.0.1:25503").rstrip("/")
+THETA_BASE = os.getenv("THETA_BASE", "http://127.0.0.1:25503").rstrip("/")
 BRIEFS = Path(os.getenv("SCOUT_BRIEFS", str(Path(__file__).resolve().parents[2] / "grid-scout" / "briefs")))
 LEDGER_ROOT = Path(os.getenv("OPTION_SHADOW_LEDGER", str(Path(__file__).resolve().parents[1] / "ledgers" / "option_shadow")))
 
 
-def theta_up() -> bool:
-    s = socket.socket()
-    s.settimeout(2)
-    try:
-        s.connect(("127.0.0.1", 25503))
-        return True
-    except OSError:
-        return False
-    finally:
-        s.close()
+def pt_to_et_minute(d: date, hhmm: str) -> str:
+    """'06:45' PT on date d → 'HH:MM:00.000' ET. 非整分输入直接拒。"""
+    hh,mm=hhmm.split(":")
+    if len(hhmm.split(":"))!=2: raise ValueError("minute boundary only")
+    t=datetime(d.year,d.month,d.day,int(hh),int(mm),tzinfo=PT).astimezone(ET)
+    return t.strftime("%H:%M:00.000")
+
+def mid(q):
+    b,a=float(q.get("bid",0) or 0),float(q.get("ask",0) or 0)
+    if b<=0 or a<=0: return None, None
+    return (a+b)/2, (a-b)
+
+def settle(mid_in, spr_in, mid_out, spr_out, contracts=1):
+    gross=(mid_out-mid_in)*100*contracts
+    comm=COMMISSION_PER_CONTRACT*2*contracts
+    slip=(spr_in/2+spr_out/2)*100*contracts
+    return {"gross":round(gross,2),"commission":round(comm,2),"slippage":round(slip,2),"net":round(gross-comm-slip,2)}
+
+def _coerce_rows(raw):
+    """Theta v3 wraps lists in {response:[...]} and at_time rows as {contract,data}."""
+    if isinstance(raw, dict) and "response" in raw:
+        raw = raw["response"]
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for r in raw:
+        if isinstance(r, dict) and "contract" in r:
+            c = r.get("contract") or {}
+            bars = r.get("data") or [{}]
+            b = bars[0] if bars else {}
+            out.append({**c, **b, "strike": c.get("strike"), "bid": b.get("bid"), "ask": b.get("ask")})
+        else:
+            out.append(r)
+    return out
 
 
-def _get(url: str) -> tuple[str, str]:
-    req = urllib.request.Request(url, headers={"User-Agent": "grid-option-shadow/1"})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        raw = r.read()
-    text = raw.decode("utf-8", errors="replace")
-    return text, hashlib.sha256(raw).hexdigest()
+class Theta:
+    def __init__(self, base=None, opener=None):
+        self.base=base or THETA_BASE; self.open=opener or (lambda u: urllib.request.urlopen(u,timeout=30).read().decode())
+        self.log=[]
+    def get(self, path, **params):
+        url=f"{self.base}{path}?"+urllib.parse.urlencode({**params,"format":"json"})
+        body=self.open(url); self.log.append({"url":url,"sha256":hashlib.sha256(body.encode()).hexdigest()})
+        return _coerce_rows(json.loads(body) if body.strip() else [])
+    def expirations(self, symbol): return [r["expiration"] if isinstance(r,dict) else r for r in self.get("/v3/option/list/expirations", symbol=symbol)]
+    def at_time_quote(self, symbol, expiration, right, d: date, tod_et):
+        if not tod_et.endswith(":00.000"): raise ValueError("time_of_day must be minute boundary")
+        return self.get("/v3/option/at_time/quote", symbol=symbol, expiration=expiration, right=right,
+                        strike_range=1, start_date=d.strftime("%Y%m%d"), end_date=d.strftime("%Y%m%d"), time_of_day=tod_et)
+
+def settle_leg(theta: Theta, leg: dict, d: date):
+    """leg: {ticker, direction(call|put), entry_window_pst:'HH:MM-HH:MM', exit_window_pst:'HH:MM-HH:MM'}"""
+    t_in=leg["entry_window_pst"].split("-")[0]; t_out=leg["exit_window_pst"].split("-")[1]
+    if t_out<=t_in: return {"leg":leg,"status":"rejected:exit_before_entry"}
+    exps=theta.expirations(leg["ticker"])
+    if not exps: return {"leg":leg,"status":"unsettled:no_chain"}
+    exp=sorted(e for e in exps if str(e).replace("-","")>=d.strftime("%Y%m%d"))
+    if not exp: return {"leg":leg,"status":"unsettled:no_expiration"}
+    exp=exp[0]
+    q_in=theta.at_time_quote(leg["ticker"],exp,leg["direction"],d,pt_to_et_minute(d,t_in))
+    if not q_in: return {"leg":leg,"status":"unsettled:no_quote"}
+    row=sorted(q_in,key=lambda r: float(r["strike"]))[len(q_in)//2]
+    q_out=[r for r in theta.at_time_quote(leg["ticker"],exp,leg["direction"],d,pt_to_et_minute(d,t_out)) if float(r["strike"])==float(row["strike"])]
+    m_in,s_in=mid(row); m_out,s_out=mid(q_out[0]) if q_out else (None,None)
+    if m_in is None or m_out is None: return {"leg":leg,"status":"unsettled:no_quote","strike":row["strike"],"expiration":exp}
+    return {"leg":leg,"status":"settled","strike":row["strike"],"expiration":exp,"mid_in":m_in,"mid_out":m_out,**settle(m_in,s_in,m_out,s_out)}
 
 
-def _parse_window(s: str) -> tuple[str, str] | None:
+def _clean_window(s: str) -> str:
     m = re.search(r"(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})", s or "")
     if not m:
-        return None
-    return m.group(1), m.group(2)
-
-
-def _hm(s: str) -> tuple[int, int]:
-    h, m = s.split(":")
-    return int(h), int(m)
-
-
-def _minutes(hm: tuple[int, int]) -> int:
-    return hm[0] * 60 + hm[1]
+        return ""
+    a, b = m.group(1), m.group(2)
+    def pad(x):
+        h, mm = x.split(":")
+        return "%02d:%02d" % (int(h), int(mm))
+    return "%s-%s" % (pad(a), pad(b))
 
 
 def extract_legs(brief: dict) -> list[dict]:
     legs = []
     cands = brief.get("candidates") or (brief.get("ds") or {}).get("candidates") or []
-    if not cands and isinstance(brief.get("review"), dict):
-        pass
     for c in cands:
         if c.get("empty"):
             continue
         st = c.get("strategy") or {}
         if c.get("ticker"):
-            px = (c.get("floor_check") or {}).get("price")
             legs.append({
                 "ticker": c["ticker"],
                 "direction": (c.get("direction") or "call").lower(),
-                "entry_window_pst": st.get("entry_window_pst") or c.get("entry_window_pst") or "",
-                "exit_window_pst": st.get("exit_window_pst") or c.get("exit_window_pst") or "",
-                "expiry_hint": st.get("expiry"),
-                "spot": px,
+                "entry_window_pst": _clean_window(st.get("entry_window_pst") or c.get("entry_window_pst") or ""),
+                "exit_window_pst": _clean_window(st.get("exit_window_pst") or c.get("exit_window_pst") or ""),
                 "source": "candidate",
             })
     for L in ((brief.get("hedge") or {}).get("legs") or []):
@@ -80,247 +112,78 @@ def extract_legs(brief: dict) -> list[dict]:
             legs.append({
                 "ticker": L["ticker"],
                 "direction": (L.get("direction") or "put").lower(),
-                "entry_window_pst": L.get("entry_window_pst") or "",
-                "exit_window_pst": L.get("exit_window_pst") or "",
-                "expiry_hint": L.get("expiry"),
+                "entry_window_pst": _clean_window(L.get("entry_window_pst") or ""),
+                "exit_window_pst": _clean_window(L.get("exit_window_pst") or ""),
                 "source": "hedge",
             })
     return legs
 
 
-def _rows(payload: Any) -> list:
-    if isinstance(payload, list):
-        return payload
-    if isinstance(payload, dict):
-        return payload.get("data") or payload.get("response") or []
-    return []
-
-
-def _mid(row: dict) -> float | None:
-    try:
-        bid, ask = float(row.get("bid") or 0), float(row.get("ask") or 0)
-        if bid > 0 and ask > 0:
-            return (bid + ask) / 2.0
-    except (TypeError, ValueError):
-        return None
-    return None
-
-
-def _pick_atm(rows: list, right: str) -> list:
-    want = "call" if right.startswith("c") else "put"
-    kept = []
-    for r in rows:
-        rr = str(r.get("right") or r.get("option_right") or want).lower()
-        if rr not in (want, want[:1]):
-            continue
-        kept.append(r)
-    return kept
-
-
-def settle_leg(leg: dict, date: str, *, opener=None) -> dict:
-    ticker = str(leg.get("ticker") or "").upper()
-    direction = "put" if str(leg.get("direction") or "").startswith("p") else "call"
-    ew, xw = _parse_window(leg.get("entry_window_pst") or ""), _parse_window(leg.get("exit_window_pst") or "")
-    out = {
-        "ticker": ticker, "direction": direction,
-        "entry_window_pst": leg.get("entry_window_pst"),
-        "exit_window_pst": leg.get("exit_window_pst"),
-        "commission": COMMISSION, "slip": None,
-        "mid_entry": None, "mid_exit": None, "pnl": None,
-        "theta_request": None, "theta_response_hash": None,
-    }
-    if not ew or not xw:
-        out["unsettled"] = "no_window"
-        return out
-    if _minutes(_hm(xw[1])) <= _minutes(_hm(ew[0])):
-        out["unsettled"] = "exit_before_entry"
-        return out
-    if opener is None and ticker in {"NO_SUCH", "NOTICKER"}:
-        out["unsettled"] = "no_chain"
-        return out
-    from urllib.parse import urlencode
-    exp_hint = str(leg.get("expiry_hint") or "").replace("-", "")
-    if exp_hint and not exp_hint.isdigit():
-        exp_hint = ""
-    if not exp_hint:
+def theta_up(port: int | None = None) -> bool:
+    if port is None:
         try:
-            elist, _ = (opener or _get)(THETA + "/v3/option/list/expirations?" + urlencode({"symbol": ticker, "format": "json"}))
-            exps = []
-            for row in _rows(json.loads(elist) if elist else []):
-                e = str((row.get("expiration") if isinstance(row, dict) else row) or "")
-                if e >= date:
-                    exps.append(e)
-            exp_hint = (sorted(exps)[0] if exps else "").replace("-", "")
+            port = int(urllib.parse.urlsplit(THETA_BASE).port or 25503)
         except Exception:
-            exp_hint = ""
-    if not exp_hint:
-        out["unsettled"] = "no_chain"
-        return out
-    q = {
-        "symbol": ticker,
-        "expiration": exp_hint,
-        "date": date.replace("-", ""),
-        "interval": "1m",
-        "right": direction,
-        "format": "json",
-    }
-    url = THETA + "/v3/option/history/quote?" + urlencode(q)
-    out["theta_request"] = url
+            port = 25503
+    s = socket.socket()
+    s.settimeout(2)
     try:
-        if opener:
-            text, hx = opener(url)
-        else:
-            text, hx = _get(url)
-    except Exception as e:
-        out["unsettled"] = "no_chain"
-        out["error"] = str(e)[:160]
-        return out
-    out["theta_response_hash"] = hx
-    payload = json.loads(text) if text else {}
-    contracts = payload.get("response") if isinstance(payload, dict) else payload
-    if not isinstance(contracts, list) or not contracts:
-        out["unsettled"] = "no_chain"
-        return out
-    spot = float(leg.get("spot") or 0) or None
-    if spot is None:
-        strikes = [float((c.get("contract") or {}).get("strike") or 0) for c in contracts]
-        spot = sorted(strikes)[len(strikes)//2] if strikes else 0
-    def _dist(c):
-        k = float((c.get("contract") or {}).get("strike") or 0)
-        return abs(k - float(spot))
-    chosen = min(contracts, key=_dist)
-    con = chosen.get("contract") or {}
-    exp = str(con.get("expiration") or exp_hint)
-    atm = float(con.get("strike") or 0)
-    series = []
-    for bar in chosen.get("data") or []:
-        row = dict(bar)
-        row["strike"] = atm
-        row["right"] = direction
-        row["expiration"] = exp
-        series.append(row)
-    if not series:
-        out["unsettled"] = "no_chain"
-        return out
-
-    def _ts_min(r: dict) -> int | None:
-        for k in ("ms_of_day", "timestamp", "time", "ms"):
-            if k not in r:
-                continue
-            v = r[k]
-            try:
-                if k == "ms_of_day":
-                    return int(v) // 60000
-                s = str(v)
-                if "T" in s or " " in s:
-                    hh, mm = s.replace("T", " ").split(" ")[1].split(":")[:2]
-                    # Theta quote timestamps are ET; windows in briefs are PST (ET-3)
-                    return int(hh) * 60 + int(mm) - 180
-                return int(v) // 60000
-            except Exception:
-                return None
-        return None
-
-    entry_lo = _minutes(_hm(ew[0]))
-    exit_hi = _minutes(_hm(xw[1]))
-    after, before = None, None
-    for r in series:
-        m = _ts_min(r)
-        mid = _mid(r)
-        if m is None or mid is None:
-            continue
-        if m >= entry_lo and (after is None or m < after[0]):
-            after = (m, mid, r)
-        if m <= exit_hi and (before is None or m > before[0]):
-            before = (m, mid, r)
-    if not after or not before:
-        out["unsettled"] = "no_chain"
-        return out
-    mid_e, mid_x = after[1], before[1]
-    row_e, row_x = after[2], before[2]
-    spread_e = abs(float(row_e.get("ask") or 0) - float(row_e.get("bid") or 0))
-    spread_x = abs(float(row_x.get("ask") or 0) - float(row_x.get("bid") or 0))
-    slip = (spread_e / 2.0 + spread_x / 2.0)
-    pnl_mid = (mid_x - mid_e) * 100
-    out.update({
-        "expiration": exp, "strike": atm,
-        "mid_entry": mid_e, "mid_exit": mid_x,
-        "slip": slip, "pnl_mid": pnl_mid,
-        "commission": COMMISSION,
-        "pnl": pnl_mid - COMMISSION - slip,
-    })
-    # second source: EOD snapshot mid vs mid_exit
-    try:
-        eod_url = THETA + "/v3/option/history/eod?" + urlencode({
-            "symbol": ticker, "expiration": str(exp).replace("-", ""),
-            "date": date.replace("-", ""), "right": direction, "format": "json",
-        })
-        if opener:
-            et, eh = opener(eod_url)
-        else:
-            et, eh = _get(eod_url)
-        out["eod_request"] = eod_url
-        out["eod_response_hash"] = eh
-        erows = _pick_atm(_rows(json.loads(et) if et else []), direction)
-        emids = [_mid(r) for r in erows if r.get("strike") and abs(float(r.get("strike")) - atm) < 1e-6]
-        emids = [m for m in emids if m]
-        if emids and mid_x:
-            eod = emids[0]
-            if abs(eod - mid_x) / mid_x > 0.05:
-                out["second_source_mismatch"] = True
-                out["eod_mid"] = eod
-    except Exception:
-        pass
-    return out
+        s.connect(("127.0.0.1", port))
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
 
 
-def run(date: str, brief_path: Path | None = None, *, write_shared: bool = False, opener=None) -> dict:
+def _brief_src(brief: dict) -> dict:
+    if isinstance(brief.get("ds"), dict) and brief["ds"].get("candidates"):
+        return brief["ds"]
+    if brief.get("candidates"):
+        return brief
+    for v in brief.values():
+        if isinstance(v, dict) and v.get("candidates"):
+            return v
+    return brief
+
+
+def run(date_s: str, brief_path: Path | None = None, *, write_shared: bool = False, opener=None) -> dict:
+    d = date.fromisoformat(date_s)
     if not theta_up() and opener is None:
-        rec = {"kind": "theta_down", "date": date}
+        rec = {"kind": "theta_down", "date": date_s}
         if write_shared:
             _shared("theta_down", rec)
         return rec
-    path = brief_path or (BRIEFS / f"{date}-morning.json")
-    if not path.is_file():
-        # ds json sometimes nested
-        alt = BRIEFS / f"{date}-morning.md"
-        path = path if path.is_file() else alt
-    if path.suffix == ".md" and path.is_file():
-        text = path.read_text(encoding="utf-8")
-        brief = json.loads(text.split("\n", 2)[2] if text.startswith("{") is False and "\n{" in text else text)
-        if not isinstance(brief, dict):
-            brief = {}
-    else:
-        brief = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
-    if "ds" in brief and isinstance(brief["ds"], dict) and brief["ds"].get("candidates"):
-        src = brief["ds"]
-    elif "candidates" in brief:
-        src = brief
-    else:
-        src = brief.get("review") and brief or brief
-        # morning.json wraps ds inside a key
-        for v in brief.values():
-            if isinstance(v, dict) and v.get("candidates"):
-                src = v
-                break
-    legs_in = extract_legs(src if isinstance(src, dict) else {})
-    settled = [settle_leg(L, date, opener=opener) for L in legs_in]
-    unsettled = sum(1 for x in settled if x.get("unsettled"))
-    total = sum(float(x["pnl"]) for x in settled if x.get("pnl") is not None)
+    path = brief_path or (BRIEFS / f"{date_s}-morning.json")
+    brief = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    legs_in = extract_legs(_brief_src(brief if isinstance(brief, dict) else {}))
+    th = Theta(opener=opener) if opener is not None else Theta()
+    settled = []
+    for L in legs_in:
+        if not L.get("entry_window_pst") or not L.get("exit_window_pst"):
+            settled.append({"leg": L, "status": "unsettled:no_window"})
+            continue
+        try:
+            settled.append(settle_leg(th, L, d))
+        except Exception as e:
+            settled.append({"leg": L, "status": "unsettled:http", "error": str(e)[:160]})
+    n_unsettled = sum(1 for x in settled if str(x.get("status") or "").startswith("unsettled") or str(x.get("status") or "").startswith("rejected"))
+    total = sum(float(x["net"]) for x in settled if x.get("status") == "settled")
     doc = {
-        "date": date,
+        "date": date_s,
         "n_legs": len(settled),
-        "n_unsettled": unsettled,
+        "n_unsettled": n_unsettled,
         "total_pnl": total,
         "legs": settled,
+        "theta_log": th.log,
     }
     LEDGER_ROOT.mkdir(parents=True, exist_ok=True)
-    outp = LEDGER_ROOT / f"{date}.json"
+    outp = LEDGER_ROOT / f"{date_s}.json"
     outp.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
     doc["path"] = str(outp)
     if write_shared:
         _shared("option.shadow_ledger", {
-            "date": date, "n_legs": doc["n_legs"], "total_pnl": total, "n_unsettled": unsettled,
+            "date": date_s, "n_legs": doc["n_legs"], "total_pnl": total, "n_unsettled": n_unsettled,
         })
     return doc
 
