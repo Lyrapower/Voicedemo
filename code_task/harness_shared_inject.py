@@ -57,10 +57,11 @@ def _identity() -> str:
     now = datetime.now(ZoneInfo("America/Los_Angeles"))
     return (
         "agents·此刻身份\n"
-        f"clock PDT {now.strftime('%Y-%m-%d %H:%M')}\n"
+        f"clock America/Los_Angeles {now.strftime('%Y-%m-%d %H:%M %Z')}\n"
         "ports 8630=harness 8501=gateway+store\n"
         "lanes scout,research,builder,gardener,rwa · workers fast,deep,full,research,local,cc\n"
-        "research=DeepSeek · local=9B · deep=scout 决策官 · Grid 是主体且不调度\n"
+        "worker_role 不是模型名。producer_model_id 只取工作卡字段；缺则为 unknown，禁止从 worker_role 猜测。\n"
+        "消费者读卡须写「某 worker 完成了…，我读取了其工作卡」，不得自称执行。回填/同步不是重新执行。\n"
         "门: money/写宿主/表外出网 出生 BLOCKED；read_only 剥写工具\n"
         "harness-shared 只 harness 写；lane 节点只读"
     )

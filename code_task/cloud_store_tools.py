@@ -213,42 +213,70 @@ def tool_search(args: dict[str, str], *, db_path: str, cloud_nodes: list[str]) -
     return truncate_for_tool("\n\n".join(parts))
 
 
-def _pdt_recent_window(args: dict[str, str]) -> tuple[float, float, str]:
-    """PDT calendar window. days=N → 含今天在内的 N 个 PDT 日;默认 1 日(今日 00:00 PDT → 现在)."""
+def pdt_calendar_window(days: int = 1, *, now=None) -> tuple[float, float, str]:
+    """America/Los_Angeles calendar window: start-day 00:00 inclusive → end-day+1 00:00 exclusive.
+
+    days=N includes today and the previous N-1 local calendar days. DST 23/25h days
+    are handled by zoneinfo local midnights, not a fixed UTC−7 offset.
+    """
     from datetime import datetime, timedelta
     from zoneinfo import ZoneInfo
     pt = ZoneInfo("America/Los_Angeles")
-    now = datetime.now(pt)
+    if now is None:
+        now = datetime.now(pt)
+    elif now.tzinfo is None:
+        raise ValueError("now_tz_unknown")
+    else:
+        now = now.astimezone(pt)
+    n = max(1, int(days))
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=n - 1)
+    end = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    label = "range America/Los_Angeles [%s, %s) (%d calendar day(s)) tz=%s" % (
+        start.isoformat(), end.isoformat(), n, now.tzname() or "America/Los_Angeles")
+    return start.timestamp(), end.timestamp(), label
+
+
+def _pdt_recent_window(args: dict[str, str], *, now=None) -> tuple[float, float, str]:
+    """Calendar window, or explicit unix instants when start_ts/end_ts are set."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    pt = ZoneInfo("America/Los_Angeles")
     start_ts = args.get("start_ts")
     end_ts = args.get("end_ts")
     if start_ts or end_ts:
+        if now is None:
+            now = datetime.now(pt)
         lo = _to_float(start_ts, 0.0)
         hi = _to_float(end_ts, now.timestamp())
-        label = "range PDT unix-override [%s,%s]" % (int(lo), int(hi))
+        label = "range unix-override [%s,%s] (ingested_at; occurred_at unknown unless in body)" % (
+            int(lo), int(hi))
         return lo, hi, label
     n = max(1, int(_to_float(args.get("days"), 1.0)))
-    start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=n - 1)
-    lo, hi = start.timestamp(), now.timestamp()
-    label = "range PDT %s .. %s (%d calendar day(s))" % (
-        start.strftime("%Y-%m-%d %H:%M"), now.strftime("%Y-%m-%d %H:%M"), n)
-    return lo, hi, label
+    return pdt_calendar_window(n, now=now)
 
 
 def tool_recent(args: dict[str, str], *, db_path: str, cloud_nodes: list[str]) -> str:
     limit = max(1, min(_to_int(args.get("limit"), 20), 100))
     lo, hi, label = _pdt_recent_window(args)
-    parts: list[str] = ["store.recent limit=%d %s" % (limit, label)]
     conn = _ro_conn(db_path)
     try:
         nodes_ph = ",".join("?" for _ in cloud_nodes)
         q = ("SELECT id, node_id, role, content, ts FROM messages "
-             "WHERE node_id IN (%s) AND ts >= ? AND ts <= ? ORDER BY ts DESC LIMIT ?" % nodes_ph)
-        rows = conn.execute(q, [*cloud_nodes, lo, hi, limit]).fetchall()
+             "WHERE node_id IN (%s) AND ts >= ? AND ts < ? ORDER BY ts DESC LIMIT ?" % nodes_ph)
+        rows = conn.execute(q, [*cloud_nodes, lo, hi, limit + 1]).fetchall()
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        cursor = str(rows[-1]["id"]) if rows else ""
+        parts: list[str] = [
+            "store.recent limit=%d has_more=%s cursor=%s fetched=%d %s note=ts_is_ingested_at"
+            % (limit, "true" if has_more else "false", cursor, len(rows), label)
+        ]
         parts.append("## 对话 %d 条" % len(rows))
         for r in rows:
             parts.append(_format_msg_row(r))
     except Exception as exc:
-        parts.append("store.recent 错误: %s" % str(exc)[:200])
+        parts = ["store.recent limit=%d %s" % (limit, label),
+                 "store.recent 错误: %s" % str(exc)[:200]]
     finally:
         conn.close()
     return truncate_for_tool("\n\n".join(parts))

@@ -58,28 +58,56 @@ def _iso(ts) -> str:
         return str(ts)
 
 
+def _token(rec: dict[str, Any], *keys: str, default: str = "unknown") -> str:
+    for k in keys:
+        v = rec.get(k)
+        if v is None or v == "":
+            continue
+        s = str(v).strip().replace("\n", " ")
+        if s:
+            return s.replace(" ", "_")
+    return default
+
+
+def _observed_at(rec: dict[str, Any]) -> str:
+    raw = rec.get("occurred_at") if rec.get("occurred_at") not in (None, "") else rec.get("ts")
+    if raw in (None, ""):
+        return "unknown"
+    if isinstance(raw, (int, float)):
+        return _iso(raw) or "unknown"
+    s = str(raw).strip()
+    if not s:
+        return "unknown"
+    try:
+        return _iso(float(s)) or "unknown"
+    except (TypeError, ValueError):
+        if re.match(r"^\d{4}-\d{2}-\d{2}T", s):
+            return s
+        return "unknown"
+
+
 def project_work_card(rec: dict[str, Any], *, backfilled: bool = False) -> str | None:
     rid = str(rec.get("receipt_id") or rec.get("event_id") or "").strip()
     mid = str(rec.get("mid") or rec.get("mission_id") or "").strip()
     if not rid or not mid:
         return None
-    worker = str(rec.get("worker") or "")
+    worker = _token(rec, "worker", "worker_role", default="")
+    model = _token(rec, "producer_model_id", "model_resolved")
+    family = _token(rec, "producer_family")
     tags = []
-    if worker == "research":
-        tags.append("deepseek_inbound")
-    else:
-        tags.append("worker:" + (worker or "unknown"))
     if backfilled:
         tags.append("backfilled=1")
     if rec.get("test_run_id"):
         tags.append("test_run_id=" + str(rec["test_run_id"]))
     line = (
-        f"{CARD_PREFIX} mid={mid} jid={rec.get('jid') or rec.get('job_id') or ''} "
-        f"worker={worker} lane={rec.get('lane') or ''} "
-        f"model_resolved={rec.get('model_resolved') or ''} "
-        f"tools={rec.get('tools') or rec.get('tools_used') or ''} "
+        f"{CARD_PREFIX} mission_id={mid} job_id={_token(rec, 'jid', 'job_id', default='')} "
+        f"worker_role={worker or 'unknown'} producer_family={family} "
+        f"producer_model_id={model} producer_run_id={_token(rec, 'producer_run_id', 'run_id')} "
+        f"observed_at={_observed_at(rec)} ingested_at={_iso(rec.get('ingested_at') or rec.get('ts')) or 'unknown'} "
+        f"source_receipt_id={rid} lane={_token(rec, 'lane', default='')} "
+        f"tools={_token(rec, 'tools', 'tools_used', default='')} "
         f"result={redact(rec.get('result') or rec.get('conclusion') or rec.get('status') or '')} "
-        f"receipt_id={rid} ts={_iso(rec.get('ts'))} {' '.join(tags)}"
+        f"{' '.join(tags)}"
     )
     if signal_blocked(line):
         return None
@@ -103,10 +131,11 @@ def identity_block(*, local: bool = False) -> str:
     budget = 2000 if local else 4000
     body = (
         "agents·此刻身份\n"
-        f"clock PDT {now.strftime('%Y-%m-%d %H:%M')}\n"
+        f"clock America/Los_Angeles {now.strftime('%Y-%m-%d %H:%M %Z')}\n"
         "ports 8630=harness 8501=gateway+store\n"
         f"lanes {','.join(LANES)} · workers {','.join(WORKERS)}\n"
-        "research=DeepSeek · local=9B · deep=scout 决策官 · Grid 是主体且不调度\n"
+        "worker_role 不是模型名。producer_model_id 只取工作卡字段；缺则为 unknown，禁止从 worker_role 猜测。\n"
+        "消费者读卡须写「某 worker 完成了…，我读取了其工作卡」，不得自称执行。回填/同步不是重新执行。\n"
         "门: money/写宿主/表外出网 出生 BLOCKED；read_only 剥写工具\n"
         "harness-shared 只 harness 写；lane 节点只读\n"
         "本线程未绑 mission_ref 则只可读工具面，不执行"
@@ -195,12 +224,17 @@ class MemoryBridge:
             "mid": mid or job.get("job_id"),
             "jid": job.get("job_id"),
             "worker": job.get("worker"),
+            "worker_role": job.get("worker"),
             "lane": job.get("lane"),
-            "model_resolved": model_resolved,
+            "producer_model_id": model_resolved or job.get("producer_model_id") or "",
+            "producer_family": job.get("producer_family") or "",
+            "producer_run_id": job.get("producer_run_id") or "",
+            "occurred_at": job.get("occurred_at") or "",
             "tools": ",".join(job.get("allowed_tools") or []),
             "result": error or status,
             "status": status,
             "ts": time.time(),
+            "ingested_at": time.time(),
         }
         return self.offer(rec, kind="工作日志")
 
@@ -221,21 +255,50 @@ def _append_shared(node: str, card: str) -> tuple[bool, str]:
         return False, f"{type(e).__name__}:{e}"
 
 
-def load_shared_cards(*, dest: str = SHARED_NODE, limit: int = 200) -> list[str]:
+def card_field(card: str, key: str) -> str:
+    m = re.search(rf"(?:^|\s){re.escape(key)}=(\S+)", str(card or ""))
+    return m.group(1) if m else ""
+
+
+def load_shared_page(*, dest: str = SHARED_NODE, limit: int = 20, fetch: int = 200,
+                     allowed_mids: list[str] | None = None) -> dict[str, Any]:
+    """Paginated shared-card read. limit is the inject window, not the full date range."""
     try:
         from . import store_memory
-        rows = store_memory.get_messages(dest, limit=limit)
+        rows = store_memory.get_messages(dest, limit=max(int(fetch), int(limit) + 1))
     except Exception:
-        return []
+        rows = []
     out = []
+    allow = {str(x) for x in (allowed_mids or []) if str(x).strip()}
     for row in rows:
         c = str(row.get("content") or "")
         if "test_run_id=" in c:
             continue
-        if c.startswith(CARD_PREFIX) or c.startswith("[决定]") or c.startswith("[终判]") \
-                or c.startswith("[收口]") or c.startswith("[播种]") or c.startswith("[lane 状态]"):
-            out.append(c)
-    return out[-20:]
+        if not (c.startswith(CARD_PREFIX) or c.startswith("[决定]") or c.startswith("[终判]")
+                or c.startswith("[收口]") or c.startswith("[播种]") or c.startswith("[lane 状态]")):
+            continue
+        if allow:
+            mid = card_field(c, "mission_id") or card_field(c, "mid")
+            if mid not in allow:
+                continue
+        out.append(c)
+    has_more = len(out) > int(limit)
+    page = out[-int(limit):] if out else []
+    return {
+        "cards": page,
+        "limit": int(limit),
+        "has_more": has_more,
+        "cursor": card_field(page[0], "source_receipt_id") if page else "",
+        "coverage": f"last_{len(page)}_of_{len(out)}" if out else "empty",
+        "fetched": len(out),
+    }
+
+
+def load_shared_cards(*, dest: str = SHARED_NODE, limit: int = 200,
+                      allowed_mids: list[str] | None = None) -> list[str]:
+    page = load_shared_page(dest=dest, limit=20 if limit >= 20 else limit, fetch=limit,
+                            allowed_mids=allowed_mids)
+    return list(page["cards"])
 
 
 def collect_backfill_records(store, *, since_ts: float | None = None) -> list[dict[str, Any]]:
