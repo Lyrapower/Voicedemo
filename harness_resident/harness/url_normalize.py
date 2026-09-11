@@ -1,15 +1,9 @@
-"""web.fetch URL normalize — tool-layer only. Worker prompts unchanged."""
+"""web.fetch URL normalize — re-export PKG v5 web_fetch_normalize."""
 from __future__ import annotations
 
-from urllib.parse import quote, urlsplit, urlunsplit
+try:
+    from harness.web_fetch_normalize import normalize_url
+except ImportError:
+    from web_fetch_normalize import normalize_url
 
-
-def normalize_url(raw: str) -> tuple[str | None, str]:
-    s = raw.strip().strip('"\'`').replace('\\/', '/').replace('\\"', '"')
-    s = ' '.join(s.split())                     # 折叠内部换行/多空格
-    p = urlsplit(s)
-    if p.scheme not in ('http', 'https') or not p.netloc:
-        return None, 'no_scheme_or_host'
-    path = quote(p.path, safe="/%:@!$&'()*+,;=-._~")
-    query = quote(p.query, safe="=&%:@!$'()*+,;/?-._~")
-    return urlunsplit((p.scheme, p.netloc, path, query, '')), 'ok'
+__all__ = ["normalize_url"]

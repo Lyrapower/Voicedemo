@@ -483,9 +483,12 @@ def _active_secrets(path):
 def fetch(url,lane,*,egress_path='EGRESS.md',db_path=None,route_id=None,mission_id=None,substrate=None,signal_filter=None,opener=None,max_chars=MAX_CHARS,_tool='web.fetch',_private_check=None):
     secrets=_active_secrets(egress_path)
     try:
-        from harness.url_normalize import normalize_url
+        from harness.web_fetch_normalize import normalize_url
     except ImportError:
-        from url_normalize import normalize_url
+        try:
+            from harness.url_normalize import normalize_url
+        except ImportError:
+            from url_normalize import normalize_url
     raw_in = url if isinstance(url, str) else ('' if url is None else str(url))
     norm, why = normalize_url(raw_in)
     result={'ok':False,'source_url':_safe_url(raw_in,secrets),'lane':lane,'raw':raw_in};grade=None
